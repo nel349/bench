@@ -12,13 +12,38 @@ import { format, type Usdc } from "./money.ts";
  */
 export type AgentId = string;
 
+/**
+ * What a `402` tells a caller: the price, the token, the chain and who to pay.
+ *
+ * This is the x402 quote. It is part of the payments interface rather than the HTTP layer because
+ * only the implementation knows what it wants paid and where — an in-memory allowance never asks
+ * for one, and the chain-backed one always does on the first try.
+ */
+export interface Quote {
+  readonly amount: Usdc;
+  /** CAIP-2, e.g. `eip155:5042002`. */
+  readonly chain: string;
+  /** The USDC contract the payment settles in. */
+  readonly token: string;
+  readonly payTo: string;
+  readonly scheme: "exact";
+}
+
 export type Charge =
   | { readonly ok: true; readonly paid: Usdc; readonly spentSoFar: Usdc }
-  | { readonly ok: false; readonly refused: "allowance"; readonly wanted: Usdc; readonly remaining: Usdc };
+  /** Out of money. A result, not an error. */
+  | { readonly ok: false; readonly refused: "allowance"; readonly wanted: Usdc; readonly remaining: Usdc }
+  /** No proof of payment came with the request. The caller signs the quote and asks again. */
+  | { readonly ok: false; readonly needsPayment: Quote };
 
 export interface Payments {
-  /** Charge, or refuse. Never throws for lack of funds. */
-  charge(agent: AgentId, amount: Usdc, reason: string): Promise<Charge>;
+  /**
+   * Charge, refuse, or ask to be paid. Never throws for lack of funds.
+   *
+   * `proof` is whatever arrived in the request's payment header. An allowance held in memory ignores
+   * it; an x402 implementation verifies it, and asks for one when it is absent.
+   */
+  charge(agent: AgentId, amount: Usdc, reason: string, proof?: string | null): Promise<Charge>;
   spentBy(agent: AgentId): Usdc;
 }
 
@@ -43,7 +68,7 @@ export class InMemoryAllowance implements Payments {
   spentBy(agent: AgentId): Usdc { return this.#spent.get(agent) ?? 0n; }
   remaining(agent: AgentId): Usdc { return this.capOf(agent) - this.spentBy(agent); }
 
-  async charge(agent: AgentId, amount: Usdc, reason: string): Promise<Charge> {
+  async charge(agent: AgentId, amount: Usdc, reason: string, _proof?: string | null): Promise<Charge> {
     if (amount < 0n) throw new Error(`a charge cannot be negative: ${format(amount)}`);
     const remaining = this.remaining(agent);
     if (amount > remaining) {

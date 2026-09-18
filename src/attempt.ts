@@ -1,5 +1,5 @@
 import { boardFrom, check, fire, type Board, type Cell, type Port, type RayResult } from "./problems/blackbox.ts";
-import type { AgentId, Payments } from "./payments.ts";
+import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { format, type Usdc } from "./money.ts";
 
@@ -37,6 +37,8 @@ export interface Attempt {
 }
 
 export type Refusal = { readonly refused: "allowance" | "budget"; readonly wanted: Usdc; readonly remaining: Usdc };
+/** The caller has not paid yet. Sign the quote and ask again — this is the 402. */
+export type PaymentRequired = { readonly needsPayment: Quote };
 export type Asked = { readonly result: RayResult; readonly paid: Usdc; readonly spend: Usdc };
 export type Graded = { readonly solved: boolean; readonly paid: Usdc; readonly spend: Usdc; readonly submissions: number };
 
@@ -72,9 +74,9 @@ export class Attempts {
   board(a: Attempt): Board { return boardFrom(a.seed); }
 
   /** Buy one ray. */
-  async ask(id: AttemptId, port: Port): Promise<Asked | Refusal> {
+  async ask(id: AttemptId, port: Port, proof?: string | null): Promise<Asked | Refusal | PaymentRequired> {
     const a = this.#open(id);
-    const refusal = await this.#spend(a, PRICE.ask, `ask ${port.side}:${port.index}`);
+    const refusal = await this.#spend(a, PRICE.ask, `ask ${port.side}:${port.index}`, proof);
     if (refusal) return refusal;
     const result = fire(this.board(a), port);
     a.probes.push({ port, result });
@@ -82,13 +84,13 @@ export class Attempts {
   }
 
   /** Submit a guess. Wrong answers cost and do not end the run — you may buy more and try again. */
-  async submit(id: AttemptId, guess: readonly Cell[]): Promise<Graded | Refusal> {
+  async submit(id: AttemptId, guess: readonly Cell[], proof?: string | null): Promise<Graded | Refusal | PaymentRequired> {
     const a = this.#open(id);
     const key = `${a.agent}:${a.problem}`;
     const prior = this.#priorSubmissions.get(key) ?? 0;
     const price = submissionPrice(prior);
 
-    const refusal = await this.#spend(a, price, "submit");
+    const refusal = await this.#spend(a, price, "submit", proof);
     if (refusal) return refusal;
 
     this.#priorSubmissions.set(key, prior + 1);
@@ -120,7 +122,7 @@ export class Attempts {
    * *this agent may not spend more of your money*. Both end the attempt, and the reason is recorded,
    * because "refused" without a reason is the message that taught us nothing last time.
    */
-  async #spend(a: Attempt, amount: Usdc, reason: string): Promise<Refusal | null> {
+  async #spend(a: Attempt, amount: Usdc, reason: string, proof?: string | null): Promise<Refusal | PaymentRequired | null> {
     if (amount === 0n) return null;
 
     const left = budgetLeft(a);
@@ -129,8 +131,10 @@ export class Attempts {
       return { refused: "budget", wanted: amount, remaining: left };
     }
 
-    const charge = await this.payments.charge(a.agent, amount, reason);
+    const charge = await this.payments.charge(a.agent, amount, reason, proof);
     if (!charge.ok) {
+      // Asking to be paid is not a refusal: the run is still open and the caller may pay and retry.
+      if ("needsPayment" in charge) return { needsPayment: charge.needsPayment };
       a.outcome = "refused"; a.endedAt = Date.now();
       return { refused: "allowance", wanted: charge.wanted, remaining: charge.remaining };
     }
