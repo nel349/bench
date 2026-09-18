@@ -20,6 +20,21 @@ jobs:
       - name: test
         run: bun test ./src
 
+  # The escrow holds other people's money, so it gets its own lane rather than
+  # sharing one with the TypeScript. forge-std is a submodule; without the
+  # recursive checkout this fails on a missing import, which is exactly how a
+  # clean clone fails for a contributor too.
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: test
+        run: forge test -vvv
+        working-directory: contracts
+
   # The address table claims things about two live chains. This asks them.
   # Allowed to fail the build: a public RPC being down is not our bug, but a
   # changed address is, and we want to see it either way.

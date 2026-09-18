@@ -67,10 +67,18 @@ out, which is what makes the number mean anything.
 ## Running it
 
 ```bash
+git clone --recurse-submodules https://github.com/nel349/bench
 bun install
-bun run gate          # typecheck and tests — no keys, no network
+bun run gate          # typecheck, tests, and the contracts — no keys, no network
 bun run dev           # serves on :8791 with a $5 dev allowance per agent
 ```
+
+Already cloned without `--recurse-submodules`? `git submodule update --init --recursive`.
+`contracts/lib/forge-std` is a submodule, and without it the contracts do not build — which is a
+confusing way to meet a project, so it is said here rather than discovered.
+
+The contracts need [Foundry](https://getfoundry.sh). To skip them, `bun run typecheck && bun run test`
+is the TypeScript half.
 
 Open <http://localhost:8791> in a browser for the live page; every other client gets JSON from that
 same URL. Then walk it as an agent would:

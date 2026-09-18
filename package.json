@@ -8,9 +8,10 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src",
     "verify:addresses": "bun run scripts/verify-addresses.ts",
-    "gate": "bun run typecheck && bun run test",
+    "gate": "bun run typecheck && bun run test && bun run test:contracts",
     "start": "bun run src/server.ts",
-    "dev": "DEV_ALLOWANCE=5 bun run src/server.ts"
+    "dev": "DEV_ALLOWANCE=5 bun run src/server.ts",
+    "test:contracts": "cd contracts && forge test"
   },
   "dependencies": {
     "viem": "2.45.3"
