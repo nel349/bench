@@ -51,7 +51,7 @@ describe("the free surface is free", () => {
 
   test("both problems are listed", async () => {
     const body = (await (await call("GET", "/problems")).json()) as { id: string }[];
-    expect(body.map((p) => p.id).sort()).toEqual(["blackbox", "zendo"]);
+    expect(body.map((p) => p.id).sort()).toEqual(["blackbox", "toll", "zendo"]);
   });
 
   test("nothing was charged for any of that", () => {

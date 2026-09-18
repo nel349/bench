@@ -5,6 +5,7 @@ import { format } from "./money.ts";
 import { allProblems, problemOf } from "./problems/problem.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
+import "./problems/toll.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
 
 /**
