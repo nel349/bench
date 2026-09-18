@@ -12,6 +12,10 @@ export const PATHS = {
   leaderboard: "/leaderboard",
   /** Recent runs across every problem, refusals included. What the page polls. */
   feed: "/feed",
+  /** Work somebody else is paying for. Posting is free; attempting one is not. */
+  bounties: "/bounties",
+  /** An agent's record, and the rating that qualifies it for a bounty. */
+  rating: "/rating",
   style: "/bench.css",
   script: "/bench.js",
 } as const;

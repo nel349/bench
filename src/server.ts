@@ -1,5 +1,6 @@
 import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
+import { Bounties } from "./bounties.ts";
 import { InMemoryAllowance, type Payments } from "./payments.ts";
 import { MemoryStore, SqliteStore } from "./store.ts";
 import { usdc } from "./money.ts";
@@ -98,7 +99,17 @@ const identities = contractsOf(net).erc8004 && payTo
   : null;
 
 const attempts = new Attempts(payments, store, identities);
-const deps: Deps = { attempts, payments, net };
+/**
+ * Bounties, always on.
+ *
+ * The first version enabled these only when `BENCH_PAY_TO` was set, reasoning that a bounty with no
+ * escrow behind it cannot be paid out. True, and the wrong place to enforce it: mainnet already
+ * refuses to start without a payee, so the check bought nothing there — and on a dev machine it
+ * made the whole posting flow unreachable, which is exactly where it needs to be walked.
+ */
+const bounties = new Bounties();
+
+const deps: Deps = { attempts, payments, net, bounties };
 
 const port = Number(process.env["PORT"] ?? 8791);
 

@@ -8,6 +8,8 @@ import "./problems/zendo.ts";
 import "./problems/toll.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
 import { parseAgentId } from "./arc/identity.ts";
+import { wireBounty, type Bounties } from "./bounties.ts";
+import { rate } from "./rating.ts";
 import { PATHS, FEED_LIMIT } from "./web/paths.ts";
 import { renderPage } from "./web/page.ts";
 import { STYLE } from "./web/style.ts";
@@ -32,6 +34,11 @@ export interface Deps {
   readonly attempts: Attempts;
   readonly payments: Payments;
   readonly net: Network;
+  /**
+   * Bounties, where a server runs them. Optional rather than always-on: a gym with no escrow behind
+   * it should answer 404 on these rather than take a posting it cannot pay out.
+   */
+  readonly bounties?: Bounties;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
@@ -292,6 +299,76 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       .sort((x, y) => y.startedAt - x.startedAt)
       .slice(0, FEED_LIMIT);
     return json(recent.map((a) => ({ ...wireScore(score(a)), startedAt: a.startedAt })));
+  }
+
+  /**
+   * Bounties. Posting is free; attempting one costs a graded submission, as it does anywhere else.
+   *
+   * The answer key never appears in any of these responses. `wireBounty` is the only way a bounty
+   * reaches a body, and it has no field for one.
+   */
+  if (seg[0] === "bounties" && !deps.bounties) return fail(404, "bounties are not enabled on this server");
+
+  if (req.method === "GET" && path === PATHS.bounties) {
+    return json(deps.bounties!.all().map((b) => wireBounty(b)));
+  }
+
+  if (req.method === "POST" && path === PATHS.bounties) {
+    const agent = agentOf(req);
+    if (!agent) return fail(401, "name your agent in the X-Agent header");
+    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return fail(400, "posting a bounty takes a JSON body");
+
+    const posted = deps.bounties!.post({ poster: agent, ...body } as never);
+    if (!posted.ok) {
+      return json({ error: posted.problem, ...(posted.at ? { at: posted.at } : {}) }, 400);
+    }
+    return json(wireBounty(posted.bounty), 201);
+  }
+
+  if (seg[0] === "bounties" && seg[1]) {
+    const bounty = deps.bounties!.get(seg[1]);
+    if (!bounty) return fail(404, `no bounty ${seg[1]}`);
+
+    if (req.method === "GET" && seg.length === 2) return json(wireBounty(bounty));
+
+    if (req.method === "POST" && seg[2] === "solve") {
+      const agent = agentOf(req);
+      if (!agent) return fail(401, "name your agent in the X-Agent header");
+      const body = (await req.json().catch(() => null)) as { answer?: unknown } | null;
+      if (!body || !("answer" in body)) return fail(400, "solving takes a JSON body with an answer");
+
+      /**
+       * Attempting a bounty is charged like a graded submission, and the payment is what names the
+       * solver. A bounty pays an address; a header is not one.
+       */
+      const charge = await deps.payments.charge(agent, PRICE.submit, `bounty ${bounty.id}`, proofOf(req));
+      if (!charge.ok) {
+        if ("needsPayment" in charge) return paymentRequired(charge.needsPayment, path);
+        if ("unavailable" in charge) return unavailable(charge.unavailable);
+        if (charge.refused === "payment") return paymentRefused(charge.reason, charge.quote, path);
+        return json({ refused: charge.refused, wanted: format(charge.wanted), remaining: format(charge.remaining) });
+      }
+
+      const solver = charge.payer ?? agent;
+      const out = deps.bounties!.solve(bounty.id, body.answer, solver, deps.attempts.all());
+
+      if (out.ok) return json({ solved: true, solver: out.solver, bounty: wireBounty(bounty) });
+      if ("unqualified" in out) {
+        // 403: the request is well formed and paid for, and the agent is simply not allowed yet.
+        return json({
+          error: "this bounty is for agents with a record", rating: out.rating, needs: out.needs,
+          how: `solve ${out.needs} different problems here first`,
+        }, 403);
+      }
+      if ("closed" in out) return json({ error: out.closed }, 409);
+      return json({ solved: false, because: out.because, at: out.at });
+    }
+  }
+
+  if (req.method === "GET" && seg[0] === "rating" && seg[1]) {
+    const r = rate(deps.attempts.all(), seg[1]);
+    return json({ ...r, spend: format(r.spend), best: r.best === null ? null : format(r.best) });
   }
 
   /** Cost to solve, cheapest first. Unsolved runs are listed but never rank above a solved one. */

@@ -2,6 +2,7 @@ import { expect, test, describe, beforeEach } from "bun:test";
 import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
+import { Bounties } from "./bounties.ts";
 import { usdc } from "./money.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
@@ -34,18 +35,32 @@ let deps: Deps;
 beforeEach(() => {
   const money = new InMemoryAllowance();
   money.grant("agent:aria", usdc("5"));
-  deps = { attempts: new Attempts(money), payments: money, net: "testnet" };
+  deps = { attempts: new Attempts(money), payments: money, net: "testnet", bounties: new Bounties() };
 });
 
 /** Real ids, so `:id` is exercised as a live route rather than a 404 on a made-up name. */
 async function concrete(path: string): Promise<string> {
   if (!path.includes(":")) return path;
+
+  if (path.startsWith("/problems")) return path.replace(":id", "blackbox");
+  if (path.startsWith("/rating")) return path.replace(":agent", "agent:aria");
+  if (path.startsWith("/leaderboard")) return path.replace(":problem", "blackbox");
+
+  if (path.startsWith("/bounties")) {
+    const p = deps.bounties!.post({
+      poster: "agent:aria", title: "t", statement: "s", amount: "1.00",
+      deadline: Date.now() + 2 * 60 * 60 * 1000, checker: { kind: "equals", value: 1 },
+    });
+    if (!p.ok) throw new Error(`could not make a bounty to test with: ${p.problem}`);
+    return path.replace(":id", p.bounty.id);
+  }
+
   const made = await handle(new Request("http://x/attempts", {
     method: "POST", headers: { "x-agent": "agent:aria", "content-type": "application/json" },
     body: JSON.stringify({ problem: "blackbox", seed: 7 }),
   }), deps);
   const { id } = await made.json() as { id: string };
-  return path.replace(":problem", "blackbox").replace(":id", path.startsWith("/problems") ? "blackbox" : id);
+  return path.replace(":problem", "blackbox").replace(":id", id);
 }
 
 describe("every route in docs/API.md", () => {
