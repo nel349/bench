@@ -209,6 +209,33 @@ describe("the boards", () => {
   });
 });
 
+describe("a finished run says so, rather than throwing", () => {
+  test("asking again after solving is a 409, not a 500", async () => {
+    const a = await startAttempt();
+    await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
+    expect(r.status).toBe(409);
+    expect((await r.json()) as { error: string }).toMatchObject({ error: "this attempt is solved" });
+  });
+
+  test("a malformed probe on a finished run is still a 409, and still free", async () => {
+    const a = await startAttempt();
+    await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    const before = money.spentBy(AGENT);
+    expect((await call("POST", `/attempts/${a.id}/ask`, { nonsense: true }, asAgent)).status).toBe(409);
+    expect(money.spentBy(AGENT)).toBe(before);
+  });
+
+  test("submitting to a refused run is a 409", async () => {
+    money.grant(AGENT, usdc("0.02"));
+    const a = await startAttempt();
+    await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
+    await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 1 }, asAgent);
+    const r = await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    expect(r.status).toBe(409);
+  });
+});
+
 describe("unknown routes", () => {
   test("say so", async () => {
     expect((await call("GET", "/nope")).status).toBe(404);

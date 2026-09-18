@@ -69,7 +69,25 @@ const proofOf = (req: Request): string | null => req.headers.get("x-payment");
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 
+/**
+ * Nothing escapes as a bare 500.
+ *
+ * A route that throws used to become an empty 500 with no body, which is the least useful thing an
+ * API can do — it tells a caller that something went wrong and nothing about what or whose fault it
+ * was. Found by firing a malformed probe at an attempt that had already been solved: the answer was
+ * a 500 where it should have been "that run is over".
+ */
 export async function handle(req: Request, deps: Deps): Promise<Response> {
+  try {
+    return await route(req, deps);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error(`[bench] ${req.method} ${new URL(req.url).pathname}: ${message}`);
+    return json({ error: "something went wrong here, and it is not your request", detail: message }, 500);
+  }
+}
+
+async function route(req: Request, deps: Deps): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const seg = path.split("/").filter(Boolean);
@@ -120,6 +138,20 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     if (!attempt) return fail(404, `no attempt ${seg[1]}`);
 
     if (req.method === "GET" && seg.length === 2) return json(wireAttempt(attempt));
+
+    /**
+     * A finished run is finished.
+     *
+     * 409 rather than 400, because the request is well formed and the *state* is what refuses it —
+     * and rather than an exception, because "this run ended" is an ordinary thing to tell a caller,
+     * not an internal failure.
+     */
+    if (req.method === "POST" && attempt.outcome !== "open") {
+      return json({
+        error: `this attempt is ${attempt.outcome}`,
+        attempt: wireAttempt(attempt),
+      }, 409);
+    }
 
     if (req.method === "POST" && seg[2] === "ask") {
       const body = (await req.json().catch(() => null)) as { question?: unknown } | null;
