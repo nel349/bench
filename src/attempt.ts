@@ -2,6 +2,7 @@ import { boardFrom, check, fire, type Board, type Cell, type Port, type RayResul
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { format, type Usdc } from "./money.ts";
+import { MemoryStore, type Store } from "./store.ts";
 
 /**
  * One agent's run at one problem: what it bought, what it spent, and whether it got there.
@@ -50,24 +51,27 @@ function budgetLeft(a: Attempt): Usdc | null {
 }
 
 export class Attempts {
-  readonly #byId = new Map<AttemptId, Attempt>();
-  /** Graded submissions per agent per problem, which is what makes the first one free. */
-  readonly #priorSubmissions = new Map<string, number>();
-  #n = 0;
+  /**
+   * The store hands back a *copy* when it is SQLite and the same object when it is a Map. So every
+   * mutation here is followed by a `put`, without exception — code that works against one and not
+   * the other is the kind of bug that only appears in production, where the store is the real one.
+   */
+  constructor(
+    private readonly payments: Payments,
+    private readonly store: Store = new MemoryStore(),
+  ) {}
 
-  constructor(private readonly payments: Payments) {}
-
-  get(id: AttemptId): Attempt | undefined { return this.#byId.get(id); }
-  all(): Attempt[] { return [...this.#byId.values()]; }
+  get(id: AttemptId): Attempt | undefined { return this.store.get(id); }
+  all(): Attempt[] { return this.store.all(); }
 
   /** Starting is free. You pay to learn, not to arrive. */
   start(agent: AgentId, seed: number, budget: Usdc | null = null): Attempt {
     const attempt: Attempt = {
-      id: `a${++this.#n}`, agent, problem: "blackbox", seed,
+      id: this.store.nextId(), agent, problem: "blackbox", seed,
       startedAt: Date.now(), endedAt: null, outcome: "open",
       probes: [], submissions: 0, spend: 0n, budget,
     };
-    this.#byId.set(attempt.id, attempt);
+    this.store.put(attempt);
     return attempt;
   }
 
@@ -77,26 +81,26 @@ export class Attempts {
   async ask(id: AttemptId, port: Port, proof?: string | null): Promise<Asked | Refusal | PaymentRequired> {
     const a = this.#open(id);
     const refusal = await this.#spend(a, PRICE.ask, `ask ${port.side}:${port.index}`, proof);
-    if (refusal) return refusal;
+    if (refusal) { this.store.put(a); return refusal; }
     const result = fire(this.board(a), port);
     a.probes.push({ port, result });
+    this.store.put(a);
     return { result, paid: PRICE.ask, spend: a.spend };
   }
 
   /** Submit a guess. Wrong answers cost and do not end the run — you may buy more and try again. */
   async submit(id: AttemptId, guess: readonly Cell[], proof?: string | null): Promise<Graded | Refusal | PaymentRequired> {
     const a = this.#open(id);
-    const key = `${a.agent}:${a.problem}`;
-    const prior = this.#priorSubmissions.get(key) ?? 0;
-    const price = submissionPrice(prior);
+    const price = submissionPrice(this.store.priorSubmissions(a.agent, a.problem));
 
     const refusal = await this.#spend(a, price, "submit", proof);
-    if (refusal) return refusal;
+    if (refusal) { this.store.put(a); return refusal; }
 
-    this.#priorSubmissions.set(key, prior + 1);
+    this.store.noteSubmission(a.agent, a.problem);
     a.submissions += 1;
     const solved = check(this.board(a), guess);
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }
+    this.store.put(a);
     return { solved, paid: price, spend: a.spend, submissions: a.submissions };
   }
 
@@ -104,11 +108,12 @@ export class Attempts {
     const a = this.#open(id);
     a.outcome = "abandoned";
     a.endedAt = Date.now();
+    this.store.put(a);
     return a;
   }
 
   #open(id: AttemptId): Attempt {
-    const a = this.#byId.get(id);
+    const a = this.store.get(id);
     if (!a) throw new Error(`no attempt ${id}`);
     if (isOver(a)) throw new Error(`attempt ${id} is ${a.outcome}`);
     return a;

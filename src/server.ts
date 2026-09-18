@@ -1,6 +1,7 @@
 import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
+import { MemoryStore, SqliteStore } from "./store.ts";
 import { usdc } from "./money.ts";
 import { network, requireContracts } from "./arc/chain.ts";
 
@@ -32,7 +33,14 @@ if (devAllowance && net === "mainnet") {
   throw new Error("DEV_ALLOWANCE is for testnet. On mainnet an allowance comes from the chain.");
 }
 
-const attempts = new Attempts(money);
+/**
+ * Runs are kept on disk by default. A gym whose leaderboard resets on deploy is not one.
+ *
+ * `BENCH_DB=:memory:` opts out, which is for a throwaway process and never for anything anyone is
+ * expected to come back to.
+ */
+const store = process.env["BENCH_DB"] === ":memory:" ? new MemoryStore() : new SqliteStore();
+const attempts = new Attempts(money, store);
 const deps: Deps = { attempts, payments: money, net };
 
 const port = Number(process.env["PORT"] ?? 8791);
@@ -49,4 +57,8 @@ Bun.serve({
   },
 });
 
-console.log(`bench listening on :${port}  network=${net}${devAllowance ? `  DEV_ALLOWANCE=$${devAllowance}` : ""}`);
+const kept = store instanceof SqliteStore ? process.env["BENCH_DB"] ?? "bench.sqlite" : "memory (nothing is kept)";
+console.log(
+  `bench listening on :${port}  network=${net}  runs=${kept}` +
+  `${devAllowance ? `  DEV_ALLOWANCE=$${devAllowance}` : ""}`,
+);
