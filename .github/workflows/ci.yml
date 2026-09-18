@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: typecheck
+        run: bun run typecheck
+      # No keys, no network, no chain. If this ever needs one, the lane is wrong.
+      - name: test
+        run: bun test ./src
+
+  # The address table claims things about two live chains. This asks them.
+  # Allowed to fail the build: a public RPC being down is not our bug, but a
+  # changed address is, and we want to see it either way.
+  addresses:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run verify:addresses
