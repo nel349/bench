@@ -123,3 +123,40 @@ export function circleTransportPath(n: Network): "/arc" | "/arcTestnet" {
 export function caip2(n: Network): `eip155:${number}` {
   return `eip155:${chainOf(n).id}`;
 }
+
+/**
+ * What this process needs on chain before it can serve a single paid request.
+ *
+ * The mainnet table is honest about absence: `sessionKeyPlugin` and `erc8004` are null until they
+ * are deployed. Honesty is not enough on its own — without this check the server boots happily on
+ * mainnet and fails at the first allowance, somewhere far from the cause.
+ *
+ * So: say it once, at startup, naming exactly what is missing and what to do about it.
+ */
+export interface Requirements {
+  /** Paid attempts need the allowance, which needs the plugin. */
+  readonly allowance: boolean;
+  /** Ratings written on chain need the registries. Off means a server-side record instead. */
+  readonly onChainRatings: boolean;
+}
+
+export function missingContracts(n: Network, need: Requirements): string[] {
+  const c = CONTRACTS[n];
+  const missing: string[] = [];
+  if (need.allowance && c.sessionKeyPlugin === null) {
+    missing.push(`sessionKeyPlugin is not deployed on ${n} — deploy it and fill in CONTRACTS.${n}`);
+  }
+  if (need.onChainRatings && c.erc8004 === null) {
+    missing.push(`ERC-8004 is not deployed on ${n} — deploy the registries, or run with onChainRatings off`);
+  }
+  return missing;
+}
+
+/** Throws with everything that is missing at once, rather than one thing per restart. */
+export function requireContracts(n: Network, need: Requirements): ArcContracts {
+  const missing = missingContracts(n, need);
+  if (missing.length > 0) {
+    throw new Error(`Cannot serve on Arc ${n}:\n  - ${missing.join("\n  - ")}`);
+  }
+  return CONTRACTS[n];
+}

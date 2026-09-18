@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import {
   CONTRACTS, arcMainnet, arcTestnet, caip2, chainOf, circleTransportPath, contractsOf,
-  type Network,
+  missingContracts, requireContracts, type Network,
 } from "./chain.ts";
 
 const NETWORKS: Network[] = ["mainnet", "testnet"];
@@ -88,4 +88,32 @@ describe("the chain carries what a payment needs", () => {
       expect(c.blockExplorers?.default.url).toStartWith("https://");
     });
   }
+});
+
+describe("the server refuses to start on a network that cannot serve it", () => {
+  const paid = { allowance: true, onChainRatings: false } as const;
+  const rated = { allowance: true, onChainRatings: true } as const;
+
+  test("testnet can serve everything today", () => {
+    expect(missingContracts("testnet", rated)).toEqual([]);
+    expect(requireContracts("testnet", rated)).toBe(CONTRACTS.testnet);
+  });
+
+  test("mainnet cannot take a paid attempt until the plugin is deployed", () => {
+    const missing = missingContracts("mainnet", paid);
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain("sessionKeyPlugin");
+  });
+
+  test("mainnet names both problems at once, not one per restart", () => {
+    expect(missingContracts("mainnet", rated)).toHaveLength(2);
+  });
+
+  test("mainnet is fine for a read-only lane", () => {
+    expect(missingContracts("mainnet", { allowance: false, onChainRatings: false })).toEqual([]);
+  });
+
+  test("the error says what is missing and what to do", () => {
+    expect(() => requireContracts("mainnet", rated)).toThrow(/deploy it and fill in/);
+  });
 });
