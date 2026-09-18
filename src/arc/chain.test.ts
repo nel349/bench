@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import {
   CONTRACTS, arcMainnet, arcTestnet, caip2, chainOf, circleTransportPath, contractsOf,
-  missingContracts, requireContracts, type Network,
+  missingContracts, requireContracts, SESSION_KEY_PLUGIN, type Network,
 } from "./chain.ts";
 
 const NETWORKS: Network[] = ["mainnet", "testnet"];
@@ -113,7 +113,17 @@ describe("the server refuses to start on a network that cannot serve it", () => 
     expect(missingContracts("mainnet", { allowance: false, onChainRatings: false })).toEqual([]);
   });
 
-  test("the error says what is missing and what to do", () => {
-    expect(() => requireContracts("mainnet", rated)).toThrow(/deploy it and fill in/);
+  test("the error says where the plugin will land, not just that it is absent", () => {
+    expect(() => requireContracts("mainnet", rated)).toThrow(SESSION_KEY_PLUGIN);
+  });
+});
+
+describe("the plugin address is deterministic across chains", () => {
+  test("testnet already points at it", () => {
+    expect(CONTRACTS.testnet.sessionKeyPlugin).toBe(SESSION_KEY_PLUGIN);
+  });
+  test("mainnet is null until deployed, though the address is known", () => {
+    expect(CONTRACTS.mainnet.sessionKeyPlugin).toBeNull();
+    expect(SESSION_KEY_PLUGIN).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 });

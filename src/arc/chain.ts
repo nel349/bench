@@ -51,7 +51,13 @@ export interface ArcContracts {
   readonly entryPoint: Address;
   /** Circle's `WeightedWebauthnMultisigPlugin`: the passkey owner. Deployed on both. */
   readonly ownerPlugin: Address;
-  /** Our port of the session-key plugin — the allowance. Not on mainnet until we deploy it. */
+  /**
+   * Our port of the session-key plugin — the allowance.
+   *
+   * Null until it is deployed on that network, even though the address is already known: see
+   * `SESSION_KEY_PLUGIN`. Knowing where it will land is not the same as it being there, and code
+   * that calls an empty address gets empty answers with nothing saying why.
+   */
   readonly sessionKeyPlugin: Address | null;
   /** ERC-8004 registries. Present on testnet, **absent from mainnet** as of 2026-09-17. */
   readonly erc8004: {
@@ -60,6 +66,20 @@ export interface ArcContracts {
     readonly validation: Address;
   } | null;
 }
+
+/**
+ * Where the session-key plugin lands, on **every** chain.
+ *
+ * It deploys through Arachnid's canonical CREATE2 factory at `0x4e59b448…4956C`, which is present on
+ * Arc mainnet and testnet alike (69 bytes at both, checked 2026-09-17), under the fixed salt
+ * `keccak256("kuiralabs.arc-agent-mandate.SessionKeyPlugin.v1")`. The address is a function of
+ * deployer, salt and creation code, and all three are the same everywhere — so the mainnet address
+ * was knowable before a single mainnet transaction was sent.
+ *
+ * Deploying to mainnet is therefore mechanical, and costs about $0.07 at current gas. When it is
+ * done, `CONTRACTS.mainnet.sessionKeyPlugin` becomes this value and nothing else changes.
+ */
+export const SESSION_KEY_PLUGIN: Address = "0x669Dd1eDb85ABD00f74186d88124614EE81E6670";
 
 export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
   mainnet: {
@@ -77,7 +97,7 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     gatewayMinter: "0x0022222ABE238Cc2C7Bb1f21003F0a260052475B",
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
-    sessionKeyPlugin: "0x669Dd1eDb85ABD00f74186d88124614EE81E6670",
+    sessionKeyPlugin: SESSION_KEY_PLUGIN,
     erc8004: {
       identity: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
       reputation: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
@@ -144,7 +164,10 @@ export function missingContracts(n: Network, need: Requirements): string[] {
   const c = CONTRACTS[n];
   const missing: string[] = [];
   if (need.allowance && c.sessionKeyPlugin === null) {
-    missing.push(`sessionKeyPlugin is not deployed on ${n} — deploy it and fill in CONTRACTS.${n}`);
+    missing.push(
+      `sessionKeyPlugin is not deployed on ${n} yet. It lands at ${SESSION_KEY_PLUGIN} — the same ` +
+      `address on every chain, via CREATE2 — so deploy it there and set CONTRACTS.${n}.sessionKeyPlugin`,
+    );
   }
   if (need.onChainRatings && c.erc8004 === null) {
     missing.push(`ERC-8004 is not deployed on ${n} — deploy the registries, or run with onChainRatings off`);
