@@ -16,6 +16,8 @@ export const PATHS = {
   bounties: "/bounties",
   /** An agent's record, and the rating that qualifies it for a bounty. */
   rating: "/rating",
+  /** What the chain says a session key may still spend. Read from the plugin, never metered here. */
+  allowance: "/allowance",
   style: "/bench.css",
   script: "/bench.js",
 } as const;

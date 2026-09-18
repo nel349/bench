@@ -8,6 +8,7 @@ import { contractsOf, network, requireContracts } from "./arc/chain.ts";
 import { ArcPayments } from "./arc/payments.ts";
 import { GatewayFacilitator } from "./arc/gateway.ts";
 import { ArcRegistry, checkIdentity } from "./arc/identity.ts";
+import { ArcAllowances } from "./arc/allowance.ts";
 
 /**
  * The process. Everything it needs is decided here and nowhere else.
@@ -109,7 +110,13 @@ const attempts = new Attempts(payments, store, identities);
  */
 const bounties = new Bounties();
 
-const deps: Deps = { attempts, payments, net, bounties };
+/**
+ * The allowance reader, where there is a plugin to read. On a network without one this stays absent
+ * and the route says so, rather than inventing a number the chain would not agree with.
+ */
+const allowances = contractsOf(net).sessionKeyPlugin ? new ArcAllowances(net) : undefined;
+
+const deps: Deps = { attempts, payments, net, bounties, ...(allowances ? { allowances } : {}) };
 
 const port = Number(process.env["PORT"] ?? 8791);
 

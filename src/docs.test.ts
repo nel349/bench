@@ -3,6 +3,7 @@ import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
 import { Bounties } from "./bounties.ts";
+import { describe as describeAllowance } from "./arc/allowance.ts";
 import { usdc } from "./money.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
@@ -35,7 +36,13 @@ let deps: Deps;
 beforeEach(() => {
   const money = new InMemoryAllowance();
   money.grant("agent:aria", usdc("5"));
-  deps = { attempts: new Attempts(money), payments: money, net: "testnet", bounties: new Bounties() };
+  deps = {
+    attempts: new Attempts(money), payments: money, net: "testnet", bounties: new Bounties(),
+    // A stand-in, so the route is exercised without the suite reaching a chain. What it returns
+    // does not matter here; that the route exists and answers does.
+    allowances: { async of() { return describeAllowance(
+      { hasLimit: true, limit: 5_000_000n, limitUsed: 0n, refreshInterval: 0, lastUsedTime: 0 }, 0); } },
+  };
 });
 
 /** Real ids, so `:id` is exercised as a live route rather than a 404 on a made-up name. */
@@ -44,6 +51,10 @@ async function concrete(path: string): Promise<string> {
 
   if (path.startsWith("/problems")) return path.replace(":id", "blackbox");
   if (path.startsWith("/rating")) return path.replace(":agent", "agent:aria");
+  if (path.startsWith("/allowance")) {
+    return path.replace(":account", "0x0000000000000000000000000000000000000001")
+               .replace(":key", "0x0000000000000000000000000000000000000002");
+  }
   if (path.startsWith("/leaderboard")) return path.replace(":problem", "blackbox");
 
   if (path.startsWith("/bounties")) {

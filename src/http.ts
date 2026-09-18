@@ -9,6 +9,7 @@ import "./problems/toll.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
 import { parseAgentId } from "./arc/identity.ts";
 import { wireBounty, type Bounties } from "./bounties.ts";
+import type { AllowanceReader } from "./arc/allowance.ts";
 import { rate } from "./rating.ts";
 import { PATHS, FEED_LIMIT } from "./web/paths.ts";
 import { renderPage } from "./web/page.ts";
@@ -34,6 +35,8 @@ export interface Deps {
   readonly attempts: Attempts;
   readonly payments: Payments;
   readonly net: Network;
+  /** Reads the session-key plugin, where one is deployed. Absent on a network without it. */
+  readonly allowances?: AllowanceReader;
   /**
    * Bounties, where a server runs them. Optional rather than always-on: a gym with no escrow behind
    * it should answer 404 on these rather than take a posting it cannot pay out.
@@ -364,6 +367,24 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       if ("closed" in out) return json({ error: out.closed }, 409);
       return json({ solved: false, because: out.because, at: out.at });
     }
+  }
+
+  /**
+   * What the chain says is left, for an account and the session key spending on its behalf.
+   *
+   * Read straight from the plugin rather than from anything the gym keeps, so the number an agent
+   * sees here is the number that will do the refusing. Absent a reader — no plugin on this network —
+   * this is a 404 rather than a guess.
+   */
+  if (req.method === "GET" && seg[0] === "allowance" && seg[1] && seg[2]) {
+    if (!deps.allowances) return fail(404, `no session-key plugin on ${deps.net}, so nothing to read`);
+    const found = await deps.allowances.of(seg[1], seg[2]);
+    if (!found) return fail(404, "no allowance for that account and session key");
+    return json({
+      account: seg[1], sessionKey: seg[2],
+      limit: format(found.limit), used: format(found.used), remaining: format(found.remaining),
+      refreshInterval: found.refreshInterval, validUntil: found.validUntil, live: found.live,
+    });
   }
 
   if (req.method === "GET" && seg[0] === "rating" && seg[1]) {

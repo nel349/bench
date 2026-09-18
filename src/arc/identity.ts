@@ -15,9 +15,27 @@ import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
  *
  * That is one `eth_call` against a value we already have, instead of an index we would have to run.
  */
+/**
+ * Read off the deployment, not off a spec.
+ *
+ * The first version of this called `getAgentWallet(uint256)`, which reads like the obvious name and
+ * appears in interfaces elsewhere. **It does not exist on the registry deployed to Arc testnet.**
+ * Every call would have reverted, every revert would have become "not registered", and every
+ * identity claim would have failed — quietly, and identically to an agent that had genuinely not
+ * registered, so nothing would have looked broken.
+ *
+ * What is actually there is a setter, `setAgentWallet`, whose value is read back through the
+ * metadata store: `getMetadata(agentId, "agentWallet")`, returning raw bytes. `scripts/verify-abi.ts`
+ * is what caught it, by looking for each selector in the deployed bytecode.
+ *
+ * The registry is an EIP-1967 proxy, so the selectors live in the implementation rather than at the
+ * address itself. That matters for anything checking bytecode, and not at all for calling it.
+ */
+export const AGENT_WALLET_KEY = "agentWallet";
+
 export const REGISTRY_ABI = parseAbi([
   "function ownerOf(uint256 agentId) view returns (address)",
-  "function getAgentWallet(uint256 agentId) view returns (address)",
+  "function getMetadata(uint256 agentId, string key) view returns (bytes)",
 ]);
 
 /** What the gym needs to know about an id. A seam, so tests never reach a chain. */
@@ -47,24 +65,60 @@ export class ArcRegistry implements Registry {
 
   get address(): Address { return this.#address; }
 
-  async walletOf(agentId: bigint): Promise<Address | null> { return this.#read("getAgentWallet", agentId); }
-  async ownerOf(agentId: bigint): Promise<Address | null> { return this.#read("ownerOf", agentId); }
-
   /**
-   * An unregistered id **reverts**; it does not return zero. That is a normal answer to a normal
-   * question, so it becomes `null` rather than an exception — an agent mistyping its id is not an
-   * outage, and treating it as one would take the gym down one wrong header at a time.
+   * The address that spends for this identity.
+   *
+   * The metadata entry first, because that is what `setAgentWallet` writes and what an agent linking
+   * a fresh wallet updates. `ownerOf` is the fallback: on every identity registered on Arc testnet
+   * today the two agree, and an identity whose metadata was never set should still be usable by the
+   * account that holds it.
    */
-  async #read(functionName: "ownerOf" | "getAgentWallet", agentId: bigint): Promise<Address | null> {
+  async walletOf(agentId: bigint): Promise<Address | null> {
+    const fromMetadata = await this.#metadata(agentId, AGENT_WALLET_KEY);
+    return fromMetadata ?? this.ownerOf(agentId);
+  }
+
+  async ownerOf(agentId: bigint): Promise<Address | null> {
     try {
       const out = await this.#client.readContract({
-        address: this.#address, abi: REGISTRY_ABI, functionName, args: [agentId],
+        address: this.#address, abi: REGISTRY_ABI, functionName: "ownerOf", args: [agentId],
       });
-      return out === "0x0000000000000000000000000000000000000000" ? null : (out as Address);
+      return out === ZERO ? null : (out as Address);
     } catch {
       return null;
     }
   }
+
+  /** Metadata comes back as raw bytes; twenty of them are an address and anything else is not. */
+  async #metadata(agentId: bigint, key: string): Promise<Address | null> {
+    try {
+      const raw = await this.#client.readContract({
+        address: this.#address, abi: REGISTRY_ABI, functionName: "getMetadata", args: [agentId, key],
+      }) as `0x${string}`;
+      return toAddress(raw);
+    } catch {
+      return null;
+    }
+  }
+
+}
+
+const ZERO = "0x0000000000000000000000000000000000000000";
+
+/**
+ * Twenty bytes, as an address.
+ *
+ * An unregistered id **reverts** rather than returning zero, and a key that was never set returns
+ * empty bytes. Both are normal answers to a normal question, so both become `null` — an agent
+ * mistyping its id is not an outage, and treating it as one would take the gym down one wrong
+ * header at a time.
+ */
+function toAddress(raw: string | null | undefined): Address | null {
+  if (!raw || raw === "0x") return null;
+  const hex = raw.slice(2);
+  if (hex.length !== 40) return null;
+  const address = `0x${hex}` as Address;
+  return address.toLowerCase() === ZERO ? null : address;
 }
 
 export type IdentityCheck =
