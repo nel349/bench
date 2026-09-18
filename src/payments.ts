@@ -1,0 +1,57 @@
+import { format, type Usdc } from "./money.ts";
+
+/**
+ * Taking money from an agent, and the one answer that is not an error.
+ *
+ * **Running out of allowance is a result.** It is the thing this product exists to show: software
+ * that wanted to spend more and was refused. Modelling it as an exception would bury the most
+ * interesting event in the system inside a catch block, so it is a value the caller must handle.
+ *
+ * The seam exists so the whole flow runs in tests with no chain, no keys and no network. The x402
+ * implementation goes behind it unchanged.
+ */
+export type AgentId = string;
+
+export type Charge =
+  | { readonly ok: true; readonly paid: Usdc; readonly spentSoFar: Usdc }
+  | { readonly ok: false; readonly refused: "allowance"; readonly wanted: Usdc; readonly remaining: Usdc };
+
+export interface Payments {
+  /** Charge, or refuse. Never throws for lack of funds. */
+  charge(agent: AgentId, amount: Usdc, reason: string): Promise<Charge>;
+  spentBy(agent: AgentId): Usdc;
+}
+
+/**
+ * An allowance held in memory, for tests and for running the gym with no chain attached.
+ *
+ * It enforces the same rule the session-key plugin enforces on Arc: spend up to the cap, and not one
+ * micro past it. Keeping the semantics identical is what makes the chain-backed version a swap
+ * rather than a rewrite.
+ */
+export class InMemoryAllowance implements Payments {
+  readonly #cap = new Map<AgentId, Usdc>();
+  readonly #spent = new Map<AgentId, Usdc>();
+  readonly log: { agent: AgentId; amount: Usdc; reason: string; ok: boolean }[] = [];
+
+  grant(agent: AgentId, cap: Usdc): void {
+    this.#cap.set(agent, cap);
+    if (!this.#spent.has(agent)) this.#spent.set(agent, 0n);
+  }
+
+  capOf(agent: AgentId): Usdc { return this.#cap.get(agent) ?? 0n; }
+  spentBy(agent: AgentId): Usdc { return this.#spent.get(agent) ?? 0n; }
+  remaining(agent: AgentId): Usdc { return this.capOf(agent) - this.spentBy(agent); }
+
+  async charge(agent: AgentId, amount: Usdc, reason: string): Promise<Charge> {
+    if (amount < 0n) throw new Error(`a charge cannot be negative: ${format(amount)}`);
+    const remaining = this.remaining(agent);
+    if (amount > remaining) {
+      this.log.push({ agent, amount, reason, ok: false });
+      return { ok: false, refused: "allowance", wanted: amount, remaining };
+    }
+    this.#spent.set(agent, this.spentBy(agent) + amount);
+    this.log.push({ agent, amount, reason, ok: true });
+    return { ok: true, paid: amount, spentSoFar: this.spentBy(agent) };
+  }
+}
