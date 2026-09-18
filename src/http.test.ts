@@ -4,6 +4,7 @@ import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "./payments.ts";
 import { usdc, type Usdc } from "./money.ts";
 import { boardFrom } from "./problems/blackbox.ts";
+import "./problems/blackbox-problem.ts";
 
 const AGENT = "agent:aria";
 const SEED = 4242;
@@ -48,6 +49,11 @@ describe("the free surface is free", () => {
     expect(body.example.atoms).toEqual(boardFrom(1).atoms);
   });
 
+  test("both problems are listed", async () => {
+    const body = (await (await call("GET", "/problems")).json()) as { id: string }[];
+    expect(body.map((p) => p.id).sort()).toEqual(["blackbox", "zendo"]);
+  });
+
   test("nothing was charged for any of that", () => {
     expect(money.spentBy(AGENT)).toBe(0n);
   });
@@ -72,10 +78,10 @@ describe("a probe", () => {
     const a = await startAttempt();
     const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
     expect(r.status).toBe(200);
-    const body = (await r.json()) as { paid: string; spend: string; result: { kind: string } };
+    const body = (await r.json()) as { paid: string; spend: string; answer: { kind: string } };
     expect(body.paid).toBe("0.020000");
     expect(body.spend).toBe("0.020000");
-    expect(["hit", "reflect", "detour"]).toContain(body.result.kind);
+    expect(["hit", "reflect", "detour"]).toContain(body.answer.kind);
   });
 
   test("a malformed ask is a 400, not a charge", async () => {

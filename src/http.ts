@@ -2,7 +2,9 @@ import { Attempts, score, wireAttempt, wireScore, type Attempt } from "./attempt
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE } from "./pricing.ts";
 import { format } from "./money.ts";
-import { boardFrom, ports, type Cell, type Port } from "./problems/blackbox.ts";
+import { allProblems, problemOf } from "./problems/problem.ts";
+import "./problems/blackbox-problem.ts";
+import "./problems/zendo.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
 
 /**
@@ -65,18 +67,7 @@ function agentOf(req: Request): AgentId | null {
 
 const proofOf = (req: Request): string | null => req.headers.get("x-payment");
 
-const PROBLEM = {
-  id: "blackbox",
-  title: "Black Box",
-  category: "cost-bounded reasoning",
-  size: 8,
-  atoms: 4,
-  statement:
-    "Atoms are hidden in an 8x8 grid. Fire a ray from any edge port and observe what becomes of it: " +
-    "absorbed, reflected back out where it went in, or emerging somewhere else. Name every atom. " +
-    "Each ray costs. There is no way to see the board.",
-  scoring: "Ranked by cost to solve. Ties break on fewest probes.",
-} as const;
+const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   const url = new URL(req.url);
@@ -85,37 +76,43 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   const prices = { ask: format(PRICE.ask), submit: format(PRICE.submit), rank: format(PRICE.rank) };
 
   if (req.method === "GET" && path === "/") {
-    return json({ service: "bench", network: deps.net, chain: caip2(deps.net), problems: [PROBLEM.id] });
+    return json({
+      service: "bench", network: deps.net, chain: caip2(deps.net),
+      problems: allProblems().map((p) => p.id),
+    });
   }
 
   if (req.method === "GET" && path === "/problems") {
-    return json([{ id: PROBLEM.id, title: PROBLEM.title, category: PROBLEM.category, prices }]);
+    return json(allProblems().map((p) => ({ id: p.id, title: p.title, category: p.category, prices })));
   }
 
-  if (req.method === "GET" && seg[0] === "problems" && seg[1] === PROBLEM.id && seg.length === 2) {
-    return json({ ...PROBLEM, prices, ports: ports(PROBLEM.size).length });
-  }
+  if (req.method === "GET" && seg[0] === "problems" && seg[1]) {
+    const problem = problemOf(seg[1]);
+    if (!problem) return fail(404, `no problem ${seg[1]}`);
 
-  /** The harness: everything needed to rebuild a board and replay a run, offline and for free. */
-  if (req.method === "GET" && seg[0] === "problems" && seg[1] === PROBLEM.id && seg[2] === "harness") {
-    return json({
-      problem: PROBLEM.id,
-      generator: "mulberry32",
-      note:
-        "A board is a function of its seed and nothing else. Rebuild it, replay every probe in an " +
-        "attempt, and check the score yourself. The implementation is in the repository under " +
-        "src/problems/blackbox.ts — read it rather than trusting this description.",
-      board: { size: PROBLEM.size, atoms: PROBLEM.atoms },
-      example: { seed: 1, atoms: boardFrom(1).atoms },
-    });
+    if (seg.length === 2) {
+      return json({
+        id: problem.id, title: problem.title, category: problem.category,
+        statement: problem.statement, scoring: SCORING, prices,
+      });
+    }
+
+    /** The harness: everything needed to rebuild an instance and replay a run, offline and free. */
+    if (seg[2] === "harness") {
+      const seed = Number(url.searchParams.get("seed") ?? 1);
+      return json({ problem: problem.id, seed, ...(problem.harness(seed) as object) });
+    }
   }
 
   if (req.method === "POST" && path === "/attempts") {
     const agent = agentOf(req);
     if (!agent) return fail(401, "name your agent in the X-Agent header");
-    const body = (await req.json().catch(() => ({}))) as { seed?: number };
+    const body = (await req.json().catch(() => ({}))) as { seed?: number; problem?: string };
+    const problem = body.problem ?? "blackbox";
     const seed = Number.isInteger(body.seed) ? body.seed! : Math.floor(Math.random() * 2 ** 31);
-    return json(wireAttempt(deps.attempts.start(agent, seed)), 201);
+    const started = deps.attempts.start(agent, problem, seed);
+    if (!started) return fail(404, `no problem ${problem}`);
+    return json(wireAttempt(started), 201);
   }
 
   if (seg[0] === "attempts" && seg[1]) {
@@ -125,21 +122,28 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     if (req.method === "GET" && seg.length === 2) return json(wireAttempt(attempt));
 
     if (req.method === "POST" && seg[2] === "ask") {
-      const body = (await req.json().catch(() => null)) as Port | null;
-      if (!body || typeof body.index !== "number" || !body.side) return fail(400, "ask takes {side, index}");
-      const out = await deps.attempts.ask(attempt.id, body, proofOf(req));
+      const body = (await req.json().catch(() => null)) as { question?: unknown } | null;
+      if (!body) return fail(400, "ask takes a JSON body");
+      // A bare body is the question, so `{"side":"left","index":0}` works as well as `{"question":...}`.
+      const question = "question" in body ? body.question : body;
+      const out = await deps.attempts.ask(attempt.id, question, proofOf(req));
+      if ("malformed" in out) {
+        const p = problemOf(attempt.problem);
+        return fail(400, `that is not a question this problem takes. See ${p ? `/problems/${p.id}/harness` : "the harness"}`);
+      }
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
                       attempt: wireAttempt(attempt) });
       }
-      return json({ result: out.result, paid: format(out.paid), spend: format(out.spend) });
+      return json({ answer: out.answer, paid: format(out.paid), spend: format(out.spend) });
     }
 
     if (req.method === "POST" && seg[2] === "submit") {
-      const body = (await req.json().catch(() => null)) as { guess?: Cell[] } | null;
-      if (!body || !Array.isArray(body.guess)) return fail(400, "submit takes {guess: [{x, y}]}");
-      const out = await deps.attempts.submit(attempt.id, body.guess, proofOf(req));
+      const body = (await req.json().catch(() => null)) as { answer?: unknown; guess?: unknown } | null;
+      if (!body) return fail(400, "submit takes a JSON body with an answer");
+      const answer = "answer" in body ? body.answer : body.guess;
+      const out = await deps.attempts.submit(attempt.id, answer, proofOf(req));
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
@@ -163,8 +167,9 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
 
   /** Cost to solve, cheapest first. Unsolved runs are listed but never rank above a solved one. */
-  if (req.method === "GET" && seg[0] === "leaderboard" && seg[1] === PROBLEM.id) {
-    const solved = deps.attempts.all().filter((a: Attempt) => a.outcome === "solved");
+  if (req.method === "GET" && seg[0] === "leaderboard" && seg[1]) {
+    if (!problemOf(seg[1])) return fail(404, `no problem ${seg[1]}`);
+    const solved = deps.attempts.all().filter((a: Attempt) => a.outcome === "solved" && a.problem === seg[1]);
     const ranked = [...solved].sort((x, y) =>
       x.spend === y.spend ? x.probes.length - y.probes.length : (x.spend < y.spend ? -1 : 1));
     return json(ranked.map((a) => wireScore(score(a))));

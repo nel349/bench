@@ -1,8 +1,8 @@
-import { boardFrom, check, fire, type Board, type Cell, type Port, type RayResult } from "./problems/blackbox.ts";
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { format, type Usdc } from "./money.ts";
 import { MemoryStore, type Store } from "./store.ts";
+import { problemOf, type Problem } from "./problems/problem.ts";
 
 /**
  * One agent's run at one problem: what it bought, what it spent, and whether it got there.
@@ -11,8 +11,8 @@ import { MemoryStore, type Store } from "./store.ts";
  * outcome rather than a failure.** An attempt that ends refused is a complete, recorded run with a
  * spend and no solution, not an error the caller has to interpret.
  *
- * The board is never handed out. It is rebuilt from the seed on each call, so there is no copy of
- * the solution sitting in a response object waiting to be leaked by a careless serialiser.
+ * The instance is never handed out. It is rebuilt from the seed on every call, so there is no copy
+ * of the solution sitting in a response object waiting to be leaked by a careless serialiser.
  */
 
 export type AttemptId = string;
@@ -20,41 +20,39 @@ export type AttemptId = string;
 export interface Attempt {
   readonly id: AttemptId;
   readonly agent: AgentId;
-  readonly problem: "blackbox";
-  /** Rebuilds the board. Public on purpose: a stranger checking a run needs it. */
+  readonly problem: string;
+  /** Rebuilds the instance. Public on purpose: a stranger checking a run needs it. */
   readonly seed: number;
   readonly startedAt: number;
-  /** Set once the run is over, however it ended. */
   endedAt: number | null;
   outcome: "open" | "solved" | "refused" | "abandoned";
   /** Every paid question, in order, with what it answered. */
-  readonly probes: { readonly port: Port; readonly result: RayResult }[];
-  /** Graded submissions made, including wrong ones. */
+  readonly probes: { readonly question: unknown; readonly answer: unknown }[];
   submissions: number;
-  /** Total charged to the agent across this attempt. */
   spend: Usdc;
-  /** A cap the problem imposes, on top of whatever the agent's allowance permits. */
+  /** A cap this problem imposes, on top of whatever the agent's allowance permits. */
   readonly budget: Usdc | null;
+  /** Problems where a probe changes the situation keep it here. Most do not and leave it null. */
+  state: unknown;
 }
 
 export type Refusal = { readonly refused: "allowance" | "budget"; readonly wanted: Usdc; readonly remaining: Usdc };
 /** The caller has not paid yet. Sign the quote and ask again — this is the 402. */
 export type PaymentRequired = { readonly needsPayment: Quote };
-export type Asked = { readonly result: RayResult; readonly paid: Usdc; readonly spend: Usdc };
+/** The question did not parse. Nobody pays to be told their JSON was wrong. */
+export type Malformed = { readonly malformed: true };
+
+export type Asked = { readonly answer: unknown; readonly paid: Usdc; readonly spend: Usdc };
 export type Graded = { readonly solved: boolean; readonly paid: Usdc; readonly spend: Usdc; readonly submissions: number };
 
 const isOver = (a: Attempt): boolean => a.outcome !== "open";
-
-/** How much of the problem's budget is left, or null when it imposes none. */
-function budgetLeft(a: Attempt): Usdc | null {
-  return a.budget === null ? null : a.budget - a.spend;
-}
+const budgetLeft = (a: Attempt): Usdc | null => (a.budget === null ? null : a.budget - a.spend);
 
 export class Attempts {
   /**
    * The store hands back a *copy* when it is SQLite and the same object when it is a Map. So every
    * mutation here is followed by a `put`, without exception — code that works against one and not
-   * the other is the kind of bug that only appears in production, where the store is the real one.
+   * the other is the kind of bug that only appears where the store is real.
    */
   constructor(
     private readonly payments: Payments,
@@ -65,31 +63,42 @@ export class Attempts {
   all(): Attempt[] { return this.store.all(); }
 
   /** Starting is free. You pay to learn, not to arrive. */
-  start(agent: AgentId, seed: number, budget: Usdc | null = null): Attempt {
+  start(agent: AgentId, problemId: string, seed: number, budget: Usdc | null = null): Attempt | null {
+    const problem = problemOf(problemId);
+    if (!problem) return null;
     const attempt: Attempt = {
-      id: this.store.nextId(), agent, problem: "blackbox", seed,
+      id: this.store.nextId(), agent, problem: problem.id, seed,
       startedAt: Date.now(), endedAt: null, outcome: "open",
-      probes: [], submissions: 0, spend: 0n, budget,
+      probes: [], submissions: 0, spend: 0n, budget, state: problem.initialState(seed),
     };
     this.store.put(attempt);
     return attempt;
   }
 
-  board(a: Attempt): Board { return boardFrom(a.seed); }
-
-  /** Buy one ray. */
-  async ask(id: AttemptId, port: Port, proof?: string | null): Promise<Asked | Refusal | PaymentRequired> {
+  /**
+   * Buy one answer.
+   *
+   * The question is parsed **before** anything is charged. A malformed probe costs nothing, because
+   * charging for a rejected request turns a typo into a tax and teaches an agent to fear the API.
+   */
+  async ask(id: AttemptId, question: unknown, proof?: string | null): Promise<Asked | Refusal | PaymentRequired | Malformed> {
     const a = this.#open(id);
-    const refusal = await this.#spend(a, PRICE.ask, `ask ${port.side}:${port.index}`, proof);
+    const problem = this.#problem(a);
+
+    const answered = problem.probe(a.seed, question, a.state);
+    if (!answered) return { malformed: true };
+
+    const refusal = await this.#spend(a, PRICE.ask, "ask", proof);
     if (refusal) { this.store.put(a); return refusal; }
-    const result = fire(this.board(a), port);
-    a.probes.push({ port, result });
+
+    a.probes.push({ question, answer: answered.answer });
+    a.state = answered.state;
     this.store.put(a);
-    return { result, paid: PRICE.ask, spend: a.spend };
+    return { answer: answered.answer, paid: PRICE.ask, spend: a.spend };
   }
 
-  /** Submit a guess. Wrong answers cost and do not end the run — you may buy more and try again. */
-  async submit(id: AttemptId, guess: readonly Cell[], proof?: string | null): Promise<Graded | Refusal | PaymentRequired> {
+  /** Submit an answer. A wrong one costs and does not end the run — buy more and try again. */
+  async submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired> {
     const a = this.#open(id);
     const price = submissionPrice(this.store.priorSubmissions(a.agent, a.problem));
 
@@ -98,7 +107,7 @@ export class Attempts {
 
     this.store.noteSubmission(a.agent, a.problem);
     a.submissions += 1;
-    const solved = check(this.board(a), guess);
+    const solved = this.#problem(a).check(a.seed, answer);
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }
     this.store.put(a);
     return { solved, paid: price, spend: a.spend, submissions: a.submissions };
@@ -110,6 +119,12 @@ export class Attempts {
     a.endedAt = Date.now();
     this.store.put(a);
     return a;
+  }
+
+  #problem(a: Attempt): Problem {
+    const p = problemOf(a.problem);
+    if (!p) throw new Error(`attempt ${a.id} names a problem that no longer exists: ${a.problem}`);
+    return p;
   }
 
   #open(id: AttemptId): Attempt {
@@ -124,8 +139,8 @@ export class Attempts {
    *
    * The problem's budget is checked first and separately from the agent's allowance, because they
    * mean different things: a budget says *this problem must be solved cheaply*, an allowance says
-   * *this agent may not spend more of your money*. Both end the attempt, and the reason is recorded,
-   * because "refused" without a reason is the message that taught us nothing last time.
+   * *this agent may not spend more of your money*. Both end the attempt, and the refusal names
+   * which — "refused" with no reason is the message that taught us nothing last time.
    */
   async #spend(a: Attempt, amount: Usdc, reason: string, proof?: string | null): Promise<Refusal | PaymentRequired | null> {
     if (amount === 0n) return null;
@@ -174,35 +189,20 @@ export function score(a: Attempt): Score {
 }
 
 /**
- * The JSON-safe shape of a score, and the only thing that should reach a response.
+ * The JSON-safe shape, and the only thing that should reach a response.
  *
- * `Usdc` is a bigint, and `JSON.stringify` throws on those rather than rounding them — which is a
- * kindness. It means the boundary between exact money and the wire has to be written down instead of
- * happening by accident, and money crosses it as a decimal string with all six places, never as a
- * number a parser might round.
- *
- * A test asserts this, because the failure it prevents only appears once there is an HTTP layer and
- * by then it looks like a serialiser bug rather than a money bug.
+ * `Usdc` is a bigint and `JSON.stringify` throws on those rather than rounding them, which is a
+ * kindness: it forces the boundary between exact money and the wire to be written down instead of
+ * happening by accident. Money crosses as a decimal string with all six places, never as a number a
+ * parser might round.
  */
-export interface WireScore {
-  readonly attempt: AttemptId;
-  readonly agent: AgentId;
-  readonly problem: string;
-  readonly seed: number;
-  readonly solved: boolean;
-  /** Decimal string, six places. Never a number. */
-  readonly spend: string;
-  readonly probes: number;
-  readonly submissions: number;
-  readonly wallTimeMs: number;
-  readonly endedBy: Attempt["outcome"];
-}
+export interface WireScore extends Omit<Score, "spend"> { readonly spend: string }
 
 export function wireScore(s: Score): WireScore {
   return { ...s, spend: format(s.spend) };
 }
 
-/** What an agent may see of its own attempt: never the board, and never a bigint. */
+/** What an agent may see of its own attempt: never the instance, and never a bigint. */
 export interface WireAttempt {
   readonly id: AttemptId;
   readonly problem: string;
@@ -210,7 +210,7 @@ export interface WireAttempt {
   readonly outcome: Attempt["outcome"];
   readonly spend: string;
   readonly budget: string | null;
-  readonly probes: { readonly port: Port; readonly result: RayResult }[];
+  readonly probes: { readonly question: unknown; readonly answer: unknown }[];
   readonly submissions: number;
 }
 

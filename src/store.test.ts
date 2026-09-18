@@ -7,6 +7,7 @@ import { Attempts, score } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
 import { usdc, format } from "./money.ts";
 import { boardFrom } from "./problems/blackbox.ts";
+import "./problems/blackbox-problem.ts";
 
 const AGENT = "agent:aria";
 const SEED = 4242;
@@ -38,7 +39,7 @@ for (const [name, make] of stores) {
       money.grant(AGENT, usdc("5"));
       const attempts = new Attempts(money, make());
 
-      const a = attempts.start(AGENT, SEED);
+      const a = attempts.start(AGENT, "blackbox", SEED)!;
       await attempts.ask(a.id, { side: "left", index: 0 });
       await attempts.ask(a.id, { side: "up", index: 3 });
       await attempts.submit(a.id, [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }]);
@@ -57,11 +58,11 @@ for (const [name, make] of stores) {
       const attempts = new Attempts(money, make());
       const wrong = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }];
 
-      const first = attempts.start(AGENT, SEED);
+      const first = attempts.start(AGENT, "blackbox", SEED)!;
       await attempts.submit(first.id, wrong);
 
       // A second attempt by the same agent at the same problem: no longer free.
-      const second = attempts.start(AGENT, 99);
+      const second = attempts.start(AGENT, "blackbox", 99)!;
       await attempts.submit(second.id, wrong);
       expect(format(attempts.get(second.id)!.spend)).toBe("0.050000");
     });
@@ -70,7 +71,7 @@ for (const [name, make] of stores) {
       const money = new InMemoryAllowance();
       money.grant(AGENT, usdc("0.02"));
       const attempts = new Attempts(money, make());
-      const a = attempts.start(AGENT, SEED);
+      const a = attempts.start(AGENT, "blackbox", SEED)!;
       await attempts.ask(a.id, { side: "left", index: 0 });
       await attempts.ask(a.id, { side: "left", index: 1 });
       expect(attempts.get(a.id)!.outcome).toBe("refused");
@@ -88,7 +89,7 @@ describe("sqlite survives the restart that a Map does not", () => {
     // First process.
     const before = new SqliteStore(path);
     const attempts = new Attempts(money, before);
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.submit(a.id, boardFrom(SEED).atoms);
     before.close();
@@ -100,7 +101,7 @@ describe("sqlite survives the restart that a Map does not", () => {
     expect(found!.outcome).toBe("solved");
     expect(format(found!.spend)).toBe("0.020000");
     expect(found!.probes).toHaveLength(1);
-    expect(found!.probes[0]!.port).toEqual({ side: "left", index: 0 });
+    expect(found!.probes[0]!.question).toEqual({ side: "left", index: 0 });
     after.close();
   });
 
@@ -112,7 +113,7 @@ describe("sqlite survives the restart that a Map does not", () => {
     const attempts = new Attempts(money, first);
     for (const agent of ["agent:one", "agent:two"]) {
       money.grant(agent, usdc("5"));
-      const a = attempts.start(agent, SEED);
+      const a = attempts.start(agent, "blackbox", SEED)!;
       await attempts.submit(a.id, boardFrom(SEED).atoms);
     }
     first.close();
@@ -130,7 +131,7 @@ describe("sqlite survives the restart that a Map does not", () => {
 
     const one = new SqliteStore(path);
     const attempts = new Attempts(money, one);
-    const a = attempts.start(AGENT, SEED, usdc("0.4"));
+    const a = attempts.start(AGENT, "blackbox", SEED, usdc("0.4"))!;
     for (let i = 0; i < 7; i++) await attempts.ask(a.id, { side: "left", index: i });
     one.close();
 
@@ -148,11 +149,11 @@ describe("sqlite survives the restart that a Map does not", () => {
     money.grant(AGENT, usdc("5"));
 
     const one = new SqliteStore(path);
-    const a1 = new Attempts(money, one).start(AGENT, SEED);
+    const a1 = new Attempts(money, one).start(AGENT, "blackbox", SEED)!;
     one.close();
 
     const two = new SqliteStore(path);
-    const a2 = new Attempts(money, two).start(AGENT, SEED);
+    const a2 = new Attempts(money, two).start(AGENT, "blackbox", SEED)!;
     expect(a2.id).not.toBe(a1.id);
     expect(two.all()).toHaveLength(2);
     two.close();

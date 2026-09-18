@@ -4,7 +4,8 @@ import {
 } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
 import { usdc, format } from "./money.ts";
-import { boardFrom, ports } from "./problems/blackbox.ts";
+import { boardFrom, ports, type RayResult } from "./problems/blackbox.ts";
+import "./problems/blackbox-problem.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 
 const AGENT = "agent:aria";
@@ -24,24 +25,24 @@ const solutionFor = (seed: number) => boardFrom(seed).atoms;
 
 describe("starting is free; you pay to learn, not to arrive", () => {
   test("no charge to start", async () => {
-    attempts.start(AGENT, SEED);
+    attempts.start(AGENT, "blackbox", SEED)!;
     expect(money.spentBy(AGENT)).toBe(0n);
   });
 });
 
 describe("a probe costs, and answers", () => {
   test("one ray charges the list price and returns a result", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     const r = await attempts.ask(a.id, { side: "left", index: 0 });
     expect(isRefusal(r)).toBe(false);
     const asked = r as Asked;
     expect(asked.paid).toBe(PRICE.ask);
-    expect(["hit", "reflect", "detour"]).toContain(asked.result.kind);
+    expect(["hit", "reflect", "detour"]).toContain((asked.answer as RayResult).kind);
     expect(money.spentBy(AGENT)).toBe(PRICE.ask);
   });
 
   test("spend accumulates exactly, with no float drift over many probes", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     for (const p of ports(8)) await attempts.ask(a.id, p);
     expect(attempts.get(a.id)!.spend).toBe(PRICE.ask * 32n);
     expect(format(money.spentBy(AGENT))).toBe("0.640000");
@@ -58,7 +59,7 @@ describe("the first graded submission is free, then it bites", () => {
   });
 
   test("a first wrong guess costs nothing but is recorded", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     const g = (await attempts.submit(a.id, [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }])) as Graded;
     expect(g.solved).toBe(false);
     expect(g.paid).toBe(0n);
@@ -67,7 +68,7 @@ describe("the first graded submission is free, then it bites", () => {
   });
 
   test("brute force gets expensive fast", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     const wrong = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }];
     for (let i = 0; i < 6; i++) await attempts.submit(a.id, wrong);
     // free + 0.05 + 0.05 + 0.10 + 0.20 + 0.40
@@ -77,7 +78,7 @@ describe("the first graded submission is free, then it bites", () => {
 
 describe("solving ends the run", () => {
   test("the right atoms solve it, and the attempt closes", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     const g = (await attempts.submit(a.id, solutionFor(SEED))) as Graded;
     expect(g.solved).toBe(true);
     const done = attempts.get(a.id)!;
@@ -86,7 +87,7 @@ describe("solving ends the run", () => {
   });
 
   test("a closed attempt refuses further work rather than quietly accepting it", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.submit(a.id, solutionFor(SEED));
     expect(attempts.ask(a.id, { side: "left", index: 0 })).rejects.toThrow(/solved/);
   });
@@ -95,7 +96,7 @@ describe("solving ends the run", () => {
 describe("running out is a result, not an error", () => {
   test("an exhausted allowance refuses, ends the run, and says what was left", async () => {
     money.grant(AGENT, usdc("0.05"));           // two probes and no more
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.ask(a.id, { side: "left", index: 1 });
     const r = await attempts.ask(a.id, { side: "left", index: 2 });
@@ -110,7 +111,7 @@ describe("running out is a result, not an error", () => {
 
   test("nothing is charged for the action that was refused", async () => {
     money.grant(AGENT, usdc("0.05"));
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.ask(a.id, { side: "left", index: 1 });
     await attempts.ask(a.id, { side: "left", index: 2 });
@@ -118,7 +119,7 @@ describe("running out is a result, not an error", () => {
   });
 
   test("a problem's budget refuses separately from the allowance, and says which", async () => {
-    const a = attempts.start(AGENT, SEED, usdc("0.05"));   // rich agent, tight problem
+    const a = attempts.start(AGENT, "blackbox", SEED, usdc("0.05"))!;   // rich agent, tight problem
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.ask(a.id, { side: "left", index: 1 });
     const r = (await attempts.ask(a.id, { side: "left", index: 2 })) as Refusal;
@@ -129,7 +130,7 @@ describe("running out is a result, not an error", () => {
 
 describe("the score is the record, with nothing derived at read time", () => {
   test("a solved run carries spend, probes and how it ended", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.ask(a.id, { side: "up", index: 3 });
     await attempts.submit(a.id, solutionFor(SEED));
@@ -144,7 +145,7 @@ describe("the score is the record, with nothing derived at read time", () => {
 
   test("a refused run is a complete record, not a missing one", async () => {
     money.grant(AGENT, usdc("0.02"));
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.ask(a.id, { side: "left", index: 1 });
     const s = score(attempts.get(a.id)!);
@@ -157,7 +158,7 @@ describe("the score is the record, with nothing derived at read time", () => {
 
 describe("the solution never leaves the server", () => {
   test("an attempt carries a seed, not a board", () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     expect(a).not.toHaveProperty("board");
     expect(JSON.stringify(wireAttempt(a))).not.toContain("atoms");
   });
@@ -165,13 +166,13 @@ describe("the solution never leaves the server", () => {
 
 describe("money crosses the wire as a string, because bigint cannot cross at all", () => {
   test("an attempt straight from the store is not serialisable, and that is the point", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     expect(() => JSON.stringify(attempts.get(a.id))).toThrow();
   });
 
   test("the wire form serialises, with six places and no rounding", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     const json = JSON.parse(JSON.stringify(wireAttempt(attempts.get(a.id)!)));
     expect(json.spend).toBe("0.020000");
@@ -179,7 +180,7 @@ describe("money crosses the wire as a string, because bigint cannot cross at all
   });
 
   test("a score crosses too, budget included when there is one", async () => {
-    const a = attempts.start(AGENT, SEED, usdc("0.40"));
+    const a = attempts.start(AGENT, "blackbox", SEED, usdc("0.40"))!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.submit(a.id, solutionFor(SEED));
     const json = JSON.parse(JSON.stringify(wireScore(score(attempts.get(a.id)!))));
@@ -191,7 +192,7 @@ describe("money crosses the wire as a string, because bigint cannot cross at all
 
 describe("the ledger agrees with the attempts", () => {
   test("every charge logged matches what the attempts think they spent", async () => {
-    const a = attempts.start(AGENT, SEED);
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
     await attempts.ask(a.id, { side: "left", index: 0 });
     await attempts.submit(a.id, [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }]);
     await attempts.ask(a.id, { side: "right", index: 5 });

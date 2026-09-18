@@ -1,7 +1,6 @@
 import { Database } from "bun:sqlite";
 import type { Attempt } from "./attempt.ts";
 import type { AgentId } from "./payments.ts";
-import type { Port, RayResult } from "./problems/blackbox.ts";
 
 /**
  * Where runs live between restarts.
@@ -44,7 +43,7 @@ export class MemoryStore implements Store {
 interface Row {
   id: string; agent: string; problem: string; seed: number;
   started_at: number; ended_at: number | null; outcome: string;
-  probes: string; submissions: number; spend: string; budget: string | null;
+  probes: string; submissions: number; spend: string; budget: string | null; state: string | null;
 }
 
 /**
@@ -63,7 +62,7 @@ export class SqliteStore implements Store {
         id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed INTEGER NOT NULL,
         started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
         probes TEXT NOT NULL, submissions INTEGER NOT NULL,
-        spend TEXT NOT NULL, budget TEXT
+        spend TEXT NOT NULL, budget TEXT, state TEXT
       );
       CREATE INDEX IF NOT EXISTS attempts_agent ON attempts(agent);
       CREATE INDEX IF NOT EXISTS attempts_outcome ON attempts(outcome);
@@ -76,25 +75,27 @@ export class SqliteStore implements Store {
 
   put(a: Attempt): void {
     this.#db.query(`
-      INSERT INTO attempts (id, agent, problem, seed, started_at, ended_at, outcome, probes, submissions, spend, budget)
-      VALUES ($id, $agent, $problem, $seed, $started, $ended, $outcome, $probes, $subs, $spend, $budget)
+      INSERT INTO attempts (id, agent, problem, seed, started_at, ended_at, outcome, probes, submissions, spend, budget, state)
+      VALUES ($id, $agent, $problem, $seed, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state)
       ON CONFLICT(id) DO UPDATE SET
-        ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs, spend = $spend
+        ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs, spend = $spend, state = $state
     `).run({
       $id: a.id, $agent: a.agent, $problem: a.problem, $seed: a.seed,
       $started: a.startedAt, $ended: a.endedAt, $outcome: a.outcome,
       $probes: JSON.stringify(a.probes), $subs: a.submissions,
       $spend: a.spend.toString(), $budget: a.budget === null ? null : a.budget.toString(),
+      $state: a.state === null || a.state === undefined ? null : JSON.stringify(a.state),
     });
   }
 
   #hydrate(r: Row): Attempt {
     return {
-      id: r.id, agent: r.agent, problem: r.problem as "blackbox", seed: r.seed,
+      id: r.id, agent: r.agent, problem: r.problem, seed: r.seed,
       startedAt: r.started_at, endedAt: r.ended_at, outcome: r.outcome as Attempt["outcome"],
-      probes: JSON.parse(r.probes) as { port: Port; result: RayResult }[],
+      probes: JSON.parse(r.probes) as { question: unknown; answer: unknown }[],
       submissions: r.submissions, spend: BigInt(r.spend),
       budget: r.budget === null ? null : BigInt(r.budget),
+      state: r.state === null ? null : JSON.parse(r.state),
     };
   }
 
