@@ -241,3 +241,52 @@ describe("unknown routes", () => {
     expect((await call("GET", "/nope")).status).toBe(404);
   });
 });
+
+/**
+ * The budget, which was enforceable and unreachable.
+ *
+ * `Attempt.budget` was stored, returned, and checked on every spend from the first commit — and no
+ * route ever parsed it, so every run over HTTP started uncapped. The lifecycle tests all passed,
+ * because they call `start()` directly. Found by setting a budget over the wire and watching three
+ * probes sail past it.
+ */
+describe("a run's own budget", () => {
+  const start = (budget?: unknown) =>
+    call("POST", "/attempts", { seed: SEED, ...(budget === undefined ? {} : { budget }) }, asAgent);
+
+  test("a budget set at the start comes back on the attempt", async () => {
+    const r = await start("0.05");
+    expect(r.status).toBe(201);
+    expect((await r.json() as { budget: string }).budget).toBe("0.050000");
+  });
+
+  test("no budget is no cap, not a zero cap", async () => {
+    expect((await (await start()).json() as { budget: string | null }).budget).toBe(null);
+  });
+
+  test("it actually refuses the probe that would cross it", async () => {
+    const { id } = await (await start("0.05")).json() as { id: string };
+    const ask = (index: number) =>
+      call("POST", `/attempts/${id}/ask`, { side: "up", index }, asAgent);
+
+    await ask(0); // 0.02
+    await ask(1); // 0.04
+    const body = await (await ask(2)).json() as { refused?: string; remaining?: string };
+    expect(body.refused).toBe("budget"); // 0.06 would cross it
+    expect(body.remaining).toBe("0.010000");
+  });
+
+  test("a number is refused, because money is never a float here", async () => {
+    const r = await start(0.05);
+    expect(r.status).toBe(400);
+    expect((await r.json() as { error: string }).error).toContain("decimal string");
+  });
+
+  test("nonsense is a 400, not a 500 out of the error boundary", async () => {
+    expect((await start("half a dollar")).status).toBe(400);
+  });
+
+  test("zero is refused, since it could never buy anything", async () => {
+    expect((await start("0")).status).toBe(400);
+  });
+});

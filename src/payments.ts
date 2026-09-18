@@ -30,11 +30,24 @@ export interface Quote {
 }
 
 export type Charge =
-  | { readonly ok: true; readonly paid: Usdc; readonly spentSoFar: Usdc }
-  /** Out of money. A result, not an error. */
+  /** Taken. `payer` and `settlement` appear when the money moved on a chain rather than in a Map. */
+  | { readonly ok: true; readonly paid: Usdc; readonly spentSoFar: Usdc;
+      readonly payer?: string; readonly settlement?: string }
+  /** Out of money. A result, not an error — and on chain this is the session key refusing. */
   | { readonly ok: false; readonly refused: "allowance"; readonly wanted: Usdc; readonly remaining: Usdc }
+  /**
+   * The payment itself was bad: unreadable, unfunded, expired, or for the wrong thing. The quote
+   * comes back with it, because a client told only that its payment failed has to guess what to
+   * send instead — and the price may have moved since it asked.
+   */
+  | { readonly ok: false; readonly refused: "payment"; readonly reason: string; readonly quote: Quote }
   /** No proof of payment came with the request. The caller signs the quote and asks again. */
-  | { readonly ok: false; readonly needsPayment: Quote };
+  | { readonly ok: false; readonly needsPayment: Quote }
+  /**
+   * Our side could not complete it. **Not** a refusal, and it matters: telling a buyer their
+   * payment was rejected sends them to check a wallet that is fine. This is a 503, not a 402.
+   */
+  | { readonly ok: false; readonly unavailable: string };
 
 export interface Payments {
   /**

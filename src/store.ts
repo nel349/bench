@@ -41,7 +41,7 @@ export class MemoryStore implements Store {
 }
 
 interface Row {
-  id: string; agent: string; problem: string; seed: number;
+  id: string; agent: string; problem: string; seed: number; payer: string | null; claimed_id: string | null; identity: string | null;
   started_at: number; ended_at: number | null; outcome: string;
   probes: string; submissions: number; spend: string; budget: string | null; state: string | null;
 }
@@ -60,6 +60,7 @@ export class SqliteStore implements Store {
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS attempts (
         id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed INTEGER NOT NULL,
+        payer TEXT, claimed_id TEXT, identity TEXT,
         started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
         probes TEXT NOT NULL, submissions INTEGER NOT NULL,
         spend TEXT NOT NULL, budget TEXT, state TEXT
@@ -71,16 +72,34 @@ export class SqliteStore implements Store {
         PRIMARY KEY (agent, problem)
       );
     `);
+    this.#migrate();
+  }
+
+  /**
+   * Columns added after the first release.
+   *
+   * `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already has the table, so a new
+   * column never reaches one — and the failure lands on the first write, in production, not here.
+   * Adding it is idempotent and cheap, so it is checked on every open rather than tracked in a
+   * version table that would be one more thing to keep honest.
+   */
+  #migrate(): void {
+    const cols = this.#db.query<{ name: string }, []>("PRAGMA table_info(attempts)").all();
+    const has = new Set(cols.map((c) => c.name));
+    for (const col of ["payer", "claimed_id", "identity"]) {
+      if (!has.has(col)) this.#db.exec(`ALTER TABLE attempts ADD COLUMN ${col} TEXT`);
+    }
   }
 
   put(a: Attempt): void {
     this.#db.query(`
-      INSERT INTO attempts (id, agent, problem, seed, started_at, ended_at, outcome, probes, submissions, spend, budget, state)
-      VALUES ($id, $agent, $problem, $seed, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state)
+      INSERT INTO attempts (id, agent, problem, seed, payer, claimed_id, identity, started_at, ended_at, outcome, probes, submissions, spend, budget, state)
+      VALUES ($id, $agent, $problem, $seed, $payer, $claimed, $identity, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state)
       ON CONFLICT(id) DO UPDATE SET
-        ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs, spend = $spend, state = $state
+        ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs,
+        spend = $spend, state = $state, payer = $payer, identity = $identity
     `).run({
-      $id: a.id, $agent: a.agent, $problem: a.problem, $seed: a.seed,
+      $id: a.id, $agent: a.agent, $problem: a.problem, $seed: a.seed, $payer: a.payer, $claimed: a.claimedId, $identity: a.identity,
       $started: a.startedAt, $ended: a.endedAt, $outcome: a.outcome,
       $probes: JSON.stringify(a.probes), $subs: a.submissions,
       $spend: a.spend.toString(), $budget: a.budget === null ? null : a.budget.toString(),
@@ -90,7 +109,8 @@ export class SqliteStore implements Store {
 
   #hydrate(r: Row): Attempt {
     return {
-      id: r.id, agent: r.agent, problem: r.problem, seed: r.seed,
+      id: r.id, agent: r.agent, problem: r.problem, seed: r.seed, payer: r.payer,
+      claimedId: r.claimed_id, identity: r.identity,
       startedAt: r.started_at, endedAt: r.ended_at, outcome: r.outcome as Attempt["outcome"],
       probes: JSON.parse(r.probes) as { question: unknown; answer: unknown }[],
       submissions: r.submissions, spend: BigInt(r.spend),

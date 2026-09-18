@@ -1,4 +1,5 @@
 import { expect, test, describe, afterEach } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -157,5 +158,68 @@ describe("sqlite survives the restart that a Map does not", () => {
     expect(a2.id).not.toBe(a1.id);
     expect(two.all()).toHaveLength(2);
     two.close();
+  });
+});
+
+/**
+ * Opening a database written by an older build.
+ *
+ * `CREATE TABLE IF NOT EXISTS` is a no-op once the table exists, so a column added later never
+ * reaches a database somebody already has. The failure is invisible at startup and lands on the
+ * first write — in production, on real data, not here.
+ */
+describe("a database from before the payer column", () => {
+  /** The exact schema shipped before `payer` existed, written by hand. */
+  const older = (path: string) => {
+    const db = new Database(path, { create: true });
+    db.exec(`
+      CREATE TABLE attempts (
+        id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed INTEGER NOT NULL,
+        started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
+        probes TEXT NOT NULL, submissions INTEGER NOT NULL,
+        spend TEXT NOT NULL, budget TEXT, state TEXT
+      );
+      CREATE TABLE submissions (
+        agent TEXT NOT NULL, problem TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (agent, problem)
+      );
+      INSERT INTO attempts VALUES
+        ('a1', 'agent:old', 'blackbox', 7, 1000, 2000, 'solved', '[]', 1, '20000', NULL, NULL);
+    `);
+    db.close();
+  };
+
+  test("opening it adds the column instead of failing on the first write", () => {
+    const path = scratch();
+    older(path);
+    const store = new SqliteStore(path);
+    const a = store.get("a1")!;
+    expect(a.agent).toBe("agent:old");
+    expect(a.payer).toBe(null);
+  });
+
+  test("the old rows keep their money and their outcome", () => {
+    const path = scratch();
+    older(path);
+    const a = new SqliteStore(path).get("a1")!;
+    expect(format(a.spend)).toBe(format(usdc("0.02")));
+    expect(a.outcome).toBe("solved");
+  });
+
+  test("a run started after the upgrade can bind a payer and keep it", () => {
+    const path = scratch();
+    older(path);
+    const store = new SqliteStore(path);
+    const at = new Attempts(new InMemoryAllowance(), store).start(AGENT, "blackbox", 7)!;
+    at.payer = "0xabc";
+    store.put(at);
+    expect(store.get(at.id)!.payer).toBe("0xabc");
+  });
+
+  test("opening twice is harmless: the migration does not run again", () => {
+    const path = scratch();
+    older(path);
+    new SqliteStore(path);
+    expect(() => new SqliteStore(path)).not.toThrow();
+    expect(new SqliteStore(path).get("a1")!.payer).toBe(null);
   });
 });

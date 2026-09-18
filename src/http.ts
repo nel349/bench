@@ -1,12 +1,17 @@
 import { Attempts, score, wireAttempt, wireScore, type Attempt } from "./attempt.ts";
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE } from "./pricing.ts";
-import { format } from "./money.ts";
+import { format, usdc, type Usdc } from "./money.ts";
 import { allProblems, problemOf } from "./problems/problem.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
 import "./problems/toll.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
+import { parseAgentId } from "./arc/identity.ts";
+import { PATHS, FEED_LIMIT } from "./web/paths.ts";
+import { renderPage } from "./web/page.ts";
+import { STYLE } from "./web/style.ts";
+import { SCRIPT } from "./web/script.ts";
 
 /**
  * The HTTP surface, as one function from a request to a response.
@@ -37,20 +42,37 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 
 const fail = (status: number, error: string): Response => json({ error }, status);
 
+/**
+ * The payment came, and did not work. Still a 402: the request is unpaid and paying it correctly is
+ * what fixes it, so the quote goes back out with the reason. The run is untouched — see `BadPayment`.
+ */
+const paymentRefused = (reason: string, quote: Quote, path: string): Response =>
+  json({
+    x402Version: 1,
+    error: `that payment was not accepted: ${reason}`,
+    accepts: [accepts(quote, path)],
+  }, 402);
+
+/**
+ * Our end broke. Deliberately **not** a 402, because the caller's money is fine and telling them
+ * otherwise sends them to debug a wallet that has nothing wrong with it.
+ */
+const unavailable = (reason: string): Response =>
+  json({ error: reason, retry: true }, 503, { "Retry-After": "5" });
+
+/** One entry of an x402 `accepts` list: what to pay, where, and on which chain. */
+const accepts = (q: Quote, resource: string) => ({
+  scheme: q.scheme,
+  network: q.chain,
+  resource,
+  maxAmountRequired: q.amount.toString(),
+  asset: q.token,
+  payTo: q.payTo,
+});
+
 /** The x402 body, near enough to the wire format that a real client recognises it. */
 function paymentRequired(q: Quote, resource: string): Response {
-  return json({
-    x402Version: 1,
-    error: "payment required",
-    accepts: [{
-      scheme: q.scheme,
-      network: q.chain,
-      resource,
-      maxAmountRequired: q.amount.toString(),
-      asset: q.token,
-      payTo: q.payTo,
-    }],
-  }, 402);
+  return json({ x402Version: 1, error: "payment required", accepts: [accepts(q, resource)] }, 402);
 }
 
 /**
@@ -67,6 +89,15 @@ function agentOf(req: Request): AgentId | null {
 }
 
 const proofOf = (req: Request): string | null => req.headers.get("x-payment");
+
+/**
+ * The ERC-8004 id an agent says is its own.
+ *
+ * A claim, and treated as one: it is recorded on the run and only becomes an identity if the
+ * registry says the address that paid is the wallet behind it. Malformed is silently no claim rather
+ * than a 400 — an agent that sends a junk id still gets to run, it simply runs unidentified.
+ */
+const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.get("x-agent-id"));
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 
@@ -94,10 +125,33 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   const seg = path.split("/").filter(Boolean);
   const prices = { ask: format(PRICE.ask), submit: format(PRICE.submit), rank: format(PRICE.rank) };
 
-  if (req.method === "GET" && path === "/") {
+  /**
+   * The index, as a page for a person and as JSON for a client.
+   *
+   * Negotiated rather than split across two paths, so the URL somebody pastes into a chat and the
+   * one their agent fetches are the same URL. A browser sends `Accept: text/html`; nothing else does.
+   */
+  if (req.method === "GET" && path === PATHS.index) {
+    if ((req.headers.get("accept") ?? "").includes("text/html")) {
+      return new Response(renderPage(deps.attempts.all(), deps.net), {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
     return json({
       service: "bench", network: deps.net, chain: caip2(deps.net),
       problems: allProblems().map((p) => p.id),
+    });
+  }
+
+  if (req.method === "GET" && path === PATHS.style) {
+    return new Response(STYLE, {
+      headers: { "content-type": "text/css; charset=utf-8", "cache-control": "max-age=300" },
+    });
+  }
+
+  if (req.method === "GET" && path === PATHS.script) {
+    return new Response(SCRIPT, {
+      headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "max-age=300" },
     });
   }
 
@@ -123,13 +177,37 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
   }
 
-  if (req.method === "POST" && path === "/attempts") {
+  if (req.method === "POST" && path === PATHS.attempts) {
     const agent = agentOf(req);
     if (!agent) return fail(401, "name your agent in the X-Agent header");
-    const body = (await req.json().catch(() => ({}))) as { seed?: number; problem?: string };
+    const body = (await req.json().catch(() => ({}))) as
+      { seed?: number; problem?: string; budget?: unknown };
     const problem = body.problem ?? "blackbox";
     const seed = Number.isInteger(body.seed) ? body.seed! : Math.floor(Math.random() * 2 ** 31);
-    const started = deps.attempts.start(agent, problem, seed);
+
+    /**
+     * A cap the agent sets on itself, on top of whatever its allowance permits.
+     *
+     * It was enforceable from the first day and unreachable until now: `Attempt.budget` was stored,
+     * returned and checked on every spend, but nothing ever parsed it out of a request, so every run
+     * started uncapped. Found by setting one and watching it be ignored.
+     *
+     * A decimal string, never a number, for the same reason every other amount here is.
+     */
+    let budget: Usdc | null = null;
+    if (body.budget !== undefined && body.budget !== null) {
+      if (typeof body.budget !== "string") {
+        return fail(400, "budget must be a decimal string, like \"0.50\" — not a number");
+      }
+      try {
+        budget = usdc(body.budget);
+      } catch {
+        return fail(400, `budget is not an amount: ${body.budget}`);
+      }
+      if (budget <= 0n) return fail(400, "a budget of zero would refuse the first question");
+    }
+
+    const started = deps.attempts.start(agent, problem, seed, budget, claimedIdOf(req));
     if (!started) return fail(404, `no problem ${problem}`);
     return json(wireAttempt(started), 201);
   }
@@ -165,6 +243,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
         return fail(400, `that is not a question this problem takes. See ${p ? `/problems/${p.id}/harness` : "the harness"}`);
       }
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path);
+      if ("badPayment" in out) return paymentRefused(out.badPayment, out.quote, path);
+      if ("unavailable" in out) return unavailable(out.unavailable);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
                       attempt: wireAttempt(attempt) });
@@ -178,6 +258,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       const answer = "answer" in body ? body.answer : body.guess;
       const out = await deps.attempts.submit(attempt.id, answer, proofOf(req));
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path);
+      if ("badPayment" in out) return paymentRefused(out.badPayment, out.quote, path);
+      if ("unavailable" in out) return unavailable(out.unavailable);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
                       attempt: wireAttempt(attempt) });
@@ -197,6 +279,19 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       refused: mine.filter((a) => a.outcome === "refused").length,
       runs: mine.map((a) => wireScore(score(a))),
     });
+  }
+
+  /**
+   * Recent runs across every problem, newest first — **including the refused ones**.
+   *
+   * A leaderboard shows who won. This shows what it cost and who ran out, which is the part that
+   * makes the number mean anything. Hiding refusals would make the gym look easier than it is.
+   */
+  if (req.method === "GET" && path === PATHS.feed) {
+    const recent = [...deps.attempts.all()]
+      .sort((x, y) => y.startedAt - x.startedAt)
+      .slice(0, FEED_LIMIT);
+    return json(recent.map((a) => ({ ...wireScore(score(a)), startedAt: a.startedAt })));
   }
 
   /** Cost to solve, cheapest first. Unsolved runs are listed but never rank above a solved one. */

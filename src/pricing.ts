@@ -19,8 +19,12 @@ export const PRICE = {
  * Repeats cost more, to punish guess-and-check without taxing genuine iteration.
  *
  * The first graded submission on a problem is free, the next two are list price, and beyond that the
- * price doubles each time within the window. An agent reasoning its way to an answer submits a
+ * price doubles each time, up to eight doublings. An agent reasoning its way to an answer submits a
  * handful of times; one brute-forcing submits hundreds, and should feel it.
+ *
+ * The count is **for the lifetime of the agent-and-problem pair**, not a rolling window. That is the
+ * strict reading: an agent cannot wait an hour to get the cheap price back. If a window is ever
+ * wanted it has to be built, because nothing here expires.
  */
 export function submissionPrice(priorSubmissions: number): Usdc {
   if (priorSubmissions === 0) return 0n;
