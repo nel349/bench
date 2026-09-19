@@ -95,8 +95,14 @@ curl -s localhost:8791/feed
 `budget` is optional and always a decimal string — a JSON number is refused, because money is never
 a float here.
 
-`bun run verify:addresses` checks every contract address in the config against
-the live chains — it needs a network, which is why it is not part of `gate`.
+`bun run demo:local` proves the whole bounty loop against the real contract on a throwaway chain:
+it deploys the escrow, funds a bounty, solves it through the gym, and checks the money actually
+moved. No keys, no funds, no network. Needs [Foundry](https://getfoundry.sh).
+
+`bun run verify:addresses` checks every contract address in the config against the live chains, and
+`bun run verify:abi` checks that each ABI's selectors are really in the deployed bytecode — that one
+caught a function that does not exist on Arc. Both need a network, which is why neither is in
+`gate`.
 
 ## Getting started
 

@@ -30,7 +30,8 @@ export class MemoryBounties implements BountyStore {
 interface Row {
   id: string; poster: string; title: string; statement: string; checker: string;
   amount: string; escrow_id: string | null; deadline: number; min_rating: number;
-  posted_at: number; solved_by: string | null; solved_at: number | null; attempts: number;
+  posted_at: number; solved_by: string | null; solved_at: number | null;
+  award_tx: string | null; attempts: number;
 }
 
 export class SqliteBounties implements BountyStore {
@@ -44,7 +45,7 @@ export class SqliteBounties implements BountyStore {
         id TEXT PRIMARY KEY, poster TEXT NOT NULL, title TEXT NOT NULL, statement TEXT NOT NULL,
         checker TEXT NOT NULL, amount TEXT NOT NULL, escrow_id TEXT,
         deadline INTEGER NOT NULL, min_rating INTEGER NOT NULL, posted_at INTEGER NOT NULL,
-        solved_by TEXT, solved_at INTEGER, attempts INTEGER NOT NULL
+        solved_by TEXT, solved_at INTEGER, award_tx TEXT, attempts INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS bounties_open ON bounties(solved_by, deadline);
     `);
@@ -53,16 +54,17 @@ export class SqliteBounties implements BountyStore {
   put(b: Bounty): void {
     this.#db.query(`
       INSERT INTO bounties (id, poster, title, statement, checker, amount, escrow_id,
-                            deadline, min_rating, posted_at, solved_by, solved_at, attempts)
+                            deadline, min_rating, posted_at, solved_by, solved_at, award_tx, attempts)
       VALUES ($id, $poster, $title, $statement, $checker, $amount, $escrow,
-              $deadline, $minRating, $postedAt, $solvedBy, $solvedAt, $attempts)
+              $deadline, $minRating, $postedAt, $solvedBy, $solvedAt, $awardTx, $attempts)
       ON CONFLICT(id) DO UPDATE SET
-        solved_by = $solvedBy, solved_at = $solvedAt, attempts = $attempts, escrow_id = $escrow
+        solved_by = $solvedBy, solved_at = $solvedAt, attempts = $attempts,
+        escrow_id = $escrow, award_tx = $awardTx
     `).run({
       $id: b.id, $poster: b.poster, $title: b.title, $statement: b.statement,
       $checker: JSON.stringify(b.checker), $amount: format(b.amount), $escrow: b.escrowId,
       $deadline: b.deadline, $minRating: b.minRating, $postedAt: b.postedAt,
-      $solvedBy: b.solvedBy, $solvedAt: b.solvedAt, $attempts: b.attempts,
+      $solvedBy: b.solvedBy, $solvedAt: b.solvedAt, $awardTx: b.awardTx, $attempts: b.attempts,
     });
   }
 
@@ -84,7 +86,7 @@ export class SqliteBounties implements BountyStore {
       id: r.id, poster: r.poster, title: r.title, statement: r.statement, checker: parsed.check,
       amount: usdc(r.amount), escrowId: r.escrow_id, deadline: r.deadline,
       minRating: r.min_rating, postedAt: r.posted_at,
-      solvedBy: r.solved_by, solvedAt: r.solved_at, attempts: r.attempts,
+      solvedBy: r.solved_by, solvedAt: r.solved_at, awardTx: r.award_tx, attempts: r.attempts,
     };
   }
 

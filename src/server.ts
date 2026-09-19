@@ -10,6 +10,7 @@ import { ArcPayments } from "./arc/payments.ts";
 import { GatewayFacilitator } from "./arc/gateway.ts";
 import { ArcRegistry, checkIdentity } from "./arc/identity.ts";
 import { ArcAllowances } from "./arc/allowance.ts";
+import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
 
 /**
  * The process. Everything it needs is decided here and nowhere else.
@@ -119,7 +120,28 @@ const bounties = new Bounties(
  */
 const allowances = contractsOf(net).sessionKeyPlugin ? new ArcAllowances(net) : undefined;
 
-const deps: Deps = { attempts, payments, net, bounties, ...(allowances ? { allowances } : {}) };
+/**
+ * The arbiter, where a key is configured to sign a payout.
+ *
+ * Both halves are required or neither is used: a key with no escrow has nothing to pay from, and an
+ * escrow with no key cannot be told to pay. Absent, bounties still run and a win is recorded — it
+ * simply shows as awaiting payout, which is honest and retryable, rather than silently never paid.
+ *
+ * The key is read once here and never logged. Only the address it derives is ever printed.
+ */
+const escrow = process.env["BENCH_ESCROW"];
+const key = arbiterKey(process.env["BENCH_ARBITER_KEY"]);
+if (escrow && !/^0x[0-9a-fA-F]{40}$/.test(escrow)) {
+  throw new Error(`BENCH_ESCROW is not an address: ${escrow}`);
+}
+const arbiter = escrow && key
+  ? new ArcArbiter(net, { escrow: escrow as `0x${string}`, privateKey: key })
+  : undefined;
+
+const deps: Deps = {
+  attempts, payments, net, bounties,
+  ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
+};
 
 const port = Number(process.env["PORT"] ?? 8791);
 
@@ -139,7 +161,10 @@ const kept = store instanceof SqliteStore ? process.env["BENCH_DB"] ?? "bench.sq
 // The payee is printed; the key never is. Whether money is real is the first thing to know.
 const paying = payTo ? `x402 → ${payTo}` : "in-memory allowance (NOT real money)";
 const ids = identities ? "ERC-8004 checked" : "ERC-8004 off (claims stay claims)";
+// The address, never the key.
+const paying2 = arbiter ? `escrow ${escrow} via ${arbiter.address}` : "no arbiter (wins recorded, not paid)";
 console.log(
   `bench listening on :${port}  network=${net}  runs=${kept}  payments=${paying}  identity=${ids}` +
+  `  bounties=${paying2}` +
   `${devAllowance && !payTo ? `  DEV_ALLOWANCE=$${devAllowance}` : ""}`,
 );

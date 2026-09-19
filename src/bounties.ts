@@ -38,6 +38,16 @@ export interface Bounty {
   /** The address of whoever solved it, once someone has. The escrow pays this. */
   solvedBy: string | null;
   solvedAt: number | null;
+  /**
+   * The transaction that actually paid it out, once one has landed.
+   *
+   * Separate from `solvedBy` on purpose: winning and being paid fail differently. A win is a pure
+   * decision over data we hold; a payout is a transaction that can be dropped, underpriced, or land
+   * while the process is restarting. A bounty with a `solvedBy` and no `awardTx` is somebody who
+   * has won and not yet been paid — which is a state worth being able to name and retry, rather
+   * than one to pretend cannot happen.
+   */
+  awardTx: string | null;
   attempts: number;
 }
 
@@ -54,8 +64,11 @@ export interface WireBounty {
   readonly postedAt: number;
   readonly solvedBy: string | null;
   readonly solvedAt: number | null;
+  readonly awardTx: string | null;
   readonly attempts: number;
   readonly open: boolean;
+  /** Won, but the money has not moved yet. The poster and the winner both want to know. */
+  readonly awaitingPayout: boolean;
 }
 
 export function wireBounty(b: Bounty, now = Date.now()): WireBounty {
@@ -63,8 +76,9 @@ export function wireBounty(b: Bounty, now = Date.now()): WireBounty {
     id: b.id, poster: b.poster, title: b.title, statement: b.statement,
     amount: b.amount.toString(), escrowId: b.escrowId, deadline: b.deadline,
     minRating: b.minRating, postedAt: b.postedAt,
-    solvedBy: b.solvedBy, solvedAt: b.solvedAt, attempts: b.attempts,
+    solvedBy: b.solvedBy, solvedAt: b.solvedAt, awardTx: b.awardTx, attempts: b.attempts,
     open: b.solvedBy === null && now <= b.deadline,
+    awaitingPayout: b.solvedBy !== null && b.awardTx === null && b.escrowId !== null,
   };
 }
 
@@ -144,7 +158,7 @@ export class Bounties {
       id: this.store.nextId(), poster: input.poster, title: title.trim(), statement: statement.trim(),
       checker: parsed.check, amount, escrowId: typeof input.escrowId === "string" ? input.escrowId : null,
       deadline: input.deadline, minRating: minRating as number, postedAt: now,
-      solvedBy: null, solvedAt: null, attempts: 0,
+      solvedBy: null, solvedAt: null, awardTx: null, attempts: 0,
     };
     this.store.put(bounty);
     return { ok: true, bounty };
@@ -160,6 +174,21 @@ export class Bounties {
    *
    * `solver` is the address that paid, not the header. A bounty pays an address.
    */
+  /** Records a payout that landed. Idempotent: the first transaction to settle it is the one kept. */
+  paid(id: BountyId, tx: string): void {
+    const b = this.store.get(id);
+    if (!b || b.awardTx) return;
+    b.awardTx = tx;
+    this.store.put(b);
+  }
+
+  /** Won and unpaid, oldest first. What a retry sweeps. */
+  awaitingPayout(): Bounty[] {
+    return this.all()
+      .filter((b) => b.solvedBy !== null && b.awardTx === null && b.escrowId !== null)
+      .sort((x, y) => (x.solvedAt ?? 0) - (y.solvedAt ?? 0));
+  }
+
   solve(
     id: BountyId, answer: unknown, solver: string | null, record: readonly Attempt[], now = Date.now(),
   ): Solved {

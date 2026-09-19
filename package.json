@@ -12,7 +12,8 @@
     "start": "bun run src/server.ts",
     "dev": "DEV_ALLOWANCE=5 bun run src/server.ts",
     "test:contracts": "cd contracts && forge test",
-    "verify:abi": "bun run scripts/verify-abi.ts"
+    "verify:abi": "bun run scripts/verify-abi.ts",
+    "demo:local": "bash scripts/local-loop.sh"
   },
   "dependencies": {
     "viem": "2.45.3"

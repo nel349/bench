@@ -10,6 +10,7 @@ import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
 import { parseAgentId } from "./arc/identity.ts";
 import { wireBounty, type Bounties } from "./bounties.ts";
 import type { AllowanceReader } from "./arc/allowance.ts";
+import type { Arbiter } from "./arc/arbiter.ts";
 import { rate } from "./rating.ts";
 import { PATHS, FEED_LIMIT } from "./web/paths.ts";
 import { renderPage } from "./web/page.ts";
@@ -35,6 +36,8 @@ export interface Deps {
   readonly attempts: Attempts;
   readonly payments: Payments;
   readonly net: Network;
+  /** Sends the payout when a bounty is won. Absent where no key is configured to sign one. */
+  readonly arbiter?: Arbiter;
   /** Reads the session-key plugin, where one is deployed. Absent on a network without it. */
   readonly allowances?: AllowanceReader;
   /**
@@ -110,6 +113,24 @@ const proofOf = (req: Request): string | null => req.headers.get("x-payment");
 const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.get("x-agent-id"));
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
+
+/**
+ * Moves the money for a bounty that has been won.
+ *
+ * Returns `null` when there is nothing to try — no arbiter configured, or no escrow behind this
+ * bounty — which is a different thing from a payout that was attempted and failed, and reads
+ * differently in the response.
+ */
+async function payOut(
+  deps: Deps, id: string,
+): Promise<{ ok: true; tx: string } | { ok: false; because: string } | null> {
+  const bounty = deps.bounties?.get(id);
+  if (!deps.arbiter || !bounty?.escrowId || !bounty.solvedBy || bounty.awardTx) return null;
+
+  const out = await deps.arbiter.award(bounty.escrowId, bounty.solvedBy);
+  if (out.ok) deps.bounties!.paid(id, out.tx);
+  return out;
+}
 
 /**
  * Nothing escapes as a bare 500.
@@ -335,6 +356,25 @@ async function route(req: Request, deps: Deps): Promise<Response> {
 
     if (req.method === "GET" && seg.length === 2) return json(wireBounty(bounty));
 
+    /**
+     * Retry a payout that never landed. Free, and safe to call repeatedly.
+     *
+     * Open to anyone, because there is nothing here to abuse: it can only send money to the address
+     * already recorded as the winner, and it does nothing at all once a transaction has settled.
+     * Requiring a key would mean a winner waiting on us to notice.
+     */
+    if (req.method === "POST" && seg[2] === "award") {
+      if (!bounty.solvedBy) return fail(409, "nobody has won this bounty yet");
+      if (bounty.awardTx) return json({ alreadyPaid: true, tx: bounty.awardTx });
+      if (!bounty.escrowId) return fail(409, "this bounty has no escrow behind it to pay from");
+
+      const payout = await payOut(deps, bounty.id);
+      if (!payout?.ok) {
+        return json({ paid: false, because: payout?.because ?? "no arbiter is configured" }, 503);
+      }
+      return json({ paid: true, tx: payout.tx, bounty: wireBounty(deps.bounties!.get(bounty.id)!) });
+    }
+
     if (req.method === "POST" && seg[2] === "solve") {
       const agent = agentOf(req);
       if (!agent) return fail(401, "name your agent in the X-Agent header");
@@ -356,7 +396,22 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       const solver = charge.payer ?? agent;
       const out = deps.bounties!.solve(bounty.id, body.answer, solver, deps.attempts.all());
 
-      if (out.ok) return json({ solved: true, solver: out.solver, bounty: wireBounty(bounty) });
+      if (out.ok) {
+        /**
+         * Won first, paid second.
+         *
+         * The win is already recorded by the time this runs, and a failed payout must not undo it —
+         * otherwise a prize would depend on the gas market at the moment somebody answered. A
+         * bounty left with a winner and no transaction is reported as `awaitingPayout` and swept by
+         * `POST /bounties/:id/award`.
+         */
+        const payout = await payOut(deps, bounty.id);
+        return json({
+          solved: true, solver: out.solver,
+          ...(payout ? { payout } : {}),
+          bounty: wireBounty(deps.bounties!.get(bounty.id)!),
+        });
+      }
       if ("unqualified" in out) {
         // 403: the request is well formed and paid for, and the agent is simply not allowed yet.
         return json({
