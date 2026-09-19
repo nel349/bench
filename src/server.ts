@@ -1,6 +1,7 @@
 import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { Bounties } from "./bounties.ts";
+import { MemoryBounties, SqliteBounties } from "./bounty-store.ts";
 import { InMemoryAllowance, type Payments } from "./payments.ts";
 import { MemoryStore, SqliteStore } from "./store.ts";
 import { usdc } from "./money.ts";
@@ -108,7 +109,9 @@ const attempts = new Attempts(payments, store, identities);
  * refuses to start without a payee, so the check bought nothing there — and on a dev machine it
  * made the whole posting flow unreachable, which is exactly where it needs to be walked.
  */
-const bounties = new Bounties();
+const bounties = new Bounties(
+  process.env["BENCH_DB"] === ":memory:" ? new MemoryBounties() : new SqliteBounties(),
+);
 
 /**
  * The allowance reader, where there is a plugin to read. On a network without one this stays absent

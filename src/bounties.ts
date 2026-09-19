@@ -6,6 +6,7 @@ import { usdc } from "./money.ts";
 import type { AgentId } from "./payments.ts";
 import type { Attempt } from "./attempt.ts";
 import { rate } from "./rating.ts";
+import { MemoryBounties, type BountyStore } from "./bounty-store.ts";
 
 export type BountyId = string;
 
@@ -84,11 +85,15 @@ export type Solved =
 export const MIN_DURATION_MS = 60 * 60 * 1000;
 
 export class Bounties {
-  readonly #byId = new Map<BountyId, Bounty>();
-  #n = 0;
+  /**
+   * Every mutation is followed by a `put`, without exception — SQLite hands back a copy rebuilt
+   * from columns, a Map hands back the object you put in, and code that works against one and not
+   * the other is the bug that only shows up where the store is real.
+   */
+  constructor(private readonly store: BountyStore = new MemoryBounties()) {}
 
-  all(): Bounty[] { return [...this.#byId.values()]; }
-  get(id: BountyId): Bounty | undefined { return this.#byId.get(id); }
+  all(): Bounty[] { return this.store.all(); }
+  get(id: BountyId): Bounty | undefined { return this.store.get(id); }
 
   /**
    * Post one.
@@ -136,12 +141,12 @@ export class Bounties {
     if (!parsed.ok) return { ok: false, problem: parsed.problem, at: parsed.at };
 
     const bounty: Bounty = {
-      id: `b${++this.#n}`, poster: input.poster, title: title.trim(), statement: statement.trim(),
+      id: this.store.nextId(), poster: input.poster, title: title.trim(), statement: statement.trim(),
       checker: parsed.check, amount, escrowId: typeof input.escrowId === "string" ? input.escrowId : null,
       deadline: input.deadline, minRating: minRating as number, postedAt: now,
       solvedBy: null, solvedAt: null, attempts: 0,
     };
-    this.#byId.set(bounty.id, bounty);
+    this.store.put(bounty);
     return { ok: true, bounty };
   }
 
@@ -158,7 +163,7 @@ export class Bounties {
   solve(
     id: BountyId, answer: unknown, solver: string | null, record: readonly Attempt[], now = Date.now(),
   ): Solved {
-    const b = this.#byId.get(id);
+    const b = this.store.get(id);
     if (!b) return { ok: false, closed: `no bounty ${id}` };
     if (b.solvedBy) return { ok: false, closed: "this bounty has already been won" };
     if (now > b.deadline) return { ok: false, closed: "this bounty has expired" };
@@ -171,10 +176,14 @@ export class Bounties {
 
     b.attempts++;
     const verdict = runCheck(b.checker, answer);
-    if (!verdict.pass) return { ok: false, because: verdict.because, at: verdict.at };
+    if (!verdict.pass) {
+      this.store.put(b); // the attempt counts even when the answer does not
+      return { ok: false, because: verdict.because, at: verdict.at };
+    }
 
     b.solvedBy = solver;
     b.solvedAt = now;
+    this.store.put(b);
     return { ok: true, solver };
   }
 }
