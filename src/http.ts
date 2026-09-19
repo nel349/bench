@@ -164,7 +164,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
    */
   if (req.method === "GET" && path === PATHS.index) {
     if ((req.headers.get("accept") ?? "").includes("text/html")) {
-      return new Response(renderPage(deps.attempts.all(), deps.net), {
+      const shown = deps.bounties?.all().map((b) => wireBounty(b)) ?? [];
+      return new Response(renderPage(deps.attempts.all(), deps.net, Date.now(), shown), {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }

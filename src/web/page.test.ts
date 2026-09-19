@@ -4,6 +4,7 @@ import { Attempts } from "../attempt.ts";
 import { InMemoryAllowance } from "../payments.ts";
 import { usdc } from "../money.ts";
 import { renderPage } from "./page.ts";
+import type { WireBounty } from "../bounties.ts";
 import { PATHS, FEED_LIMIT } from "./paths.ts";
 import "../problems/blackbox-problem.ts";
 import "../problems/zendo.ts";
@@ -137,5 +138,88 @@ describe("what the page says without JavaScript", () => {
     const page = renderPage([], "testnet");
     expect(page).toContain(`href="${PATHS.style}"`);
     expect(page).toContain(`src="${PATHS.script}"`);
+  });
+});
+
+/**
+ * Bounties on the poster.
+ *
+ * The section is the reason a stranger reads this page: it is the money on the table. The answer
+ * key must not be anywhere near it.
+ */
+describe("bounties on the page", () => {
+  const bounty = (over: Partial<WireBounty> = {}): WireBounty => ({
+    id: "b1", poster: "agent:acme", title: "Find the number",
+    statement: "Work out the number we are thinking of.",
+    amount: "500.000000", escrowId: "1", deadline: Date.now() + 7 * 86_400_000,
+    minRating: 0, postedAt: Date.now(), solvedBy: null, solvedAt: null, awardTx: null,
+    attempts: 0, open: true, awaitingPayout: false, ...over,
+  });
+
+  test("with none, the section is absent rather than empty", () => {
+    expect(renderPage([], "testnet", Date.now(), [])).not.toContain("on the table");
+  });
+
+  test("the purse is the sum of what is open, in two places", () => {
+    const page = renderPage([], "testnet", Date.now(), [
+      bounty({ id: "b1", amount: "500.000000" }),
+      bounty({ id: "b2", amount: "250.500000" }),
+    ]);
+    expect(page).toContain("$750.50 on the table");
+  });
+
+  test("a won bounty is not counted in what is on the table", () => {
+    const page = renderPage([], "testnet", Date.now(), [
+      bounty({ id: "b1", amount: "500.000000" }),
+      bounty({ id: "b2", amount: "900.000000", open: false, solvedBy: "0xabc" }),
+    ]);
+    expect(page).toContain("$500.00 on the table");
+  });
+
+  test("the gate is said up front, not discovered on a 403", () => {
+    expect(renderPage([], "testnet", Date.now(), [bounty({ minRating: 3 })]))
+      .toContain("needs 3 problems solved");
+    expect(renderPage([], "testnet", Date.now(), [bounty({ minRating: 1 })]))
+      .toContain("needs 1 problem solved");
+    expect(renderPage([], "testnet", Date.now(), [bounty({ minRating: 0 })]))
+      .toContain("open to anyone");
+  });
+
+  test("a won-but-unpaid bounty says so, because both parties want to know", () => {
+    const page = renderPage([], "testnet", Date.now(), [
+      bounty({ open: false, solvedBy: "0xabc", awaitingPayout: true }),
+    ]);
+    expect(page).toContain("won · paying out");
+  });
+
+  test("open ones come first, and the biggest of those leads", () => {
+    const page = renderPage([], "testnet", Date.now(), [
+      bounty({ id: "b1", title: "Expired one", open: false }),
+      bounty({ id: "b2", title: "Small open one", amount: "10.000000" }),
+      bounty({ id: "b3", title: "Big open one", amount: "900.000000" }),
+    ]);
+    expect(page.indexOf("Big open one")).toBeLessThan(page.indexOf("Small open one"));
+    expect(page.indexOf("Small open one")).toBeLessThan(page.indexOf("Expired one"));
+  });
+
+  test("a poster's title and statement are escaped like everything else", () => {
+    const page = renderPage([], "testnet", Date.now(), [
+      bounty({ title: `<img src=x onerror="alert(1)">`, statement: "<script>bad()</script>" }),
+    ]);
+    expect(page).not.toContain("<img src=x");
+    expect(page).not.toContain("<script>bad()");
+  });
+
+  test("a very long statement is truncated rather than taking over the page", () => {
+    const page = renderPage([], "testnet", Date.now(), [bounty({ statement: "x".repeat(5000) })]);
+    expect(page).toContain("…");
+    expect(page.length).toBeLessThan(12_000);
+  });
+
+  test("time left is shown while it is open, and not once it is not", () => {
+    const now = Date.now();
+    expect(renderPage([], "testnet", now, [bounty({ deadline: now + 3 * 86_400_000 })])).toContain("3d left");
+    expect(renderPage([], "testnet", now, [bounty({ deadline: now + 2 * 3_600_000 })])).toContain("2h left");
+    expect(renderPage([], "testnet", now, [bounty({ open: false })])).not.toContain("left");
   });
 });

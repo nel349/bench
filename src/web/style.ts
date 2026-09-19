@@ -47,6 +47,9 @@ td.num, th.num { text-align: right; padding-right: 0; }
 .card p { margin: 0; color: var(--dim); font-size: 13px; }
 .price { margin-top: 9px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .empty { color: var(--dim); font-size: 14px; padding: 18px 0; }
+.bounty-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.bounty .amount { font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bounty p { margin-top: 6px; }
 footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line);
          color: var(--dim); font-size: 13px; }
 a { color: var(--accent); }

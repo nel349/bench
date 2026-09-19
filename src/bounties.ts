@@ -2,7 +2,7 @@ import type { Check } from "./checkers/check.ts";
 import { parseCheck } from "./checkers/parse.ts";
 import { run as runCheck } from "./checkers/run.ts";
 import type { Usdc } from "./money.ts";
-import { usdc } from "./money.ts";
+import { usdc, format } from "./money.ts";
 import type { AgentId } from "./payments.ts";
 import type { Attempt } from "./attempt.ts";
 import { rate } from "./rating.ts";
@@ -53,6 +53,14 @@ export interface Bounty {
 
 /** What a bounty looks like from outside: everything except the answer. */
 export interface WireBounty {
+  /**
+   * Money crosses as a decimal string with all six places — `format`, like every other amount here.
+   *
+   * It used to cross as `toString()` on the bigint, which is raw micros: `500000000` where the rest
+   * of the API says `500.000000`. The page rendered "$500000000" and the tests did not notice,
+   * because the fixtures were written by hand in the correct format while the code produced the
+   * wrong one. A fixture that disagrees with production is a test of the fixture.
+   */
   readonly id: BountyId;
   readonly poster: AgentId;
   readonly title: string;
@@ -74,7 +82,7 @@ export interface WireBounty {
 export function wireBounty(b: Bounty, now = Date.now()): WireBounty {
   return {
     id: b.id, poster: b.poster, title: b.title, statement: b.statement,
-    amount: b.amount.toString(), escrowId: b.escrowId, deadline: b.deadline,
+    amount: format(b.amount), escrowId: b.escrowId, deadline: b.deadline,
     minRating: b.minRating, postedAt: b.postedAt,
     solvedBy: b.solvedBy, solvedAt: b.solvedAt, awardTx: b.awardTx, attempts: b.attempts,
     open: b.solvedBy === null && now <= b.deadline,

@@ -198,3 +198,27 @@ describe("the qualification gate", () => {
     expect(rate(record, "0xsomeone-else").rating).toBe(0);
   });
 });
+
+/**
+ * Money on the wire.
+ *
+ * Every amount in this API is a decimal string with six places. This one crossed as raw micros for
+ * a while and the page rendered "$500000000", which no test caught because the fixtures were
+ * hand-written in the right format while the code produced the wrong one.
+ */
+describe("what an amount looks like leaving the process", () => {
+  test("it is the same shape as every other amount in the API", () => {
+    expect(wireBounty(posted({ amount: "500.00" }), NOW).amount).toBe("500.000000");
+  });
+
+  test("it is not raw micros", () => {
+    expect(wireBounty(posted({ amount: "500.00" }), NOW).amount).not.toBe("500000000");
+  });
+
+  test("it round-trips through the parser exactly", () => {
+    for (const written of ["0.01", "1.50", "500.00", "1234.567891"]) {
+      const out = wireBounty(posted({ amount: written }), NOW).amount;
+      expect(usdc(out)).toBe(usdc(written));
+    }
+  });
+});
