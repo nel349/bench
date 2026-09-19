@@ -34,9 +34,10 @@ export class ArcPayments implements Payments {
   spentBy(agent: AgentId): Usdc { return this.spent(agent); }
 
   quote(amount: Usdc): Quote {
+    const r = this.requirements(amount);
     return {
-      amount, chain: caip2(this.net), token: contractsOf(this.net).usdc,
-      payTo: this.payTo, scheme: "exact",
+      amount, chain: r.network, token: r.asset, payTo: r.payTo, scheme: "exact",
+      maxTimeoutSeconds: r.maxTimeoutSeconds, ...(r.extra ? { extra: r.extra } : {}),
     };
   }
 

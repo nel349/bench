@@ -1,5 +1,6 @@
 import { expect, test, describe } from "bun:test";
 import { ArcPayments } from "./payments.ts";
+import { payloadFor } from "./buyer.ts";
 import { b64, type Facilitator, type PaymentPayload, type PaymentRequirements } from "./facilitator.ts";
 import { contractsOf } from "./chain.ts";
 import { usdc } from "../money.ts";
@@ -11,8 +12,22 @@ const PAY_TO = "0x00000000000000000000000000000000000000Be";
 const AGENT = "agent:aria";
 const PAYER = "0xAbC0000000000000000000000000000000000001";
 
-/** A well-formed header. Nothing signs it, because nothing here verifies a signature. */
-const header = (): string => b64.encode({ x402Version: 1, payload: { authorization: { from: PAYER } } });
+/** A well-formed payment, built the way a real buyer builds one. See `buyer.ts`. */
+const TERMS = {
+  scheme: "exact", network: "eip155:5042002",
+  asset: "0x3600000000000000000000000000000000000000",
+  amount: "20000", payTo: "0x000000000000000000000000000000000000bEEF",
+  maxTimeoutSeconds: 604800,
+  extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" },
+} as const;
+
+/** Nothing signs it: nothing on this side verifies a signature, the facilitator does. */
+const header = (): string => b64.encode(payloadFor(
+  TERMS, { url: "/attempts/a1/ask", description: "One probe", mimeType: "application/json" },
+  { from: PAYER as `0x${string}`, to: TERMS.payTo as `0x${string}`, value: TERMS.amount,
+    validAfter: "0", validBefore: "99999999999", nonce: `0x${"11".repeat(32)}` },
+  "0xsig",
+));
 
 /**
  * The facilitator, scripted.

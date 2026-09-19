@@ -17,7 +17,10 @@ function answering(body: unknown, status = 200, raw?: string) {
   }) as typeof fetch;
 }
 
-const payload: PaymentPayload = { x402Version: 1, payload: { authorization: { from: "0xabc" } } };
+const payload: PaymentPayload = {
+  x402Version: 2, scheme: "exact", network: "eip155:5042002", resource: { url: "/attempts/a1/ask", description: "One probe", mimeType: "application/json" },
+  accepted: { amount: "20000" }, payload: { authorization: { from: "0xabc" }, signature: "0xsig" },
+};
 const requirements = {
   scheme: "exact", network: "eip155:5042002", asset: "0x3600000000000000000000000000000000000000",
   amount: 20000n as unknown as string, payTo: "0xbe", maxTimeoutSeconds: 604800,

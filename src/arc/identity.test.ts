@@ -3,6 +3,7 @@ import { parseAgentId, checkIdentity, type Registry } from "./identity.ts";
 import { Attempts } from "../attempt.ts";
 import { MemoryStore, SqliteStore, type Store } from "../store.ts";
 import { ArcPayments } from "./payments.ts";
+import { payloadFor } from "./buyer.ts";
 import { b64, type Facilitator } from "./facilitator.ts";
 import "../problems/blackbox-problem.ts";
 
@@ -70,7 +71,21 @@ describe("checking a claim against the payer", () => {
  */
 describe("through a paid run", () => {
   const PAYER = WALLET;
-  const header = () => b64.encode({ x402Version: 1, payload: { authorization: { from: PAYER } } });
+  /** A well-formed payment, built the way a real buyer builds one. See `buyer.ts`. */
+const TERMS = {
+  scheme: "exact", network: "eip155:5042002",
+  asset: "0x3600000000000000000000000000000000000000",
+  amount: "20000", payTo: "0x000000000000000000000000000000000000bEEF",
+  maxTimeoutSeconds: 604800,
+  extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x0077777d7EBA4688BDeF3E311b846F25870A19B9" },
+} as const;
+
+  const header = () => b64.encode(payloadFor(
+    TERMS, { url: "/attempts/a1/ask", description: "One probe", mimeType: "application/json" },
+    { from: PAYER as `0x${string}`, to: TERMS.payTo as `0x${string}`, value: TERMS.amount,
+      validAfter: "0", validBefore: "99999999999", nonce: `0x${"11".repeat(32)}` },
+    "0xsig",
+  ));
   const facilitator: Facilitator = {
     async verify() { return { isValid: true, payer: PAYER }; },
     async settle() { return { success: true, payer: PAYER, transaction: "0xdead" }; },

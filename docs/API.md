@@ -138,13 +138,33 @@ a few hundred times.
 A paid route answers `402` with the price, the token, the chain and the payee, in the x402 shape:
 
 ```json
-{ "x402Version": 1, "error": "payment required",
+{ "x402Version": 2, "error": "payment required",
+  "resource": { "url": "/attempts/a1/ask", "description": "One probe",
+                "mimeType": "application/json" },
   "accepts": [{ "scheme": "exact", "network": "eip155:5042002",
-                "resource": "/attempts/a1/ask", "maxAmountRequired": "20000",
-                "asset": "0x3600…0000", "payTo": "0x…" }] }
+                "resource": "/attempts/a1/ask", "amount": "20000",
+                "asset": "0x3600…0000", "payTo": "0x…", "maxTimeoutSeconds": 604800,
+                "extra": { "name": "GatewayWalletBatched", "version": "1",
+                           "verifyingContract": "0x0077…19B9" } }] }
 ```
 
-Sign it, send it back in `X-Payment`, and ask again.
+Sign the terms as EIP-712 against the domain in `extra`, and send the payment back in
+**`Payment-Signature`** (`X-PAYMENT` is read too). The payload has six fields, all required by
+Circle's facilitator:
+
+```json
+{ "x402Version": 2, "scheme": "exact", "network": "eip155:5042002",
+  "resource": { "url": "…", "description": "…", "mimeType": "application/json" },
+  "accepted": { …the entry you chose from `accepts`… },
+  "payload": { "authorization": { … }, "signature": "0x…" } }
+```
+
+`src/arc/buyer.ts` builds exactly this and is the reference implementation; `bun run
+probe:facilitator` checks it against Circle with no key and no funds.
+
+Every answer to a paid request carries a **`PAYMENT-RESPONSE`** header: base64 JSON with `success`,
+`transaction`, `network` and `payer`. Decide whether you were charged from that, not from the
+status code.
 
 The **first payment binds the run** to the address that paid it, and that binding never moves. The
 agent name in `X-Agent` is a label anyone could send; the payer is the half that money proves. Both

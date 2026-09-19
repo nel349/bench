@@ -3,6 +3,9 @@ import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "./payments.ts";
 import { usdc, type Usdc } from "./money.ts";
+import { PRICE } from "./pricing.ts";
+import { payableOn } from "./arc/buyer.ts";
+import { X402_VERSION } from "./arc/facilitator.ts";
 import { boardFrom } from "./problems/blackbox.ts";
 import "./problems/blackbox-problem.ts";
 
@@ -145,15 +148,38 @@ describe("x402: no proof means 402, and the retry succeeds", () => {
     deps = { attempts: new Attempts(wants), payments: wants, net: "testnet" };
   });
 
-  test("the first ask answers 402 with a quote a client can act on", async () => {
+  /**
+   * The 402 has to be payable, not merely well-shaped.
+   *
+   * The earlier version of this test asserted the fields we happened to emit — `x402Version: 1` and
+   * `maxAmountRequired` — and passed for weeks while no real agent could have paid a single quote.
+   * The buyer is the judge now: if `payableOn` cannot find terms it can sign, the quote is wrong,
+   * whatever it looks like.
+   */
+  test("the first ask answers 402 with a quote a real buyer can act on", async () => {
     const a = await startAttempt();
     const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
     expect(r.status).toBe(402);
-    const body = (await r.json()) as { x402Version: number; accepts: { network: string; payTo: string; maxAmountRequired: string }[] };
-    expect(body.x402Version).toBe(1);
-    expect(body.accepts[0]!.network).toBe("eip155:5042002");
-    expect(body.accepts[0]!.maxAmountRequired).toBe("20000");
-    expect(body.accepts[0]!.payTo).toMatch(/^0x[0-9a-fA-F]{40}$/);
+
+    const body = await r.json() as { x402Version: number; resource: Record<string, string> };
+    expect(body.x402Version).toBe(X402_VERSION);
+    // Circle rejects a payment whose payload has no resource, and a buyer reads it from here.
+    // It has to be an object with all three fields: a bare URL is refused by the facilitator.
+    expect(body.resource.url).toBe(`/attempts/${a.id}/ask`);
+    expect((body.resource.description ?? "").length).toBeGreaterThan(0);
+    expect(body.resource.mimeType).toBe("application/json");
+
+    const terms = payableOn("testnet", body);
+    expect(terms).not.toBe(null);
+    expect(terms!.amount).toBe(PRICE.ask.toString());
+    expect(terms!.payTo.length).toBeGreaterThan(0);
+  });
+
+  test("the price is under `amount`, which is the field a buyer reads", async () => {
+    const a = await startAttempt();
+    const body = await (await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent)).json() as
+      { accepts: Record<string, unknown>[] };
+    expect(body.accepts[0]!["amount"]).toBe(PRICE.ask.toString());
   });
 
   test("a 402 charged nothing and left the run open", async () => {

@@ -91,8 +91,28 @@ export type PaymentRequired = { readonly needsPayment: Quote };
 /** The question did not parse. Nobody pays to be told their JSON was wrong. */
 export type Malformed = { readonly malformed: true };
 
-export type Asked = { readonly answer: unknown; readonly paid: Usdc; readonly spend: Usdc };
-export type Graded = { readonly solved: boolean; readonly paid: Usdc; readonly spend: Usdc; readonly submissions: number };
+/**
+ * What a payment left behind, carried out to the caller so it can be receipted.
+ *
+ * A buyer decides whether it was charged from the settlement receipt rather than from the status
+ * code, so the transaction has to reach the response. Both are absent when the money moved in a
+ * Map rather than on a chain.
+ */
+export interface Settled { readonly payer?: string; readonly settlement?: string }
+
+export type Asked = Settled & { readonly answer: unknown; readonly paid: Usdc; readonly spend: Usdc };
+export type Graded = Settled &
+  { readonly solved: boolean; readonly paid: Usdc; readonly spend: Usdc; readonly submissions: number };
+
+/**
+ * Whether `#spend` succeeded.
+ *
+ * Success used to be `null` and every caller tested truthiness. Now that success carries the
+ * settlement it is an object too, so truthiness says nothing — and the check has to be for the
+ * absence of a refusal, which is what this names.
+ */
+const isSettled = (v: Refusal | PaymentRequired | BadPayment | Unavailable | Settled): v is Settled =>
+  !("refused" in v) && !("needsPayment" in v) && !("badPayment" in v) && !("unavailable" in v);
 
 const isOver = (a: Attempt): boolean => a.outcome !== "open";
 const budgetLeft = (a: Attempt): Usdc | null => (a.budget === null ? null : a.budget - a.spend);
@@ -164,13 +184,13 @@ export class Attempts {
     const answered = problem.probe(a.seed, question, a.state);
     if (!answered) return { malformed: true };
 
-    const refusal = await this.#spend(a, PRICE.ask, "ask", proof);
-    if (refusal) { this.store.put(a); return refusal; }
+    const paid = await this.#spend(a, PRICE.ask, "ask", proof);
+    if (!isSettled(paid)) { this.store.put(a); return paid; }
 
     a.probes.push({ question, answer: answered.answer });
     a.state = answered.state;
     this.store.put(a);
-    return { answer: answered.answer, paid: PRICE.ask, spend: a.spend };
+    return { ...paid, answer: answered.answer, paid: PRICE.ask, spend: a.spend };
   }
 
   /** Submit an answer. A wrong one costs and does not end the run — buy more and try again. */
@@ -178,15 +198,15 @@ export class Attempts {
     const a = this.#open(id);
     const price = submissionPrice(this.store.priorSubmissions(a.agent, a.problem));
 
-    const refusal = await this.#spend(a, price, "submit", proof);
-    if (refusal) { this.store.put(a); return refusal; }
+    const paid = await this.#spend(a, price, "submit", proof);
+    if (!isSettled(paid)) { this.store.put(a); return paid; }
 
     this.store.noteSubmission(a.agent, a.problem);
     a.submissions += 1;
     const solved = this.#problem(a).check(a.seed, answer);
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }
     this.store.put(a);
-    return { solved, paid: price, spend: a.spend, submissions: a.submissions };
+    return { ...paid, solved, paid: price, spend: a.spend, submissions: a.submissions };
   }
 
   abandon(id: AttemptId): Attempt {
@@ -218,8 +238,8 @@ export class Attempts {
    * *this agent may not spend more of your money*. Both end the attempt, and the refusal names
    * which — "refused" with no reason is the message that taught us nothing last time.
    */
-  async #spend(a: Attempt, amount: Usdc, reason: string, proof?: string | null): Promise<Refusal | PaymentRequired | BadPayment | Unavailable | null> {
-    if (amount === 0n) return null;
+  async #spend(a: Attempt, amount: Usdc, reason: string, proof?: string | null): Promise<Refusal | PaymentRequired | BadPayment | Unavailable | Settled> {
+    if (amount === 0n) return {};
 
     const left = budgetLeft(a);
     if (left !== null && amount > left) {
@@ -244,7 +264,10 @@ export class Attempts {
       await this.#proveIdentity(a);
     }
     a.spend += amount;
-    return null;
+    return {
+      ...(charge.payer ? { payer: charge.payer } : {}),
+      ...(charge.settlement ? { settlement: charge.settlement } : {}),
+    };
   }
 }
 

@@ -8,7 +8,40 @@
  *
  * It also means the tests never reach the network, which is the rule the whole suite runs under.
  */
-export interface PaymentPayload { readonly x402Version: number; readonly payload: Record<string, unknown> }
+/**
+ * What a buyer actually sends, which is more than the signature.
+ *
+ * The first version of this was `{ x402Version, payload }`, taken from the shape Circle's compiled
+ * client passes through. That was reading the wrong thing: the client forwards whatever it is
+ * handed, so its types say nothing about what the *caller* has to build. Circle rejects the short
+ * form outright — `paymentPayload.resource: Required, paymentPayload.accepted: Required` — and no
+ * test caught it, because every test stubbed the facilitator with the shape we invented.
+ *
+ * `accepted` is the entry from our own `accepts` list that the buyer chose, echoed back so the
+ * facilitator can check the payment against the terms rather than against our word for them.
+ */
+/**
+ * What is being bought, as Circle's facilitator insists on describing it.
+ *
+ * A URL string is rejected: `paymentPayload.resource: Expected object, received string`. All three
+ * fields are required, and the validator will tell you so one field at a time, which is how this
+ * shape was found — by asking it rather than by reading a specification that does not mention it.
+ */
+export interface ResourceDescriptor {
+  readonly url: string;
+  readonly description: string;
+  readonly mimeType: string;
+}
+
+export interface PaymentPayload {
+  readonly x402Version: number;
+  readonly scheme: string;
+  readonly network: string;
+  /** What is being bought. An object, not a URL — see `ResourceDescriptor`. */
+  readonly resource: ResourceDescriptor;
+  readonly accepted: Record<string, unknown>;
+  readonly payload: Record<string, unknown>;
+}
 
 export interface PaymentRequirements {
   readonly scheme: "exact";
@@ -50,4 +83,44 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
  * inside somebody else's client as a confusing error about their code.
  */
 export const isPaymentPayload = (v: unknown): v is PaymentPayload =>
-  isRecord(v) && typeof v["x402Version"] === "number" && isRecord(v["payload"]);
+  isRecord(v) &&
+  typeof v["x402Version"] === "number" &&
+  typeof v["scheme"] === "string" &&
+  typeof v["network"] === "string" &&
+  isRecord(v["resource"]) &&
+  typeof (v["resource"] as Record<string, unknown>)["url"] === "string" &&
+  isRecord(v["accepted"]) &&
+  isRecord(v["payload"]);
+
+/**
+ * Verifying is **not** proof of funds.
+ *
+ * `/verify` returned `isValid: true` for a freshly generated account holding nothing and with no
+ * Gateway deposit — it checks the signature and the terms, not the balance. A seller that served
+ * its answer on a successful verify would hand out everything it sells to anyone who can sign, for
+ * nothing.
+ *
+ * Only `/settle` moves money and only its success means anything was paid. `ArcPayments` does both,
+ * in that order, and this is the reason it must.
+ */
+export const VERIFY_IS_NOT_PAYMENT = true;
+
+/**
+ * The version of x402 spoken here.
+ *
+ * Two, not one. The buyers on Arc send `x402Version: 2` and Circle's facilitator expects it; a 402
+ * advertising 1 is answered by a payment carrying 2, and the mismatch is silent until settlement.
+ */
+export const X402_VERSION = 2;
+
+/** Where an x402 seller reports what became of a payment it took. */
+export const SETTLEMENT_HEADER = "PAYMENT-RESPONSE";
+
+/**
+ * The headers a payment may arrive in.
+ *
+ * `Payment-Signature` is what the buyers on Arc send and `X-PAYMENT` is what the x402 specification
+ * says. The ecosystem disagrees, and refusing a valid, funded payment over the spelling of a header
+ * is the worst failure this code could have — so both are read, and the first one present wins.
+ */
+export const PAYMENT_HEADERS = ["payment-signature", "x-payment"] as const;

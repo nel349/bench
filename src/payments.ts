@@ -19,6 +19,13 @@ export type AgentId = string;
  * only the implementation knows what it wants paid and where — an in-memory allowance never asks
  * for one, and the chain-backed one always does on the first try.
  */
+/**
+ * What a buyer is told it may pay.
+ *
+ * `extra` and `maxTimeoutSeconds` are not decoration: Gateway settles against the domain named in
+ * `extra`, and refuses an authorisation that might expire before a batch closes. A quote without
+ * them is one a real agent cannot sign.
+ */
 export interface Quote {
   readonly amount: Usdc;
   /** CAIP-2, e.g. `eip155:5042002`. */
@@ -27,6 +34,10 @@ export interface Quote {
   readonly token: string;
   readonly payTo: string;
   readonly scheme: "exact";
+  /** Seconds the authorisation must stay valid. Gateway wants a week. */
+  readonly maxTimeoutSeconds?: number;
+  /** The EIP-712 domain the payment is signed against. */
+  readonly extra?: Readonly<Record<string, unknown>>;
 }
 
 export type Charge =
