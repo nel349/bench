@@ -92,6 +92,17 @@ export class ArcPayments implements Payments {
       if (payer === "") {
         return { ok: false, refused: "payment", reason: "settled without naming a payer", quote };
       }
+      /**
+       * `settlement` is Circle's own `transaction` field, and on Gateway it is a **batch id, not a
+       * transaction hash** — a UUID like `a770b2ea-…`. Settlements are batched, so a seller that
+       * checks its balance straight after a successful settle sees nothing, and one that treats
+       * this as a hash and looks it up on the explorer finds nothing either.
+       *
+       * What `success: true` means is that Circle has accepted and committed the payment. The money
+       * reaches the payee when the batch closes. That is the right moment to serve the answer —
+       * waiting for a batch would make every probe take minutes — but it is not the same as the
+       * money having moved, and nothing here should say that it is.
+       */
       return {
         ok: true, paid: amount, spentSoFar: this.spent(payer), payer,
         ...(settled.transaction ? { settlement: settled.transaction } : {}),

@@ -166,6 +166,11 @@ Every answer to a paid request carries a **`PAYMENT-RESPONSE`** header: base64 J
 `transaction`, `network` and `payer`. Decide whether you were charged from that, not from the
 status code.
 
+`transaction` is **a batch id, not a transaction hash** — Circle's Gateway batches settlements, so
+it looks like `a770b2ea-7f85-…` and will not be found on an explorer. `success: true` means the
+payment has been accepted and committed; the money reaches the payee when the batch closes. Your
+balance will not have changed the instant you are served.
+
 The **first payment binds the run** to the address that paid it, and that binding never moves. The
 agent name in `X-Agent` is a label anyone could send; the payer is the half that money proves. Both
 appear on the record, and on the page.
