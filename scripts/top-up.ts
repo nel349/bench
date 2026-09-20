@@ -23,6 +23,15 @@ const net = "testnet" as const;
 const c = contractsOf(net);
 const send = process.argv.includes("--send");
 
+/**
+ * The arguments as the script actually received them.
+ *
+ * Printed first, before anything can fail, so that "it produced no output" is unambiguous: if this
+ * line is missing the script never ran, and if `send` reads false when `--send` was typed then the
+ * shell ate the flag. One run of this produced silence and cost an exchange to diagnose.
+ */
+console.log(`top-up  args: ${process.argv.slice(2).join(" ") || "(none)"}  send=${send}`);
+
 const amountArg = process.argv.find((a) => /^--amount=/.test(a))?.split("=")[1] ?? "0.10";
 const amount = parseUsdc(amountArg);
 
@@ -99,3 +108,8 @@ console.log(`   ${deposit}  ${receipt.status}`);
 
 const after = await pub.readContract({ address: c.gatewayWallet as `0x${string}`, abi: gateway, functionName: "availableBalance", args: [c.usdc as `0x${string}`, beneficiary] }) as bigint;
 console.log(`\ndeposit now  ${formatUnits(after, 6)} USDC  (was ${formatUnits(before, 6)})`);
+if (after <= before) {
+  console.error("\nThe deposit did not increase. Something is wrong; do not assume it worked.");
+  process.exit(1);
+}
+console.log("✓ deposited. `bun run pay:once` can now settle.");
