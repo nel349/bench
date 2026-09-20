@@ -14,7 +14,9 @@
     "test:contracts": "cd contracts && forge test",
     "verify:abi": "bun run scripts/verify-abi.ts",
     "demo:local": "bash scripts/local-loop.sh",
-    "probe:facilitator": "bun run scripts/probe-facilitator.ts"
+    "probe:facilitator": "bun run scripts/probe-facilitator.ts",
+    "pay:once": "bun run scripts/pay-once.ts",
+    "top-up": "bun run scripts/top-up.ts"
   },
   "dependencies": {
     "viem": "2.45.3"
