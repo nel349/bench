@@ -12,6 +12,7 @@ import { createPublicClient, http, toFunctionSelector, type Abi, type Address } 
 import { chainOf, contractsOf, rpcUrl, type Network } from "../src/arc/chain.ts";
 import { SESSION_KEY_ABI } from "../src/arc/allowance.ts";
 import { REGISTRY_ABI } from "../src/arc/identity.ts";
+import { ESCROW_ABI } from "../src/arc/arbiter.ts";
 
 interface Target { readonly what: string; readonly at: Address | null | undefined; readonly abi: Abi }
 
@@ -20,6 +21,7 @@ function targets(net: Network): Target[] {
   return [
     { what: "session-key plugin", at: c.sessionKeyPlugin as Address | null, abi: SESSION_KEY_ABI as unknown as Abi },
     { what: "ERC-8004 identity", at: c.erc8004?.identity as Address | undefined, abi: REGISTRY_ABI as unknown as Abi },
+    { what: "BountyEscrow", at: c.bountyEscrow as Address | null, abi: ESCROW_ABI as unknown as Abi },
   ];
 }
 

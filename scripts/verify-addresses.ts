@@ -39,6 +39,7 @@ function expectations(n: Network): { label: string; address: string | null }[] {
     { label: "entryPoint", address: c.entryPoint },
     { label: "ownerPlugin", address: c.ownerPlugin },
     { label: "sessionKeyPlugin", address: c.sessionKeyPlugin },
+    { label: "bountyEscrow", address: c.bountyEscrow },
     { label: "erc8004.identity", address: c.erc8004?.identity ?? null },
     { label: "erc8004.reputation", address: c.erc8004?.reputation ?? null },
     { label: "erc8004.validation", address: c.erc8004?.validation ?? null },

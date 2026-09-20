@@ -16,7 +16,10 @@
     "demo:local": "bash scripts/local-loop.sh",
     "probe:facilitator": "bun run scripts/probe-facilitator.ts",
     "pay:once": "bun run scripts/pay-once.ts",
-    "top-up": "bun run scripts/top-up.ts"
+    "top-up": "bun run scripts/top-up.ts",
+    "arbiter:key": "bun run scripts/arbiter-key.ts",
+    "deploy:escrow": "bun run scripts/deploy-escrow.ts",
+    "fund": "bun run scripts/fund.ts"
   },
   "dependencies": {
     "viem": "2.45.3"

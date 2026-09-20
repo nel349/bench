@@ -52,6 +52,18 @@ export interface ArcContracts {
   /** Circle's `WeightedWebauthnMultisigPlugin`: the passkey owner. Deployed on both. */
   readonly ownerPlugin: Address;
   /**
+   * Our `BountyEscrow`, which holds a bounty until the gym names a winner.
+   *
+   * Deployed through CREATE2 with a fixed salt, so the address is the same on any chain **given the
+   * same constructor arguments** — and the arbiter is one of them. A different arbiter on mainnet
+   * means a different address there, which is the reason the arbiter key is kept rather than
+   * regenerated.
+   *
+   * Null where it is not deployed, like everything else here: knowing where it would land is not
+   * the same as it being there.
+   */
+  readonly bountyEscrow: Address | null;
+  /**
    * Our port of the session-key plugin — the allowance.
    *
    * Null until it is deployed on that network, even though the address is already known: see
@@ -81,6 +93,14 @@ export interface ArcContracts {
  */
 export const SESSION_KEY_PLUGIN: Address = "0x669Dd1eDb85ABD00f74186d88124614EE81E6670";
 
+/**
+ * The arbiter `BountyEscrow` was deployed with, and therefore part of its address.
+ *
+ * Recorded so that a deployment can be checked against what it was meant to be. The key itself
+ * lives outside any repository, at `~/.bench/arbiter.key`.
+ */
+export const BOUNTY_ARBITER: Address = "0x9e3383f4aE49E950D72835023A5642983882C099";
+
 export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
   mainnet: {
     usdc: "0x3600000000000000000000000000000000000000",
@@ -89,6 +109,7 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
     sessionKeyPlugin: null,
+    bountyEscrow: null,
     erc8004: null,
   },
   testnet: {
@@ -98,6 +119,7 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
     sessionKeyPlugin: SESSION_KEY_PLUGIN,
+      bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
     erc8004: {
       identity: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
       reputation: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
