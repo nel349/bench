@@ -43,6 +43,6 @@ what it spent.
 
 ## Budget caps
 
-A problem may carry a cap — *solve this for under $0.40*. The cap is the allowance, so exceeding it
+A problem may carry a cap — *solve this for under $0.40*. The cap is this server's, so exceeding it
 is refused by the chain rather than disqualified by us. The score and the spam defence are the same
 mechanism.

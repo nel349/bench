@@ -201,3 +201,91 @@ describe("the ledger agrees with the attempts", () => {
     expect(charged).toBe(money.spentBy(AGENT));
   });
 });
+
+/**
+ * Concurrency, which every other test in this file hides by awaiting each call.
+ *
+ * A run was read, a payment awaited, then the run mutated and stored — so two requests read the
+ * same state and the second write erased the first. Five probes fired at once against a $0.05 cap
+ * were all answered, charged $0.10, and recorded as $0.02 and one probe.
+ *
+ * That is not lost accuracy. The leaderboard ranks by recorded spend, so `Promise.all` bought every
+ * answer and booked a fraction of the cost — the rational play when the score is the prize.
+ */
+describe("several requests at once", () => {
+  /**
+   * `allSettled`, not `all`. Once the cap closes the run, probes still queued behind it are asking
+   * about a finished run and throw — which is the same "that run is over" the HTTP layer turns into
+   * a 409. Before serialising, all five were answered and none of this could happen.
+   */
+  const fire = async (n: number, budget: string) => {
+    const money = new InMemoryAllowance();
+    money.grant(AGENT, usdc("50"));
+    const runs = new Attempts(money);
+    const at = runs.start(AGENT, "blackbox", SEED, usdc(budget))!;
+    const settled = await Promise.allSettled(
+      Array.from({ length: n }, (_, i) => runs.ask(at.id, { side: "up", index: i })),
+    );
+    const out = settled.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    const overRun = settled.filter((r) => r.status === "rejected").length;
+    return { money, runs, at: runs.get(at.id)!, out, overRun };
+  };
+
+  test("a budget cap holds against parallel probes", async () => {
+    const { at, out, overRun } = await fire(5, "0.05");   // $0.05 buys two probes
+    expect(out.filter((r) => "answer" in r)).toHaveLength(2);
+    expect(out.filter((r) => "refused" in r)).toHaveLength(1);
+    expect(overRun).toBe(2);                              // asked after the run had closed
+    expect(at.spend).toBe(usdc("0.04"));
+  });
+
+  test("what was charged is what was recorded", async () => {
+    const { money, at } = await fire(5, "0.05");
+    expect(money.spentBy(AGENT)).toBe(at.spend);
+  });
+
+  test("every answered probe is on the record", async () => {
+    const { at, out } = await fire(5, "1.00");
+    expect(at.probes).toHaveLength(out.filter((r) => "answer" in r).length);
+    expect(at.spend).toBe(BigInt(at.probes.length) * PRICE.ask);
+  });
+
+  test("nothing is lost when there is budget for all of them", async () => {
+    const { money, at } = await fire(8, "1.00");
+    expect(at.probes).toHaveLength(8);
+    expect(at.spend).toBe(usdc("0.16"));
+    expect(money.spentBy(AGENT)).toBe(usdc("0.16"));
+  });
+
+  /**
+   * The submission price is a counter shared by every run an agent has on a problem, so serialising
+   * per run is not enough — concurrent first-submissions on four different runs were all charged
+   * nothing, and the doubling that punishes brute force did not happen.
+   */
+  test("the repeat price is not defeated by using several runs at once", async () => {
+    const money = new InMemoryAllowance();
+    money.grant(AGENT, usdc("50"));
+    const runs = new Attempts(money);
+    const ids = [0, 1, 2, 3].map(() => runs.start(AGENT, "blackbox", SEED)!.id);
+    await Promise.all(ids.map((id) => runs.submit(id, [{ x: 0, y: 0 }])));
+
+    // Free, list, list, then the first doubling — the schedule applied in order, which is the
+    // whole point. Concurrently it used to charge nothing at all.
+    const expected = [0, 1, 2, 3].reduce((total, prior) => total + submissionPrice(prior), 0n);
+    expect(expected).toBe(usdc("0.20"));
+    expect(money.spentBy(AGENT)).toBe(expected);
+  });
+
+  test("runs of different agents do not queue behind each other", async () => {
+    const money = new InMemoryAllowance();
+    const runs = new Attempts(money);
+    const ids = ["a", "b", "c", "d"].map((n) => {
+      money.grant(`agent:${n}`, usdc("5"));
+      return runs.start(`agent:${n}`, "blackbox", SEED)!.id;
+    });
+    const started = performance.now();
+    await Promise.all(ids.map((id) => runs.ask(id, { side: "up", index: 0 })));
+    expect(performance.now() - started).toBeLessThan(200);
+    for (const id of ids) expect(runs.get(id)!.probes).toHaveLength(1);
+  });
+});

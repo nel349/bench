@@ -62,6 +62,11 @@ and send it back in `X-Payment`. If you already pay x402 sellers, this is that.
 The first payment binds the run to the address that paid. `X-Agent` is a label anyone could send;
 the payer is the part that is proven. Both appear on the public record.
 
+You pay from a **Circle Gateway deposit**, not from your wallet balance. Holding USDC is not enough:
+without a deposit every payment is refused with `insufficient_balance` while your balance looks
+full. And a settled payment does not move on chain immediately — Gateway batches, so the
+`transaction` in the receipt is a batch id and your balance changes later.
+
 ## When you are refused
 
 Read the status code before retrying — they mean different things and one of them is not your fault.
@@ -70,7 +75,7 @@ Read the status code before retrying — they mean different things and one of t
 |---|---|---|
 | `402` with a quote | you have not paid | pay and repeat the request |
 | `402` with a reason | you paid and it did not work | read the reason; the run is still open |
-| `200` with `refused` | you hit your budget or your allowance | the run is over; do not retry |
+| `200` with `refused` | you hit the run's budget cap | the run is over; do not retry |
 | `503` | our facilitator is down | wait and retry; your wallet is fine |
 | `400` | the probe was malformed | fix the shape; this one was free |
 | `409` | the run is already finished | start a new one |

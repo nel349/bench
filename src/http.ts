@@ -137,17 +137,27 @@ const describes = (path: string) => ({
 });
 
 /**
- * Who is asking.
+ * Who is asking, if they said.
  *
- * A header today. It becomes the agent's ERC-8004 identity, proven by the payment's signer, once
- * payments are on chain — at which point identity stops being a claim the caller makes and starts
- * being a consequence of paying. Stated here rather than assumed, because a header is an honest
- * placeholder and a silent one is not.
+ * **Optional, and it used to be mandatory.** Requiring it contradicted the rule this API is built
+ * on: identity comes from payment, the payer is proven, and the header is a label. Yet it was
+ * demanded on a *free* call, so an agent had to name itself before paying for anything and the name
+ * it invented was then not the identity it ended up with.
+ *
+ * It also made the product unusable. The only real client that exists — the mandate's connector —
+ * does not send it, so every agent using it was refused at the first request, before payment was
+ * involved. The seller and the buyer had never been pointed at each other.
+ *
+ * A run is anonymous until its first payment binds it to an address. Absent a header, a run is
+ * labelled by the payer once there is one, and until then by nothing.
  */
 function agentOf(req: Request): AgentId | null {
   const id = req.headers.get("x-agent");
   return id && id.trim().length > 0 ? id.trim() : null;
 }
+
+/** The label a run carries before anything has been paid. Replaced by the payer at first payment. */
+const ANONYMOUS = "anonymous";
 
 /**
  * The payment, from whichever header it arrived in. See `PAYMENT_HEADERS`.
@@ -284,8 +294,7 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   }
 
   if (req.method === "POST" && path === PATHS.attempts) {
-    const agent = agentOf(req);
-    if (!agent) return fail(401, "name your agent in the X-Agent header");
+    const agent = agentOf(req) ?? ANONYMOUS;
     const body = (await req.json().catch(() => ({}))) as
       { seed?: number; problem?: string; budget?: unknown };
     const problem = body.problem ?? "blackbox";
@@ -377,8 +386,16 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
   }
 
+  /**
+   * An agent's record.
+   *
+   * Matched on the payer *or* the label, the same rule `rate` uses. They disagreed before: this
+   * filtered on the header alone, so `/rating/0xabc…` returned a record and `/agents/0xabc…`
+   * returned nothing for the same agent. One of those is the identity money proves.
+   */
   if (req.method === "GET" && seg[0] === "agents" && seg[1]) {
-    const mine = deps.attempts.all().filter((a) => a.agent === seg[1]);
+    const who = seg[1];
+    const mine = deps.attempts.all().filter((a) => (a.payer ?? a.agent) === who || a.agent === who);
     return json({
       agent: seg[1],
       spend: format(deps.payments.spentBy(seg[1]!)),
@@ -415,8 +432,7 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   }
 
   if (req.method === "POST" && path === PATHS.bounties) {
-    const agent = agentOf(req);
-    if (!agent) return fail(401, "name your agent in the X-Agent header");
+    const agent = agentOf(req) ?? ANONYMOUS;
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return fail(400, "posting a bounty takes a JSON body");
 
@@ -453,8 +469,7 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
 
     if (req.method === "POST" && seg[2] === "solve") {
-      const agent = agentOf(req);
-      if (!agent) return fail(401, "name your agent in the X-Agent header");
+      const agent = agentOf(req) ?? ANONYMOUS;
       const body = (await req.json().catch(() => null)) as { answer?: unknown } | null;
       if (!body || !("answer" in body)) return fail(400, "solving takes a JSON body with an answer");
 

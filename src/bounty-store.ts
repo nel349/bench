@@ -37,7 +37,14 @@ interface Row {
 export class SqliteBounties implements BountyStore {
   readonly #db: Database;
 
-  constructor(path = "bench.sqlite") {
+  /**
+   * The same file the runs are in, by default.
+   *
+   * This hardcoded `bench.sqlite` while `SqliteStore` read `BENCH_DB`, so a custom path put runs in
+   * one file and bounties in another and the two halves of one server diverged in silence. It went
+   * unnoticed because the only value ever passed was `:memory:`, which the server special-cases.
+   */
+  constructor(path = process.env["BENCH_DB"] ?? "bench.sqlite") {
     this.#db = new Database(path, { create: true });
     this.#db.exec("PRAGMA journal_mode = WAL");
     this.#db.exec(`

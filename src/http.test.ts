@@ -63,8 +63,25 @@ describe("the free surface is free", () => {
 });
 
 describe("starting an attempt", () => {
-  test("needs an agent", async () => {
-    expect((await call("POST", "/attempts", { seed: SEED })).status).toBe(401);
+  /**
+   * Starting a run needs no name, and requiring one was a defect.
+   *
+   * It contradicted the rule this API runs on — identity comes from payment — by demanding a label
+   * on a free call, before anything could be proven. It also refused every agent using the only
+   * real client that exists, which does not send the header, so the seller and the buyer could
+   * never have met.
+   */
+  test("needs no agent: a run is anonymous until a payment binds it", async () => {
+    const r = await call("POST", "/attempts", { seed: SEED });
+    expect(r.status).toBe(201);
+    const body = await r.json() as { payer: string | null };
+    expect(body.payer).toBe(null);
+  });
+
+  test("a name may still be given, and is kept as a label", async () => {
+    const { id } = await (await call("POST", "/attempts", { seed: SEED }, asAgent)).json() as { id: string };
+    const back = await (await call("GET", `/attempts/${id}`)).json() as { payer: string | null };
+    expect(back.payer).toBe(null);  // a label is not an identity
   });
 
   test("returns the seed, and never the board", async () => {
@@ -314,5 +331,47 @@ describe("a run's own budget", () => {
 
   test("zero is refused, since it could never buy anything", async () => {
     expect((await start("0")).status).toBe(400);
+  });
+});
+
+/**
+ * One agent, one record, whichever endpoint you ask.
+ *
+ * `/agents/:id` filtered on the header label while `/rating/:id` matched the payer or the label, so
+ * the same agent existed on one and not the other. One of those is the identity money proves.
+ */
+describe("who an agent is, consistently", () => {
+  const PAYER = "0xabc0000000000000000000000000000000000001";
+
+  const runWithPayer = async () => {
+    const { id } = await (await call("POST", "/attempts", { seed: SEED }, asAgent)).json() as { id: string };
+    const a = deps.attempts.get(id)!;
+    a.payer = PAYER;                       // as the first payment would have bound it
+    await call("POST", `/attempts/${id}/ask`, { side: "up", index: 0 }, asAgent);
+    return id;
+  };
+
+  test("the address that paid finds the record on both", async () => {
+    await runWithPayer();
+    const agents = await (await call("GET", `/agents/${PAYER}`)).json() as { attempts: number };
+    const rating = await (await call("GET", `/rating/${PAYER}`)).json() as { attempted: number };
+    expect(agents.attempts).toBe(1);
+    expect(rating.attempted).toBe(1);
+  });
+
+  test("and so does the label, on both", async () => {
+    await runWithPayer();
+    const agents = await (await call("GET", `/agents/${AGENT}`)).json() as { attempts: number };
+    const rating = await (await call("GET", `/rating/${AGENT}`)).json() as { attempted: number };
+    expect(agents.attempts).toBe(1);
+    expect(rating.attempted).toBe(1);
+  });
+
+  test("a stranger finds nothing on either", async () => {
+    await runWithPayer();
+    const agents = await (await call("GET", "/agents/0xdead")).json() as { attempts: number };
+    const rating = await (await call("GET", "/rating/0xdead")).json() as { attempted: number };
+    expect(agents.attempts).toBe(0);
+    expect(rating.attempted).toBe(0);
   });
 });

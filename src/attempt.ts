@@ -2,6 +2,7 @@ import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { format, type Usdc } from "./money.ts";
 import { MemoryStore, type Store } from "./store.ts";
+import { Serial } from "./serialize.ts";
 import { problemOf, type Problem } from "./problems/problem.ts";
 
 /**
@@ -134,6 +135,20 @@ export class Attempts {
     private readonly verifyIdentity: IdentityVerifier | null = null,
   ) {}
 
+  /**
+   * One paid request at a time, per run.
+   *
+   * Everything below reads a run, awaits a payment, then mutates and stores it. Without this, two
+   * requests for the same run both read the same state and the second write erases the first —
+   * which answered five concurrent probes against a two-probe budget, charged for five, and
+   * recorded one. See `serialize.ts` for why it is a queue and not a lock.
+   *
+   * Keyed by run for probes and submissions. The submission *price* is keyed by agent and problem
+   * instead, because that counter is shared across every run an agent has on a problem, and
+   * serialising per run left it losing updates exactly as before.
+   */
+  readonly #serial = new Serial();
+
   get(id: AttemptId): Attempt | undefined { return this.store.get(id); }
   all(): Attempt[] { return this.store.all(); }
 
@@ -178,6 +193,10 @@ export class Attempts {
    * charging for a rejected request turns a typo into a tax and teaches an agent to fear the API.
    */
   async ask(id: AttemptId, question: unknown, proof?: string | null): Promise<Asked | Refusal | PaymentRequired | BadPayment | Unavailable | Malformed> {
+    return this.#serial.run(`attempt:${id}`, () => this.#ask(id, question, proof));
+  }
+
+  async #ask(id: AttemptId, question: unknown, proof?: string | null): Promise<Asked | Refusal | PaymentRequired | BadPayment | Unavailable | Malformed> {
     const a = this.#open(id);
     const problem = this.#problem(a);
 
@@ -195,6 +214,13 @@ export class Attempts {
 
   /** Submit an answer. A wrong one costs and does not end the run — buy more and try again. */
   async submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
+    // Two keys, innermost first: the run, and the counter that prices a repeat across all runs.
+    const a = this.#open(id);
+    return this.#serial.run(`price:${a.agent}:${a.problem}`, () =>
+      this.#serial.run(`attempt:${id}`, () => this.#submit(id, answer, proof)));
+  }
+
+  async #submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
     const a = this.#open(id);
     const price = submissionPrice(this.store.priorSubmissions(a.agent, a.problem));
 
