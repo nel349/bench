@@ -182,6 +182,29 @@ export class Bounties {
    *
    * `solver` is the address that paid, not the header. A bounty pays an address.
    */
+  /**
+   * Whether this name could attempt the bounty at all, checked for free.
+   *
+   * The authoritative gate runs inside `solve`, against the address that paid, because a header is
+   * not an identity. But an agent that is plainly not qualified should not have to pay to find that
+   * out — and it cannot be told for free unless the name it sends is checked before the money.
+   *
+   * Nothing is leaked by answering this: a rating is already public at `/rating/:agent`. What it
+   * saves is an unqualified agent paying a graded-submission fee to be refused.
+   */
+  eligibility(id: BountyId, who: string | null, record: readonly Attempt[], now = Date.now()):
+    { readonly ok: true } | { readonly ok: false; readonly closed: string }
+    | { readonly ok: false; readonly unqualified: true; readonly rating: number; readonly needs: number } {
+    const b = this.store.get(id);
+    if (!b) return { ok: false, closed: `no bounty ${id}` };
+    if (b.solvedBy) return { ok: false, closed: "this bounty has already been won" };
+    if (now > b.deadline) return { ok: false, closed: "this bounty has expired" };
+    if (b.minRating === 0 || !who) return { ok: true };
+
+    const rating = rate(record, who).rating;
+    return rating >= b.minRating ? { ok: true } : { ok: false, unqualified: true, rating, needs: b.minRating };
+  }
+
   /** Records a payout that landed. Idempotent: the first transaction to settle it is the one kept. */
   paid(id: BountyId, tx: string): void {
     const b = this.store.get(id);

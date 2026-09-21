@@ -222,3 +222,54 @@ describe("what an amount looks like leaving the process", () => {
     }
   });
 });
+
+/**
+ * Being refused should not cost anything.
+ *
+ * The route charged a graded-submission fee and *then* ran the qualification gate, so an agent with
+ * no record paid $0.05 to be told it could not play — the same tax on a rejected request that a
+ * malformed probe is deliberately spared. Found while planning the first real bounty, by working
+ * out what it would cost to demonstrate a refusal.
+ */
+describe("the gate is free", () => {
+  test("an unqualified name is refused without being charged", () => {
+    const b = posted({ minRating: 2 });
+    const out = bounties.eligibility(b.id, SOLVER, [], NOW);
+    expect(out.ok).toBe(false);
+    if (!out.ok && "unqualified" in out) {
+      expect(out.rating).toBe(0);
+      expect(out.needs).toBe(2);
+    }
+  });
+
+  test("an ungated bounty needs no record, so nothing is looked up", () => {
+    expect(bounties.eligibility(posted({ minRating: 0 }).id, SOLVER, [], NOW).ok).toBe(true);
+  });
+
+  test("a closed bounty is refused before payment too", () => {
+    const b = posted();
+    bounties.solve(b.id, SECRET, SOLVER, [], NOW);
+    const out = bounties.eligibility(b.id, SOLVER, [], NOW);
+    expect(out.ok).toBe(false);
+    if (!out.ok && "closed" in out) expect(out.closed).toContain("already been won");
+  });
+
+  test("an expired bounty likewise", () => {
+    const out = bounties.eligibility(posted().id, SOLVER, [], LATER + 1);
+    expect(out.ok).toBe(false);
+  });
+
+  test("it does not grade, so it cannot leak the answer", async () => {
+    const record = await recordOf(["blackbox", "zendo"]);
+    const b = posted({ minRating: 2 });
+    // Qualified: the gate passes and says nothing about whether any answer is right.
+    expect(JSON.stringify(bounties.eligibility(b.id, SOLVER, record, NOW))).not.toContain(String(SECRET));
+    expect(bounties.get(b.id)!.attempts).toBe(0);
+  });
+
+  test("checking eligibility never counts as an attempt", () => {
+    const b = posted({ minRating: 5 });
+    for (let i = 0; i < 5; i++) bounties.eligibility(b.id, SOLVER, [], NOW);
+    expect(bounties.get(b.id)!.attempts).toBe(0);
+  });
+});

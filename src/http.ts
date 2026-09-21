@@ -459,6 +459,24 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       if (!body || !("answer" in body)) return fail(400, "solving takes a JSON body with an answer");
 
       /**
+       * Refused before charged, where we already know enough to refuse.
+       *
+       * The authoritative gate is inside `solve`, against the address that paid, because a header
+       * is not an identity. But charging first meant an unqualified agent paid a graded-submission
+       * fee to be told it could not play — the same tax on a rejected request that a malformed
+       * probe is deliberately spared. A rating is public, so answering this early leaks nothing.
+       */
+      const eligible = deps.bounties!.eligibility(bounty.id, agent, deps.attempts.all());
+      if (!eligible.ok) {
+        if ("closed" in eligible) return json({ error: eligible.closed }, 409);
+        return json({
+          error: "this bounty is for agents with a record", rating: eligible.rating, needs: eligible.needs,
+          how: `solve ${eligible.needs} different problems here first`,
+          charged: false,
+        }, 403);
+      }
+
+      /**
        * Attempting a bounty is charged like a graded submission, and the payment is what names the
        * solver. A bounty pays an address; a header is not one.
        */
@@ -490,10 +508,15 @@ async function route(req: Request, deps: Deps): Promise<Response> {
         });
       }
       if ("unqualified" in out) {
-        // 403: the request is well formed and paid for, and the agent is simply not allowed yet.
+        /**
+         * Only reachable when the payer is a different identity from the header — the free check
+         * above passed on the name and the authoritative one failed on the address. Rare, and the
+         * agent's own doing, but it has been charged, so the body says so rather than pretending.
+         */
         return json({
           error: "this bounty is for agents with a record", rating: out.rating, needs: out.needs,
           how: `solve ${out.needs} different problems here first`,
+          charged: true, note: "the address that paid has a different record from the name you sent",
         }, 403);
       }
       if ("closed" in out) return json({ error: out.closed }, 409);

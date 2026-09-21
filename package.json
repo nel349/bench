@@ -19,7 +19,8 @@
     "top-up": "bun run scripts/top-up.ts",
     "arbiter:key": "bun run scripts/arbiter-key.ts",
     "deploy:escrow": "bun run scripts/deploy-escrow.ts",
-    "fund": "bun run scripts/fund.ts"
+    "fund": "bun run scripts/fund.ts",
+    "bounty:real": "bun run scripts/real-bounty.ts"
   },
   "dependencies": {
     "viem": "2.45.3"
