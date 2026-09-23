@@ -6,7 +6,7 @@ import { allProblems, problemOf } from "./problems/problem.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
 import "./problems/toll.ts";
-import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
+import { caip2, chainOf, contractsOf, network, type Network } from "./arc/chain.ts";
 import { Serial } from "./serialize.ts";
 import { parseAgentId } from "./arc/identity.ts";
 import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, SETTLEMENT_HEADER, X402_VERSION } from "./arc/facilitator.ts";
@@ -14,11 +14,9 @@ import { wireBounty, type Bounties } from "./bounties.ts";
 import type { AllowanceReader } from "./arc/allowance.ts";
 import type { Arbiter } from "./arc/arbiter.ts";
 import type { Backing, EscrowReader } from "./arc/escrow.ts";
+import type { FundsReader } from "./arc/funds.ts";
 import { rate } from "./rating.ts";
-import { PATHS, FEED_LIMIT } from "./web/paths.ts";
-import { renderPage } from "./web/page.ts";
-import { STYLE } from "./web/style.ts";
-import { SCRIPT } from "./web/script.ts";
+import { PATHS, FEED_LIMIT } from "./paths.ts";
 
 /**
  * The HTTP surface, as one function from a request to a response.
@@ -43,6 +41,8 @@ export interface Deps {
   readonly arbiter?: Arbiter;
   /** Reads what the chain says about a bounty's money. Absent where no escrow is deployed. */
   readonly escrow?: EscrowReader;
+  /** Reads what an agent holds, for the funding page. */
+  readonly funds?: FundsReader;
   /** Reads the session-key plugin, where one is deployed. Absent on a network without it. */
   readonly allowances?: AllowanceReader;
   /**
@@ -202,6 +202,57 @@ const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.ge
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 
+/** Whether this request is a person navigating, rather than a client fetching. */
+const wantsHtml = (req: Request): boolean =>
+  (req.headers.get("accept") ?? "").includes("text/html");
+
+/** Where `bun run build` puts the browser app. */
+const APP_DIR = new URL("../web/dist/", import.meta.url);
+
+/**
+ * A file from the built app, or the page itself for anything that is not one.
+ *
+ * Paths are resolved against the build directory and checked to still be inside it, because a
+ * request for `/../.env` is a request somebody makes on purpose.
+ */
+async function servedFile(path: string, navigating: boolean): Promise<Response | null> {
+  const wanted = new URL(`.${path}`, APP_DIR);
+  if (!wanted.pathname.startsWith(APP_DIR.pathname)) return null;
+
+  const asset = Bun.file(wanted);
+  if (path !== "/" && await asset.exists()) {
+    return new Response(asset, {
+      headers: {
+        "content-type": asset.type,
+        // Vite fingerprints assets, so they can be cached hard. The page itself cannot.
+        ...(path.startsWith("/assets/") ? { "cache-control": "public, max-age=31536000, immutable" } : {}),
+      },
+    });
+  }
+
+  /**
+   * A missing asset is a 404, never the page.
+   *
+   * Falling through would answer a request for a script with HTML, and the browser reports that as
+   * a MIME type error somewhere else entirely — a deploy that dropped one file would look like a
+   * bug in the application.
+   */
+  if (path.startsWith("/assets/")) return null;
+
+  /**
+   * Only a browser gets the page.
+   *
+   * A deep link must survive a reload, so an unknown path renders the app and lets it decide. But
+   * an agent that typos an API path is asking for JSON, and answering it with HTML turns a typo
+   * into a parse error somewhere unrelated — it gets the 404 it asked for.
+   */
+  if (!navigating) return null;
+
+  const index = Bun.file(new URL("index.html", APP_DIR));
+  if (!await index.exists()) return null;
+  return new Response(index, { headers: { "content-type": "text/html; charset=utf-8" } });
+}
+
 /**
  * Moves the money for a bounty that has been won.
  *
@@ -259,9 +310,17 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   try {
     return await route(req, deps);
   } catch (cause) {
+    /**
+     * Logged, never returned.
+     *
+     * `detail` used to carry the thrown message straight back to the caller, which undoes the care
+     * taken everywhere else: a viem error names the RPC endpoint — and an endpoint can carry a key
+     * — while a SQLite error names a path on our disk. None of it helps whoever asked, and the
+     * parts that would help them are already the 4xx answers above.
+     */
     const message = cause instanceof Error ? cause.message : String(cause);
     console.error(`[bench] ${req.method} ${new URL(req.url).pathname}: ${message}`);
-    return json({ error: "something went wrong here, and it is not your request", detail: message }, 500);
+    return json({ error: "something went wrong here, and it is not your request" }, 500);
   }
 }
 
@@ -272,18 +331,13 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   const prices = { ask: format(PRICE.ask), submit: format(PRICE.submit), rank: format(PRICE.rank) };
 
   /**
-   * The index, as a page for a person and as JSON for a client.
+   * The index, for a client.
    *
-   * Negotiated rather than split across two paths, so the URL somebody pastes into a chat and the
-   * one their agent fetches are the same URL. A browser sends `Accept: text/html`; nothing else does.
+   * A browser asking for `text/html` never reaches here: it falls through to the built application,
+   * which fetches this same JSON like any other caller. One URL and two audiences, but only one of
+   * them renders anything — which is the point of deleting the server-rendered page.
    */
-  if (req.method === "GET" && path === PATHS.index) {
-    if ((req.headers.get("accept") ?? "").includes("text/html")) {
-      const shown = deps.bounties?.all().map((b) => wireBounty(b)) ?? [];
-      return new Response(renderPage(deps.attempts.all(), deps.net, Date.now(), shown), {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
+  if (req.method === "GET" && path === PATHS.index && !wantsHtml(req)) {
     return json({
       service: "bench", network: deps.net, chain: caip2(deps.net),
       problems: allProblems().map((p) => p.id),
@@ -314,15 +368,31 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
   }
 
-  if (req.method === "GET" && path === PATHS.style) {
-    return new Response(STYLE, {
-      headers: { "content-type": "text/css; charset=utf-8", "cache-control": "max-age=300" },
+  /** What an agent holds. Polled by the page while a transfer settles. */
+  if (req.method === "GET" && seg[0] === "funds" && seg[1]) {
+    if (!deps.funds) return fail(404, `this server cannot read balances on ${deps.net}`);
+    const funds = await deps.funds.read(seg[1]);
+    if (!funds) return fail(404, "that is not an address on this network");
+    return json({
+      agent: funds.agent, wallet: format(funds.wallet), deposit: format(funds.deposit),
+      ready: funds.ready, probes: funds.probes,
     });
   }
 
-  if (req.method === "GET" && path === PATHS.script) {
-    return new Response(SCRIPT, {
-      headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "max-age=300" },
+  /**
+   * What the browser app needs to know, asked once.
+   *
+   * The addresses live here and not in the app, because this process knows which network it is
+   * serving and a copy in a bundle is a copy that can drift — which is how a page ends up sending
+   * money to a testnet address on mainnet.
+   */
+  if (req.method === "GET" && path === PATHS.settings) {
+    const c = contractsOf(deps.net);
+    return json({
+      chainId: chainOf(deps.net).id,
+      usdc: c.usdc,
+      gateway: c.gatewayWallet,
+      probePrice: format(PRICE.ask),
     });
   }
 
@@ -645,6 +715,18 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     const ranked = [...solved].sort((x, y) =>
       x.spend === y.spend ? x.probes.length - y.probes.length : (x.spend < y.spend ? -1 : 1));
     return json(ranked.map((a) => wireScore(score(a))));
+  }
+
+  /**
+   * The browser app, where it has been built.
+   *
+   * Anything not an API route falls through to the single page, so a deep link works on a reload
+   * rather than 404ing — the app decides what to render from the URL. Absent a build, this says so
+   * instead of serving nothing.
+   */
+  if (req.method === "GET") {
+    const served = await servedFile(path, wantsHtml(req));
+    if (served) return served;
   }
 
   return fail(404, `no route for ${req.method} ${path}`);

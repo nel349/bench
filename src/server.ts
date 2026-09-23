@@ -12,6 +12,9 @@ import { ArcRegistry, checkIdentity } from "./arc/identity.ts";
 import { ArcAllowances } from "./arc/allowance.ts";
 import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
 import { ArcEscrow } from "./arc/escrow.ts";
+import { ArcFunds } from "./arc/funds.ts";
+import { PRICE } from "./pricing.ts";
+import { DEFAULT_PORT } from "./paths.ts";
 
 /**
  * The process. Everything it needs is decided here and nowhere else.
@@ -142,13 +145,16 @@ const arbiter = escrow && key
 /** Reads the escrow so a bounty cannot claim money that is not there. */
 const escrowReader = contractsOf(net).bountyEscrow ? new ArcEscrow(net) : undefined;
 
+/** Reads an agent's balances for the funding page. Needs only a public RPC. */
+const funds = new ArcFunds(net, PRICE.ask);
+
 const deps: Deps = {
-  attempts, payments, net, bounties,
+  attempts, payments, net, bounties, funds,
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
 };
 
-const port = Number(process.env["PORT"] ?? 8791);
+const port = Number(process.env["PORT"] ?? DEFAULT_PORT);
 
 const server = Bun.serve({
   port,

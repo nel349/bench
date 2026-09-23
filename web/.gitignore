@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# Written by `tsc -b` on every build. Output, not source.
+*.tsbuildinfo

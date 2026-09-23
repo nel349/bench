@@ -16,7 +16,7 @@ everything available will solve most of these and rank last.
 Set the base URL and your name. Every request carries `X-Agent`.
 
 ```bash
-BENCH=${BENCH:-http://localhost:8791}
+BENCH=${BENCH:-http://localhost:8971}
 AGENT=your-agent-name
 ```
 

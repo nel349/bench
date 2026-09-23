@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { boardFrom, check, fire, ports, rng, type Board, type Port } from "./blackbox.ts";
+import { trace, boardFrom, check, fire, ports, rng, type Board, type Port } from "./blackbox.ts";
 
 /** A board written out by hand, so the expected ray behaviour can be reasoned about rather than trusted. */
 const board = (size: number, ...atoms: [number, number][]): Board =>
@@ -125,5 +125,79 @@ describe("the ports a harness may buy", () => {
     const p = ports(8);
     expect(p).toHaveLength(32);
     expect(new Set(p.map((x: Port) => `${x.side}:${x.index}`)).size).toBe(32);
+  });
+});
+
+/**
+ * The path, which the front page draws.
+ *
+ * `fire` is now built on `trace`, so the picture and the game cannot disagree about the rules — but
+ * the path itself has invariants a renderer relies on, and a ray that jumped a cell would draw as a
+ * line straight through an atom it should have hit.
+ */
+describe("trace", () => {
+  const SEEDS = Array.from({ length: 200 }, (_, i) => i + 1);
+  const adjacent = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+  const onBoard = (size: number, c: { x: number; y: number }) =>
+    c.x >= 0 && c.y >= 0 && c.x < size && c.y < size;
+
+  test("fire and trace agree on every port of every board", () => {
+    for (const seed of SEEDS) {
+      const b = boardFrom(seed);
+      for (const p of ports(b.size)) expect(trace(b, p).result).toEqual(fire(b, p));
+    }
+  });
+
+  test("every step is to a neighbouring cell: a ray never jumps", () => {
+    for (const seed of SEEDS) {
+      const b = boardFrom(seed);
+      for (const p of ports(b.size)) {
+        const { path } = trace(b, p);
+        for (let i = 1; i < path.length; i++) expect(adjacent(path[i - 1]!, path[i]!)).toBe(true);
+      }
+    }
+  });
+
+  test("a ray starts just outside the board, at the port it was fired from", () => {
+    const b = boardFrom(7);
+    for (const p of ports(b.size)) {
+      const first = trace(b, p).path[0]!;
+      expect(onBoard(b.size, first)).toBe(false);
+    }
+  });
+
+  test("an absorbed ray ends on an atom", () => {
+    for (const seed of SEEDS) {
+      const b = boardFrom(seed);
+      for (const p of ports(b.size)) {
+        const t = trace(b, p);
+        if (t.result.kind !== "hit") continue;
+        const last = t.path[t.path.length - 1]!;
+        expect(b.atoms.some((a) => a.x === last.x && a.y === last.y)).toBe(true);
+      }
+    }
+  });
+
+  test("a ray that leaves ends just outside the board", () => {
+    for (const seed of SEEDS) {
+      const b = boardFrom(seed);
+      for (const p of ports(b.size)) {
+        const t = trace(b, p);
+        if (t.result.kind !== "detour") continue;
+        expect(onBoard(b.size, t.path[t.path.length - 1]!)).toBe(false);
+      }
+    }
+  });
+
+  test("no cell on a path is an atom except the one that absorbed it", () => {
+    for (const seed of SEEDS) {
+      const b = boardFrom(seed);
+      for (const p of ports(b.size)) {
+        const t = trace(b, p);
+        const body = t.result.kind === "hit" ? t.path.slice(0, -1) : t.path;
+        for (const c of body) expect(b.atoms.some((a) => a.x === c.x && a.y === c.y)).toBe(false);
+      }
+    }
   });
 });

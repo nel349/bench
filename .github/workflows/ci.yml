@@ -20,6 +20,28 @@ jobs:
       - name: test
         run: bun test ./src
 
+  # The page is a real application now, and a build that fails is a page nobody
+  # can open. Its own lane, because a broken component should not read as a
+  # broken server.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - name: typecheck
+        run: bun run typecheck
+        working-directory: web
+      - name: test
+        run: bun run test
+        working-directory: web
+      - name: build
+        run: bun run build
+        working-directory: web
+
   # The escrow holds other people's money, so it gets its own lane rather than
   # sharing one with the TypeScript. forge-std is a submodule; without the
   # recursive checkout this fails on a missing import, which is exactly how a

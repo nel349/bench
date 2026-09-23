@@ -81,7 +81,7 @@ function entry(b: Board, p: Port): { readonly at: Cell; readonly dir: Dir } {
 }
 
 /** Which port a ray leaving `from` in `dir` emerges at. */
-function exitPort(b: Board, from: Cell, dir: Dir): Port {
+function exitPort(from: Cell, dir: Dir): Port {
   switch (dir) {
     case "right": return { side: "right", index: from.y };
     case "left":  return { side: "left", index: from.y };
@@ -90,8 +90,19 @@ function exitPort(b: Board, from: Cell, dir: Dir): Port {
   }
 }
 
+/** Where a ray went, cell by cell, and what became of it. */
+export interface Trace {
+  /**
+   * Every position the ray occupied, starting just outside the port it entered by and ending where
+   * it was absorbed or just outside the port it left by. Outside-the-board points use coordinates of
+   * -1 or `size`, so a renderer can draw the ray arriving and departing rather than appearing.
+   */
+  readonly path: readonly Cell[];
+  readonly result: RayResult;
+}
+
 /**
- * Fire one ray and say what became of it.
+ * Fire one ray, and keep its path.
  *
  * The rules are the classic ones, and the order they are checked in is what makes them agree with
  * the physical game. Before stepping into a cell, look at the two cells diagonally ahead: an atom on
@@ -100,16 +111,23 @@ function exitPort(b: Board, from: Cell, dir: Dir): Port {
  *
  * The edge case that catches every implementation: an atom diagonally beside the entry port reflects
  * the ray immediately, before it has travelled at all.
+ *
+ * This is the only implementation of the physics. `fire` is built on it, and so is the ray the site
+ * draws — which is why the picture on the front page cannot disagree with the game underneath it.
  */
-export function fire(b: Board, p: Port): RayResult {
+export function trace(b: Board, p: Port): Trace {
   const start = entry(b, p);
   let dir = start.dir;
   let at: Cell = { x: start.at.x - DELTA[dir].x, y: start.at.y - DELTA[dir].y };
+  const path: Cell[] = [at];
 
   for (let step = 0; step <= b.size * b.size * 4; step++) {
     const ahead: Cell = { x: at.x + DELTA[dir].x, y: at.y + DELTA[dir].y };
 
-    if (inside(b, ahead) && has(b, ahead.x, ahead.y)) return { kind: "hit" };
+    if (inside(b, ahead) && has(b, ahead.x, ahead.y)) {
+      path.push(ahead);
+      return { path, result: { kind: "hit" } };
+    }
 
     const l = LEFT_OF[dir], r = RIGHT_OF[dir];
     const diagL: Cell = { x: ahead.x + DELTA[l].x, y: ahead.y + DELTA[l].y };
@@ -122,9 +140,10 @@ export function fire(b: Board, p: Port): RayResult {
     else if (atomR) dir = l;
     else {
       at = ahead;
+      path.push(at);
       if (!inside(b, at)) {
-        const out = exitPort(b, { x: at.x - DELTA[dir].x, y: at.y - DELTA[dir].y }, dir);
-        return out.side === p.side && out.index === p.index ? { kind: "reflect" } : { kind: "detour", exit: out };
+        const out = exitPort({ x: at.x - DELTA[dir].x, y: at.y - DELTA[dir].y }, dir);
+        return { path, result: out.side === p.side && out.index === p.index ? { kind: "reflect" } : { kind: "detour", exit: out } };
       }
       continue;
     }
@@ -132,12 +151,18 @@ export function fire(b: Board, p: Port): RayResult {
     // Deflected. If that turned the ray back out of where it came in, it reflected.
     const after: Cell = { x: at.x + DELTA[dir].x, y: at.y + DELTA[dir].y };
     if (!inside(b, after)) {
-      if (!inside(b, at)) return { kind: "reflect" };
-      const out = exitPort(b, at, dir);
-      return out.side === p.side && out.index === p.index ? { kind: "reflect" } : { kind: "detour", exit: out };
+      if (!inside(b, at)) return { path, result: { kind: "reflect" } };
+      path.push(after);
+      const out = exitPort(at, dir);
+      return { path, result: out.side === p.side && out.index === p.index ? { kind: "reflect" } : { kind: "detour", exit: out } };
     }
   }
-  return { kind: "reflect" };
+  return { path, result: { kind: "reflect" } };
+}
+
+/** Fire one ray and say what became of it. The path is discarded; see `trace` for it. */
+export function fire(b: Board, p: Port): RayResult {
+  return trace(b, p).result;
 }
 
 /** Did the guess name every atom? Order does not matter; count does. */

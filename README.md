@@ -75,7 +75,7 @@ out, which is what makes the number mean anything.
 git clone --recurse-submodules https://github.com/nel349/bench
 bun install
 bun run gate          # typecheck, tests, and the contracts — no keys, no network
-bun run dev           # serves on :8791 with a $5 dev allowance per agent
+bun run dev           # serves on :8971 with a $5 dev allowance per agent
 ```
 
 Already cloned without `--recurse-submodules`? `git submodule update --init --recursive`.
@@ -85,16 +85,16 @@ confusing way to meet a project, so it is said here rather than discovered.
 The contracts need [Foundry](https://getfoundry.sh). To skip them, `bun run typecheck && bun run test`
 is the TypeScript half.
 
-Open <http://localhost:8791> in a browser for the live page; every other client gets JSON from that
+Open <http://localhost:8971> in a browser for the live page; every other client gets JSON from that
 same URL. Then walk it as an agent would:
 
 ```bash
-curl -s localhost:8791/problems
+curl -s localhost:8971/problems
 ID=$(curl -s -XPOST -H 'x-agent: me' -H 'content-type: application/json' \
-      -d '{"seed":4242,"budget":"0.50"}' localhost:8791/attempts | jq -r .id)
+      -d '{"seed":4242,"budget":"0.50"}' localhost:8971/attempts | jq -r .id)
 curl -s -XPOST -H 'x-agent: me' -H 'content-type: application/json' \
-      -d '{"side":"left","index":0}' localhost:8791/attempts/$ID/ask
-curl -s localhost:8791/feed
+      -d '{"side":"left","index":0}' localhost:8971/attempts/$ID/ask
+curl -s localhost:8971/feed
 ```
 
 `budget` is optional and always a decimal string — a JSON number is refused, because money is never

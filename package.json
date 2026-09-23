@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test ./src",
     "verify:addresses": "bun run scripts/verify-addresses.ts",
-    "gate": "bun run typecheck && bun run test && bun run test:contracts",
+    "gate": "bun run typecheck && bun run test && bun run test:web && bun run test:contracts",
     "start": "bun run src/server.ts",
     "dev": "DEV_ALLOWANCE=5 bun run src/server.ts",
     "test:contracts": "cd contracts && forge test",
@@ -20,7 +20,9 @@
     "arbiter:key": "bun run scripts/arbiter-key.ts",
     "deploy:escrow": "bun run scripts/deploy-escrow.ts",
     "fund": "bun run scripts/fund.ts",
-    "bounty:real": "bun run scripts/real-bounty.ts"
+    "bounty:real": "bun run scripts/real-bounty.ts",
+    "build:web": "cd web && bun install --frozen-lockfile && bun run build",
+    "test:web": "cd web && bun run typecheck && bun run test"
   },
   "dependencies": {
     "viem": "2.45.3"

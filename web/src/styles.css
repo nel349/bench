@@ -1,0 +1,561 @@
+/*
+ * BENCH // a netrunner's training rig.
+ *
+ * The Black Box game is netrunning, played straight: probe a sealed lattice of ICE one packet at a
+ * time, pay for every packet, watch for which ones come back, breach the data cores hidden inside —
+ * or run dry and get flatlined. So the whole interface is the rig a runner would jack into.
+ *
+ * The palette is chosen against the stock pink-and-cyan. Acid lime is the signal: probes, money,
+ * the things you control. Magenta is what you find. Red-orange is ICE, and it is the only thing on
+ * screen that means "no".
+ */
+
+:root {
+  --void: #06050b;
+  --void-2: #0c0a17;
+  --panel: rgba(18, 14, 36, 0.72);
+  --lattice: #2a2350;
+  --lattice-hot: #463a85;
+
+  --signal: #c6ff1a;        /* probes, money, anything you command */
+  --signal-dim: #6f8f10;
+  --core: #ff2e88;          /* a breached data core */
+  --ice: #ff4d2e;           /* ICE. The refusal. The only "no". */
+
+  --text: #e9e5ff;
+  --text-dim: #8d85bd;
+  --text-faint: #4d4677;
+
+  --display: "Chakra Petch", "SF Mono", ui-monospace, Menlo, monospace;
+  --mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+  /* A cut corner, used everywhere a box would otherwise be rounded. */
+  --cut: 14px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 14px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ═══ the plate, as a HUD ════════════════════════════════════════════════════════════════════ */
+
+.plate {
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse 60% 55% at 50% 48%, rgba(106, 64, 255, 0.16), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(198, 255, 26, 0.05), transparent 70%),
+    var(--void);
+  overflow: hidden;
+}
+
+/*
+ * Scanlines and grain, faint enough to feel rather than see. Over the whole rig, under the text, and
+ * never catching a click.
+ */
+.grain {
+  /*
+   * Clips its own noise. The noise layer is drawn half again past every edge so it can drift, and it
+   * relied on the plate to hide the excess — which on a phone, where the plate has to scroll, it did
+   * not: the page scrolled sideways by a third of its width.
+   */
+  position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.028) 0 1px, transparent 1px 3px);
+  mix-blend-mode: overlay;
+}
+.grain::after {
+  content: ""; position: absolute; inset: -50%;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
+  opacity: 0.07;
+  animation: static 0.9s steps(3) infinite;
+}
+@keyframes static {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(-4%, 3%); }
+  66%  { transform: translate(3%, -5%); }
+  100% { transform: translate(-2%, 2%); }
+}
+
+/*
+ * The frame: a HUD bracket around the screen, corners cut rather than rounded.
+ */
+.frame {
+  position: absolute; inset: 22px; z-index: 1; pointer-events: none;
+  border: 1px solid var(--lattice);
+  clip-path: polygon(
+    var(--cut) 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% calc(100% - var(--cut)),
+    calc(100% - var(--cut)) 100%, var(--cut) 100%, 0 calc(100% - var(--cut)), 0 var(--cut));
+}
+.frame::before, .frame::after {
+  content: ""; position: absolute; width: 38px; height: 38px;
+  border-color: var(--signal); border-style: solid; opacity: 0.85;
+}
+.frame::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.frame::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+/* Text set on the frame's edge, interrupting its line. */
+.edge {
+  position: absolute; z-index: 5;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--void); padding: 0 12px;
+  white-space: nowrap;
+}
+.edge.top    { top: 15px; }
+.edge.bottom { bottom: 15px; }
+.edge.start  { left: 54px; }
+.edge.end    { right: 54px; }
+.edge.middle { left: 50%; transform: translateX(-50%); }
+/*
+ * Down the sides, sitting on the frame line itself. `writing-mode` rather than a rotate-and-translate
+ * chain: the chain it replaced pushed both labels off the screen, and a vertical writing mode lays the
+ * text out as vertical text, so it measures and centres like any other line.
+ */
+.edge.left   { left: 22px; top: 50%; writing-mode: vertical-rl; transform: translate(-50%, -50%) rotate(180deg); padding: 12px 0; }
+.edge.right  { right: 22px; top: 50%; writing-mode: vertical-rl; transform: translate(50%, -50%); padding: 12px 0; }
+
+.brand {
+  font-family: var(--display); font-size: 15px; font-weight: 700; letter-spacing: 0.34em;
+  color: var(--text);
+}
+.brand b { color: var(--signal); font-weight: 700; }
+a.brand { text-decoration: none; }
+a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
+
+.plate-body {
+  position: absolute; inset: 58px 70px 92px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.caption {
+  position: absolute; left: 0; right: 0; bottom: 50px; z-index: 5; text-align: center;
+  font-size: 13px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-dim);
+}
+
+/* ═══ money ══════════════════════════════════════════════════════════════════════════════════ */
+
+.amount { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--signal); }
+.amount .currency { opacity: 0.55; margin-right: 1px; }
+.amount .cents { opacity: 0.55; }
+
+/* ═══ the lattice: ICE, projected ════════════════════════════════════════════════════════════ */
+
+/*
+ * A hologram on a table: tilted back so it reads as a projected volume rather than a flat diagram.
+ * Moderate on purpose — enough to feel like depth, not so much that a probe's path stops being
+ * legible, because the path is the information.
+ */
+.holo {
+  width: min(62vh, 44vw, 560px);
+  transform: perspective(1100px) rotateX(20deg) rotateZ(-2deg);
+  transform-origin: 50% 60%;
+  transition: opacity 1.1s ease, filter 0.6s ease;
+}
+.lattice { display: block; width: 100%; height: 100%; overflow: visible; }
+
+.lattice .grid line { stroke: var(--lattice); stroke-width: 0.018; }
+.lattice .bound {
+  fill: rgba(106, 64, 255, 0.05); stroke: var(--lattice-hot); stroke-width: 0.03;
+}
+.lattice .node { fill: var(--lattice-hot); }
+
+.lattice .trace {
+  fill: none; stroke: var(--signal); stroke-width: 0.045;
+  stroke-linejoin: miter; stroke-linecap: square; opacity: 0.32;
+}
+.lattice .probe-line {
+  fill: none; stroke: var(--signal); stroke-width: 0.07;
+  stroke-linejoin: miter; stroke-linecap: square;
+  filter: drop-shadow(0 0 0.12px var(--signal));
+}
+.lattice .probe-head { fill: #f2ffc8; }
+
+.lattice .ice .probe-line { stroke: var(--ice); }
+.lattice .ice .probe-head { fill: #ffb3a3; }
+.lattice .caught circle { fill: none; stroke: var(--ice); stroke-width: 0.04; }
+.lattice .caught line   { stroke: var(--ice); stroke-width: 0.06; stroke-linecap: square; }
+
+/* No CSS animation on anything inside the hologram: it is what hid the cores. See BlackBoxField. */
+.lattice .core-burst { fill: none; stroke: var(--core); stroke-width: 0.05; }
+.lattice .core-body { fill: var(--core); stroke: #ffd1e5; stroke-width: 0.03; }
+
+
+.lattice .debit {
+  font-family: var(--mono); font-size: 0.36px; font-weight: 600;
+  fill: var(--signal); dominant-baseline: middle;
+}
+.lattice .debit.ice { fill: var(--ice); letter-spacing: 0.04px; }
+
+/*
+ * Flatline. When the money runs out the projection loses sync: a chromatic split and a shake, then
+ * it holds, red, so the refusal is the thing left on screen.
+ */
+.holo.flatline { animation: flatline 0.6s steps(2, end) 1; filter: saturate(0.6); }
+@keyframes flatline {
+  0%   { transform: perspective(1100px) rotateX(20deg) rotateZ(-2deg) translate(0, 0);
+         filter: drop-shadow(3px 0 var(--ice)) drop-shadow(-3px 0 #00e0ff); }
+  25%  { transform: perspective(1100px) rotateX(20deg) rotateZ(-2deg) translate(-6px, 2px);
+         filter: drop-shadow(-4px 0 var(--ice)) drop-shadow(4px 0 #00e0ff); }
+  50%  { transform: perspective(1100px) rotateX(20deg) rotateZ(-2deg) translate(5px, -3px);
+         filter: drop-shadow(2px 0 var(--ice)) drop-shadow(-2px 0 #00e0ff); }
+  100% { transform: perspective(1100px) rotateX(20deg) rotateZ(-2deg) translate(0, 0); filter: none; }
+}
+.holo.breached { filter: drop-shadow(0 0 18px rgba(255, 46, 136, 0.25)); }
+
+/* ═══ telemetry ══════════════════════════════════════════════════════════════════════════════ */
+
+.rig { display: flex; align-items: center; gap: clamp(28px, 5vw, 80px); }
+
+.telemetry {
+  width: 260px;
+  background: var(--panel);
+  border: 1px solid var(--lattice-hot);
+  padding: 18px 20px 20px;
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  backdrop-filter: blur(6px);
+}
+.panel-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.28em; color: var(--signal);
+  padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--lattice);
+}
+.blink { width: 6px; height: 6px; background: var(--signal); animation: blink 1.1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.telemetry dl { margin: 0; }
+.telemetry dl > div {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 9px 0; border-bottom: 1px dashed var(--lattice);
+}
+.telemetry dt { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-dim); }
+.telemetry dd { margin: 0; font-family: var(--mono); font-size: 14px; color: var(--text); }
+.telemetry .of { color: var(--text-faint); }
+.telemetry .cores { color: var(--core); }
+.telemetry .spent dd .amount { font-size: 17px; }
+
+/* Funds as a row of cells that go dark as they are spent. */
+.bar { display: inline-flex; gap: 3px; }
+.bar i { width: 8px; height: 11px; background: var(--lattice); transform: skewX(-18deg); }
+.bar i.on { background: var(--signal); box-shadow: 0 0 6px rgba(198, 255, 26, 0.5); }
+
+.verdict {
+  margin-top: 16px; min-height: 56px;
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.24em;
+}
+.verdict .amount { font-size: 26px; }
+.verdict.solved { color: var(--core); }
+.verdict.solved .amount { color: var(--core); }
+.verdict.refused { color: var(--ice); }
+.verdict.refused .amount { color: var(--ice); }
+.verdict .rep { font-size: 11px; letter-spacing: 0.2em; margin-top: 2px; }
+.running-label { color: var(--text-dim); }
+.running-label::after { content: ""; animation: dots 1.4s steps(4, end) infinite; }
+@keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .grain::after, .blink, .running-label::after, .holo.flatline { animation: none; }
+}
+
+/* ═══ the loop, as navigation ════════════════════════════════════════════════════════════════ */
+
+.nav { display: flex; align-items: center; gap: 12px; }
+.nav-item {
+  color: var(--text-dim); text-decoration: none; font-size: 11px; letter-spacing: 0.2em;
+  display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 0;
+  border-bottom: 1px solid transparent;
+}
+.nav-item .n { color: var(--text-faint); font-family: var(--mono); font-size: 9px; }
+.nav-item:hover { color: var(--text); }
+.nav-item.on { color: var(--signal); border-bottom-color: var(--signal); }
+.nav-item.on .n { color: var(--signal-dim); }
+.nav .arrow { color: var(--text-faint); font-size: 10px; }
+.loop-line { color: var(--text-faint); letter-spacing: 0.3em; }
+
+/* ═══ the rig view ═══════════════════════════════════════════════════════════════════════════ */
+
+.home {
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: clamp(28px, 4vw, 64px); align-items: center;
+}
+
+.kicker {
+  margin: 0 0 18px; font-size: 11px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.kicker span { color: var(--signal); margin-right: 6px; }
+
+/*
+ * The claim, in the rig's own terms: the payoff first, the way to it second.
+ */
+.headline {
+  margin: 0; font-family: var(--display); font-weight: 700;
+  font-size: clamp(38px, 4.6vw, 64px); line-height: 0.98; letter-spacing: -0.01em;
+  text-transform: uppercase; color: var(--text);
+}
+.headline em {
+  font-style: normal; color: var(--void);
+  background: var(--signal); padding: 0 0.12em; margin-right: 0.04em;
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
+
+.sub {
+  margin: 20px 0 0; max-width: 40ch; font-size: 15px; line-height: 1.55; color: var(--text-dim);
+}
+
+.ctas { display: flex; gap: 12px; margin-top: 28px; flex-wrap: wrap; }
+
+/* A button is a cut plate, not a rounded pill. */
+.btn {
+  position: relative; display: inline-block; text-decoration: none;
+  font-family: var(--display); font-size: 12px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
+  padding: 13px 22px; color: var(--text);
+  border: 1px solid var(--lattice-hot); background: transparent;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  transition: color 0.2s, background 0.2s, border-color 0.2s;
+}
+.btn:hover { border-color: var(--signal); color: var(--signal); }
+.btn.primary { background: var(--signal); color: var(--void); border-color: var(--signal); }
+.btn.primary:hover { background: #dbff5c; color: var(--void); }
+.btn:focus-visible { outline: 1px solid var(--signal); outline-offset: 4px; }
+
+.gig-teaser {
+  display: flex; align-items: center; gap: 14px; margin-top: 30px; text-decoration: none;
+  padding: 14px 16px; border-left: 2px solid var(--core);
+  background: linear-gradient(90deg, rgba(255,46,136,0.10), transparent);
+}
+.gig-count { font-family: var(--display); font-size: 34px; font-weight: 700; color: var(--core); line-height: 1; }
+.gig-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-dim); line-height: 1.6; }
+.gig-label .amount { color: var(--core); }
+
+/* ─── the exhibit ─── */
+
+.exhibit { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+
+.exhibit-head { align-self: stretch; max-width: 640px; margin: 0 auto 6px; }
+.ex-line { display: flex; align-items: center; gap: 12px; }
+.ex-no { font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--text-faint); }
+
+/* Said plainly and first: this is a simulation, not somebody's live run. */
+.demo-tag {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--void); background: var(--text-dim); padding: 3px 7px;
+}
+.ex-name {
+  margin: 6px 0 0; font-family: var(--display); font-size: 26px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text);
+}
+.ex-rule { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-dim); max-width: 62ch; }
+.ex-rule b { color: var(--signal); font-weight: 600; }
+
+/*
+ * As large as the height allows, because the board is the thing being shown. It was a small tilted
+ * square in a large empty space: the margin a side label needs takes nearly half the drawing, so the
+ * drawing itself has to be big for the board inside it to read.
+ */
+.exhibit .holo { width: min(calc((100vh - 330px) * 1.2), 42vw, 640px); }
+
+.narration {
+  margin: 4px 0 0; min-height: 2.8em; max-width: 620px; text-align: center;
+  font-size: 13px; line-height: 1.5; color: var(--text-dim);
+}
+.narration .probe-no { color: var(--text-faint); font-family: var(--mono); margin-right: 4px; }
+.narration.found   { color: var(--text); }
+.narration.found   .probe-no { color: var(--core); }
+.narration.refused { color: var(--ice); }
+
+.legend { display: flex; gap: 22px; margin: 10px 0 0; padding: 0; list-style: none;
+          font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-faint); }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend i { display: inline-block; }
+.k-probe { width: 18px; height: 2px; background: var(--signal); box-shadow: 0 0 6px var(--signal); }
+.k-atom  { width: 9px; height: 9px; background: var(--core); transform: rotate(45deg); }
+.k-ice   { width: 10px; height: 10px; position: relative; }
+.k-ice::before, .k-ice::after { content: ""; position: absolute; left: 4px; top: -1px; width: 2px; height: 12px; background: var(--ice); }
+.k-ice::before { transform: rotate(45deg); } .k-ice::after { transform: rotate(-45deg); }
+
+/* ═══ gigs and the record ════════════════════════════════════════════════════════════════════ */
+
+.board { width: 100%; height: 100%; overflow-y: auto; padding: 8px 4px 24px; }
+.board-head { max-width: 720px; margin-bottom: 26px; }
+.board-title {
+  margin: 0; font-family: var(--display); font-weight: 700; text-transform: uppercase;
+  font-size: clamp(30px, 3.6vw, 48px); line-height: 1; color: var(--text);
+}
+.none { color: var(--text-dim); font-size: 14px; max-width: 52ch; }
+
+.gigs { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.gig {
+  position: relative; padding: 22px 22px 18px;
+  background: var(--panel); border: 1px solid var(--lattice-hot);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+  transition: border-color 0.2s, transform 0.2s;
+}
+.gig.open:hover { border-color: var(--core); transform: translateY(-2px); }
+.gig.open::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--core);
+}
+.gig.taken, .gig.expired { opacity: 0.5; }
+.gig-pay .amount { font-size: 30px; color: var(--core); font-weight: 600; }
+.gig h3 { margin: 10px 0 6px; font-family: var(--display); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+.gig p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.gig-meta {
+  display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px;
+  border-top: 1px dashed var(--lattice);
+  font-size: 10px; letter-spacing: 0.18em; color: var(--text-faint);
+}
+.gig-meta .req { color: var(--signal); }
+.gig-meta .req.none { color: var(--text-dim); }
+
+.ledger-scroll { overflow-x: auto; }
+.ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ledger th {
+  text-align: left; font-weight: 500; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--text-faint); padding: 0 16px 12px 0; border-bottom: 1px solid var(--lattice-hot);
+}
+.ledger td { padding: 13px 16px 13px 0; border-bottom: 1px solid var(--lattice); vertical-align: top; }
+.ledger .num { text-align: right; padding-right: 0; }
+.ledger .agent { font-family: var(--mono); font-size: 12px; }
+.ledger .proof { display: block; font-family: var(--mono); font-size: 10px; color: var(--text-faint); margin-top: 3px; }
+.ledger .rep { color: var(--core); font-weight: 600; letter-spacing: 0.12em; }
+.ledger .ice { color: var(--ice); letter-spacing: 0.12em; }
+.ledger .dim { color: var(--text-dim); }
+
+/* ═══ smaller screens ════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 980px) {
+  body { overflow-x: hidden; overflow-y: auto; }
+
+  /*
+   * On a phone the plate stops being a fixed frame and becomes a column that scrolls. The edges are
+   * no longer placed on the frame line but put in order: the brand, the loop, the content, then the
+   * footing — because absolutely placed edges on a narrow screen land on top of each other.
+   */
+  .plate { position: relative; min-height: 100%; display: flex; flex-direction: column; overflow-x: hidden; }
+  .frame { inset: 10px; }
+  .edge { position: static; transform: none; background: none; padding: 0; }
+  .edge.top.start { order: 1; padding: 22px 24px 8px; }
+  .edge.top.end   { order: 2; padding: 0 24px 4px; overflow-x: auto; }
+  .edge.left, .edge.right { display: none; }
+  .plate-body     { order: 3; position: relative; inset: auto; display: block; padding: 24px 24px 20px; }
+  .edge.bottom    { order: 4; padding: 6px 24px; font-size: 10px; }
+  .edge.bottom.end { padding-bottom: 26px; }
+  .edge.middle    { transform: none; }
+  .nav { flex-wrap: nowrap; }
+
+  .home { grid-template-columns: 1fr; height: auto; gap: 44px; }
+  /* Stretch, or the column shrinks to the telemetry panel and takes the board down with it. */
+  .exhibit { align-items: stretch; }
+  .rig { flex-direction: column; align-items: stretch; gap: 22px; width: 100%; }
+  .exhibit .holo { width: 100%; }
+  .telemetry { width: 100%; }
+  .headline { font-size: clamp(36px, 11vw, 52px); }
+  .board { height: auto; overflow: visible; }
+  .load { grid-template-columns: 1fr; height: auto; }
+  .balances { grid-template-columns: 1fr; }
+}
+
+/* ═══ load: funding an agent ═════════════════════════════════════════════════════════════════ */
+
+.load {
+  width: 100%; height: 100%;
+  display: grid; grid-template-columns: minmax(280px, 420px) minmax(0, 500px);
+  gap: clamp(28px, 5vw, 80px); align-items: center; justify-content: center;
+}
+.headline.small { font-size: clamp(32px, 3.6vw, 50px); }
+.warn {
+  margin: 22px 0 0; padding: 12px 14px; max-width: 42ch;
+  border-left: 2px solid var(--ice); background: linear-gradient(90deg, rgba(255,77,46,0.10), transparent);
+  font-size: 13px; line-height: 1.5; color: var(--text-dim);
+}
+.warn b { color: var(--ice); font-weight: 600; }
+
+.load-panel {
+  background: var(--panel); border: 1px solid var(--lattice-hot); padding: 20px 22px 22px;
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+}
+.lookup { margin-top: 16px; }
+.lookup label { display: block; font-size: 11px; letter-spacing: 0.14em; color: var(--text-dim); margin-bottom: 8px; }
+.field-row { display: flex; gap: 8px; }
+.field-row input {
+  flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; color: var(--text);
+  background: var(--void); border: 1px solid var(--lattice-hot); padding: 11px 12px;
+}
+.field-row input::placeholder { color: var(--text-faint); }
+.field-row input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 1px var(--signal); }
+.btn:disabled { opacity: 0.35; cursor: default; }
+.btn:disabled:hover { border-color: var(--lattice-hot); color: var(--text); }
+
+.state { margin: 16px 0 0; font-size: 13px; letter-spacing: 0.04em; }
+.state.idle { color: var(--text-faint); }
+.state.good { color: var(--signal); }
+.state.wait { color: var(--core); }
+.state.bad  { color: var(--ice); }
+
+.balances { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0 0; }
+.balance { background: var(--void); border: 1px solid var(--lattice); padding: 14px 14px 12px; margin: 0; }
+.balance dt { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); }
+.balance dd { margin: 8px 0 0; }
+.balance dd .amount { font-size: 22px; }
+.balance dd.short .amount, .balance dd.idle .amount { color: var(--text-dim); }
+.balance p { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-faint); }
+
+.give { margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--lattice); }
+.give-label { margin: 0 0 10px; font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--text-faint); }
+.amounts { display: flex; gap: 8px; }
+.amount-choice {
+  flex: 1; font-family: var(--display); font-size: 18px; font-weight: 600; cursor: pointer;
+  padding: 14px 0; color: var(--signal); background: transparent;
+  border: 1px solid var(--signal-dim);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  transition: background 0.2s, color 0.2s;
+}
+.amount-choice:hover:not(:disabled) { background: var(--signal); color: var(--void); }
+.amount-choice:disabled { opacity: 0.35; cursor: default; }
+.fine { margin: 12px 0 0; font-size: 11.5px; color: var(--text-faint); }
+
+.progress { margin: 14px 0 0; padding: 10px 12px; font-size: 12.5px; color: var(--text-dim);
+            border: 1px solid var(--lattice); background: var(--void); }
+.progress.good { color: var(--signal); border-color: var(--signal-dim); }
+.progress.bad  { color: var(--ice); border-color: var(--ice); }
+.progress a { color: inherit; }
+
+@media (max-width: 980px) {
+  .load { grid-template-columns: 1fr; height: auto; }
+  .balances { grid-template-columns: 1fr; }
+}
+
+/* ═══ nothing here yet ═══════════════════════════════════════════════════════════════════════ */
+
+.board { display: flex; flex-direction: column; }
+.board-head { flex: 0 0 auto; }
+
+.empty-state {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 20px 0 40px;
+}
+.empty-count {
+  font-family: var(--display); font-weight: 700; line-height: 0.85;
+  font-size: clamp(96px, 14vw, 200px); color: transparent;
+  -webkit-text-stroke: 1px var(--lattice-hot);
+  text-shadow: 0 0 40px rgba(106, 64, 255, 0.25);
+}
+.empty-noun {
+  margin-top: 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--text-dim);
+}
+.empty-body { margin: 22px 0 28px; max-width: 52ch; }
+.empty-body p { margin: 0 0 8px; font-size: 14px; line-height: 1.55; color: var(--text-dim); }
