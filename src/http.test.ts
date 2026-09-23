@@ -375,3 +375,40 @@ describe("who an agent is, consistently", () => {
     expect(rating.attempted).toBe(0);
   });
 });
+
+/**
+ * What an operator needs, which nothing here had because nothing here had ever been deployed.
+ */
+describe("health", () => {
+  test("it answers, and says what this process is configured for", async () => {
+    const r = await call("GET", "/health");
+    expect(r.status).toBe(200);
+    const body = await r.json() as { ok: boolean; network: string; problems: number };
+    expect(body.ok).toBe(true);
+    expect(body.network).toBe("testnet");
+    expect(body.problems).toBeGreaterThan(0);
+  });
+
+  test("a deploy pointed at the wrong network is visible without reading logs", async () => {
+    const body = await (await call("GET", "/health")).json() as { chain: string };
+    expect(body.chain).toBe("eip155:5042002");
+  });
+
+  test("it needs no agent and no payment", async () => {
+    expect((await call("GET", "/health")).status).toBe(200);
+  });
+
+  /** A platform polls this every few seconds; it must not reach a chain or a facilitator. */
+  test("it is fast enough to poll", async () => {
+    const started = performance.now();
+    for (let i = 0; i < 20; i++) await call("GET", "/health");
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  test("a store it cannot read is reported rather than thrown", async () => {
+    const broken = { ...deps, attempts: { all() { throw new Error("disk gone"); } } } as unknown as Deps;
+    const r = await handle(new Request("http://bench.test/health"), broken);
+    expect(r.status).toBe(503);
+    expect((await r.json() as { ok: boolean }).ok).toBe(false);
+  });
+});

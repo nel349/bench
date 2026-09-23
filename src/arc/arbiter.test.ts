@@ -194,3 +194,72 @@ describe("winning and being paid are different things", () => {
     require("node:fs").rmSync(`${path}-shm`, { force: true });
   });
 });
+
+/**
+ * The retry route is open to anyone, which is deliberate — it can only pay the address already
+ * recorded as the winner. But each call used to send a transaction, and the contract reverts a
+ * duplicate rather than refusing cheaply, so repeating a request designed to be safe to repeat
+ * spent our gas.
+ */
+describe("a stranger cannot burn the arbiter's gas", () => {
+  const spamming = (calls: { escrowId: string; solver: string }[]): Arbiter => ({
+    address: "0x000000000000000000000000000000000000bEEF",
+    async award(escrowId, solver) {
+      calls.push({ escrowId, solver });
+      await new Promise((r) => setTimeout(r, 10));
+      return { ok: true, tx: "0xdead" };
+    },
+  });
+
+  test("twenty simultaneous retries send one transaction", async () => {
+    const calls: { escrowId: string; solver: string }[] = [];
+    const money = new InMemoryAllowance();
+    money.grant("agent:pro", usdc("5"));
+    const bounties = new Bounties();
+    const deps: Deps = {
+      attempts: new Attempts(money), payments: money, net: "testnet", bounties,
+      arbiter: spamming(calls),
+    };
+    const p = bounties.post(
+      { poster: "x", title: "t", statement: "s", checker: { kind: "equals", value: 1 },
+        amount: "1.00", deadline: Date.now() + 7 * 24 * 3600 * 1000 },
+      Date.now(),
+      { escrowId: "7", poster: "0x00000000000000000000000000000000000AcmE",
+        amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
+    );
+    if (!p.ok) throw new Error(p.problem);
+    bounties.solve(p.bounty.id, 1, "0xsolver", []);
+
+    const retry = () => handle(new Request(`http://x/bounties/${p.bounty.id}/award`, { method: "POST" }), deps);
+    await Promise.all(Array.from({ length: 20 }, retry));
+    expect(calls).toHaveLength(1);
+  });
+
+  test("an escrow already settled on chain costs a read, not a reverted transaction", async () => {
+    const calls: { escrowId: string; solver: string }[] = [];
+    const money = new InMemoryAllowance();
+    const bounties = new Bounties();
+    const deps: Deps = {
+      attempts: new Attempts(money), payments: money, net: "testnet", bounties,
+      arbiter: spamming(calls),
+      escrow: { async read(escrowId) {
+        return { ok: true, backing: { escrowId, poster: "0xacme", amount: usdc("1"),
+          deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: true } };
+      } },
+    };
+    const p = bounties.post(
+      { poster: "x", title: "t", statement: "s", checker: { kind: "equals", value: 1 },
+        amount: "1.00", deadline: Date.now() + 7 * 24 * 3600 * 1000 },
+      Date.now(),
+      { escrowId: "7", poster: "0x00000000000000000000000000000000000AcmE",
+        amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
+    );
+    if (!p.ok) throw new Error(p.problem);
+    bounties.solve(p.bounty.id, 1, "0xsolver", []);
+
+    const r = await handle(new Request(`http://x/bounties/${p.bounty.id}/award`, { method: "POST" }), deps);
+    expect(r.status).toBe(503);
+    expect((await r.json() as { because: string }).because).toContain("already been settled");
+    expect(calls).toHaveLength(0);
+  });
+});

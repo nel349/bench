@@ -18,6 +18,8 @@ export const PATHS = {
   rating: "/rating",
   /** What the chain says a session key may still spend. Read from the plugin, never metered here. */
   allowance: "/allowance",
+  /** Whether this process can serve. Polled by a platform; touches nothing slow. */
+  health: "/health",
   style: "/bench.css",
   script: "/bench.js",
 } as const;

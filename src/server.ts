@@ -150,7 +150,7 @@ const deps: Deps = {
 
 const port = Number(process.env["PORT"] ?? 8791);
 
-Bun.serve({
+const server = Bun.serve({
   port,
   fetch(req) {
     // Dev only: anyone who names an agent gets a budget, so the flow can be walked without a wallet.
@@ -168,6 +168,29 @@ const paying = payTo ? `x402 → ${payTo}` : "in-memory allowance (NOT real mone
 const ids = identities ? "ERC-8004 checked" : "ERC-8004 off (claims stay claims)";
 // The address, never the key.
 const paying2 = arbiter ? `escrow ${escrow} via ${arbiter.address}` : "no arbiter (wins recorded, not paid)";
+/**
+ * Finish what is in flight before going.
+ *
+ * A deploy sends SIGTERM and a container runtime kills the process shortly after. Without this the
+ * kill lands mid-request — and a request that has already settled a payment at Circle but not yet
+ * written its answer is money taken for nothing, which the agent has no way to tell from a refusal.
+ *
+ * `stop(false)` stops accepting and lets open requests finish. The second signal is the operator
+ * insisting, and is obeyed.
+ */
+let leaving = false;
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    if (leaving) {
+      console.log(`\n${signal} again — leaving now, mid-request.`);
+      process.exit(130);
+    }
+    leaving = true;
+    console.log(`\n${signal} — finishing what is in flight, then leaving.`);
+    void server.stop(false).then(() => process.exit(0));
+  });
+}
+
 console.log(
   `bench listening on :${port}  network=${net}  runs=${kept}  payments=${paying}  identity=${ids}` +
   `  bounties=${paying2}` +

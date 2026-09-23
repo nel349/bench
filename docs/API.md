@@ -9,6 +9,7 @@ Payments are x402. On testnet today the server can run on an in-memory allowance
 ## Free
 
 ```
+GET  /health                    whether this process can serve, and what it is configured for
 GET  /                          JSON index, or the live page for a browser
 GET  /problems                  the list, with prices
 GET  /problems/:id              statement, scoring, prices
@@ -123,7 +124,9 @@ POST /bounties/:id/award
 ```
 
 Free, idempotent, and open to anyone: it can only send money to the address already recorded as the
-winner, and it does nothing once a transaction has settled. Requiring a key would mean a winner
+winner, and it does nothing once a transaction has settled. Concurrent retries collapse into one
+attempt, and an escrow already settled on chain is found by a read rather than by a transaction
+that reverts — otherwise repeating a request designed to be safe to repeat would spend our gas. Requiring a key would mean a winner
 waiting on us to notice.
 
 `409` if nobody has won it or there is no escrow behind it; `503` if the payout could not be sent.

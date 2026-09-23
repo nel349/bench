@@ -7,6 +7,7 @@ import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
 import "./problems/toll.ts";
 import { caip2, contractsOf, network, type Network } from "./arc/chain.ts";
+import { Serial } from "./serialize.ts";
 import { parseAgentId } from "./arc/identity.ts";
 import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, SETTLEMENT_HEADER, X402_VERSION } from "./arc/facilitator.ts";
 import { wireBounty, type Bounties } from "./bounties.ts";
@@ -211,13 +212,40 @@ const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 async function payOut(
   deps: Deps, id: string,
 ): Promise<{ ok: true; tx: string } | { ok: false; because: string } | null> {
-  const bounty = deps.bounties?.get(id);
-  if (!deps.arbiter || !bounty?.escrowId || !bounty.solvedBy || bounty.awardTx) return null;
+  /**
+   * One payout attempt at a time, per bounty.
+   *
+   * The retry route is open to anyone on purpose — it can only pay the address already recorded as
+   * the winner — but every call used to send a transaction, and the contract reverts a duplicate
+   * rather than refusing cheaply. So a stranger could spend our gas at will by repeating a request
+   * designed to be safe to repeat. Concurrent calls now collapse into one attempt, and the second
+   * finds the work already done.
+   */
+  return payouts.run(`bounty:${id}`, async () => {
+    const bounty = deps.bounties?.get(id);
+    if (!deps.arbiter || !bounty?.escrowId || !bounty.solvedBy || bounty.awardTx) return null;
 
-  const out = await deps.arbiter.award(bounty.escrowId, bounty.solvedBy);
-  if (out.ok) deps.bounties!.paid(id, out.tx);
-  return out;
+    /**
+     * Ask the chain before spending gas on it.
+     *
+     * An escrow already settled cannot be awarded again, and finding that out by sending a
+     * transaction that reverts costs us and nobody else. A read costs nothing.
+     */
+    if (deps.escrow) {
+      const state = await deps.escrow.read(bounty.escrowId);
+      if (state.ok && state.backing.settled) {
+        return { ok: false, because: "that escrow has already been settled on chain" };
+      }
+    }
+
+    const out = await deps.arbiter.award(bounty.escrowId, bounty.solvedBy);
+    if (out.ok) deps.bounties!.paid(id, out.tx);
+    return out;
+  });
 }
+
+/** Keyed by bounty, so two payouts for different bounties never wait for each other. */
+const payouts = new Serial();
 
 /**
  * Nothing escapes as a bare 500.
@@ -260,6 +288,30 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       service: "bench", network: deps.net, chain: caip2(deps.net),
       problems: allProblems().map((p) => p.id),
     });
+  }
+
+  /**
+   * Whether this process can serve.
+   *
+   * Free, unauthenticated and deliberately dull: a platform polls it every few seconds and it must
+   * not touch a chain, a facilitator or anything that can be slow. It answers for *this* process —
+   * that the store opens and the problems registered — and says what it is configured for, so a
+   * deploy that came up pointing at the wrong network is visible without reading logs.
+   */
+  if (req.method === "GET" && path === PATHS.health) {
+    try {
+      const runs = deps.attempts.all().length;
+      return json({
+        ok: true, network: deps.net, chain: caip2(deps.net), problems: allProblems().length, runs,
+        payments: deps.payments.constructor.name === "ArcPayments" ? "x402" : "in-memory",
+        bounties: deps.bounties ? "on" : "off",
+        escrowChecked: deps.escrow ? true : false,
+        payouts: deps.arbiter ? "on" : "off",
+      });
+    } catch (cause) {
+      // A store that cannot be read is exactly what this endpoint exists to report.
+      return json({ ok: false, because: cause instanceof Error ? cause.message : "unreadable" }, 503);
+    }
   }
 
   if (req.method === "GET" && path === PATHS.style) {
