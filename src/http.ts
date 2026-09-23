@@ -12,6 +12,7 @@ import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, SETTLEMENT_HEADER, X402_VER
 import { wireBounty, type Bounties } from "./bounties.ts";
 import type { AllowanceReader } from "./arc/allowance.ts";
 import type { Arbiter } from "./arc/arbiter.ts";
+import type { Backing, EscrowReader } from "./arc/escrow.ts";
 import { rate } from "./rating.ts";
 import { PATHS, FEED_LIMIT } from "./web/paths.ts";
 import { renderPage } from "./web/page.ts";
@@ -39,6 +40,8 @@ export interface Deps {
   readonly net: Network;
   /** Sends the payout when a bounty is won. Absent where no key is configured to sign one. */
   readonly arbiter?: Arbiter;
+  /** Reads what the chain says about a bounty's money. Absent where no escrow is deployed. */
+  readonly escrow?: EscrowReader;
   /** Reads the session-key plugin, where one is deployed. Absent on a network without it. */
   readonly allowances?: AllowanceReader;
   /**
@@ -436,7 +439,28 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body) return fail(400, "posting a bounty takes a JSON body");
 
-    const posted = deps.bounties!.post({ poster: agent, ...body } as never);
+    /**
+     * The escrow is checked before the bounty exists, not after.
+     *
+     * A bounty that cannot be paid should never be posted, rather than be discovered unpayable by
+     * whoever wins it. And the money, the deadline and the poster are then taken from the contract
+     * rather than from this request — so a listing cannot claim more than is held, outlive the
+     * escrow behind it, or attribute somebody else's money to the sender.
+     */
+    let backing: Backing | undefined;
+    if (typeof body["escrowId"] === "string" && body["escrowId"].trim().length > 0) {
+      if (!deps.escrow) {
+        return fail(503, "this server cannot check an escrow, so it will not take a backed bounty");
+      }
+      const read = await deps.escrow.read(body["escrowId"]);
+      if (!read.ok) {
+        // Being unable to ask is our failure and costs a retry; a bad id is the poster's and does not.
+        return "unavailable" in read ? unavailable(read.because) : fail(400, read.because);
+      }
+      backing = read.backing;
+    }
+
+    const posted = deps.bounties!.post({ poster: agent, ...body } as never, Date.now(), backing);
     if (!posted.ok) {
       return json({ error: posted.problem, ...(posted.at ? { at: posted.at } : {}) }, 400);
     }

@@ -11,6 +11,7 @@ import { GatewayFacilitator } from "./arc/gateway.ts";
 import { ArcRegistry, checkIdentity } from "./arc/identity.ts";
 import { ArcAllowances } from "./arc/allowance.ts";
 import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
+import { ArcEscrow } from "./arc/escrow.ts";
 
 /**
  * The process. Everything it needs is decided here and nowhere else.
@@ -138,9 +139,13 @@ const arbiter = escrow && key
   ? new ArcArbiter(net, { escrow: escrow as `0x${string}`, privateKey: key })
   : undefined;
 
+/** Reads the escrow so a bounty cannot claim money that is not there. */
+const escrowReader = contractsOf(net).bountyEscrow ? new ArcEscrow(net) : undefined;
+
 const deps: Deps = {
   attempts, payments, net, bounties,
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
+  ...(escrowReader ? { escrow: escrowReader } : {}),
 };
 
 const port = Number(process.env["PORT"] ?? 8791);

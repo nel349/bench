@@ -22,6 +22,7 @@ import { MemoryBounties } from "../src/bounty-store.ts";
 import { ArcPayments } from "../src/arc/payments.ts";
 import { GatewayFacilitator } from "../src/arc/gateway.ts";
 import { ArcArbiter } from "../src/arc/arbiter.ts";
+import { ArcEscrow } from "../src/arc/escrow.ts";
 import { paymentHeader, payableOn } from "../src/arc/buyer.ts";
 import { chainOf, contractsOf, rpcUrl, explorerUrl } from "../src/arc/chain.ts";
 import { mazeFrom, START, EXIT, type Dir } from "../src/problems/toll.ts";
@@ -101,6 +102,8 @@ const bounties = new Bounties(new MemoryBounties());
 const deps: Deps = {
   attempts: new Attempts(payments, store), payments, net, bounties,
   arbiter: new ArcArbiter(net, { escrow: escrowAddress, privateKey: arbiterKey }),
+  // The listing is now checked against the chain, so the run proves that too.
+  escrow: new ArcEscrow(net, escrowAddress),
 };
 const server = Bun.serve({ port: PORT, fetch: (req) => handle(req, deps) });
 const base = `http://localhost:${PORT}`;
@@ -125,7 +128,8 @@ try {
     amount: format(BOUNTY), deadline: Date.now() + 7 * 24 * 3600_000, minRating: MIN_RATING,
     escrowId: escrowId.toString(), checker: { kind: "equals", value: SECRET },
   })).json() as { id: string };
-  console.log(`2. gym bounty ${gymBounty.id}, backed by escrow #${escrowId}\n`);
+  console.log(`2. gym bounty ${gymBounty.id}, backed by escrow #${escrowId}`);
+  console.log(`   poster read from the chain: ${(gymBounty as { poster?: string }).poster}\n`);
 
   // ── 3. refused, and it costs nothing ─────────────────────────────────────────────────────────
   console.log("3. attempting it with no record");

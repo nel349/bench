@@ -6,6 +6,7 @@ import { Bounties } from "../bounties.ts";
 import { SqliteBounties } from "../bounty-store.ts";
 import { InMemoryAllowance } from "../payments.ts";
 import { usdc } from "../money.ts";
+import type { Backing } from "./escrow.ts";
 import "../problems/blackbox-problem.ts";
 
 const SOLVER = "0xAbC0000000000000000000000000000000000001";
@@ -53,12 +54,23 @@ describe("winning and being paid are different things", () => {
     };
   };
 
+  /**
+   * A bounty is backed only by an escrow the chain confirmed, so these supply one. Passing an
+   * `escrowId` in the request no longer does anything on its own, which is the point of item 15.
+   */
+  const POSTER = "0x00000000000000000000000000000000000AcmE" as `0x${string}`;
+  const backing = (escrowId: string): Backing => ({
+    escrowId, poster: POSTER, amount: usdc("500"),
+    deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false,
+  });
+
   const postBounty = (escrowId: string | null = "7") => {
-    const p = bounties.post({
-      poster: "agent:acme", title: "t", statement: "s", checker: { kind: "equals", value: SECRET },
-      amount: "500.00", deadline: Date.now() + 7 * 24 * 3600 * 1000,
-      ...(escrowId ? { escrowId } : {}),
-    });
+    const p = bounties.post(
+      { poster: "agent:acme", title: "t", statement: "s", checker: { kind: "equals", value: SECRET },
+        amount: "500.00", deadline: Date.now() + 7 * 24 * 3600 * 1000 },
+      Date.now(),
+      escrowId ? backing(escrowId) : undefined,
+    );
     if (!p.ok) throw new Error(p.problem);
     return p.bounty;
   };
@@ -165,10 +177,13 @@ describe("winning and being paid are different things", () => {
   test("an unpaid win survives a restart and is still sweepable", () => {
     const path = `${import.meta.dir}/../../.tmp-arbiter-${Date.now()}.sqlite`;
     const first = new Bounties(new SqliteBounties(path));
-    const p = first.post({
-      poster: "agent:acme", title: "t", statement: "s", checker: { kind: "equals", value: SECRET },
-      amount: "1.00", deadline: Date.now() + 7 * 24 * 3600 * 1000, escrowId: "9",
-    });
+    const p = first.post(
+      { poster: "agent:acme", title: "t", statement: "s", checker: { kind: "equals", value: SECRET },
+        amount: "1.00", deadline: Date.now() + 7 * 24 * 3600 * 1000 },
+      Date.now(),
+      { escrowId: "9", poster: "0x00000000000000000000000000000000000AcmE" as `0x${string}`,
+        amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
+    );
     if (!p.ok) throw new Error(p.problem);
     first.solve(p.bounty.id, SECRET, SOLVER, []);
 

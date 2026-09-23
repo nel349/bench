@@ -7,6 +7,7 @@ import type { AgentId } from "./payments.ts";
 import type { Attempt } from "./attempt.ts";
 import { rate } from "./rating.ts";
 import { MemoryBounties, type BountyStore } from "./bounty-store.ts";
+import type { Backing } from "./arc/escrow.ts";
 
 export type BountyId = string;
 
@@ -127,7 +128,7 @@ export class Bounties {
   post(input: {
     poster: AgentId; title: unknown; statement: unknown; checker: unknown;
     amount: unknown; deadline: unknown; minRating?: unknown; escrowId?: unknown;
-  }, now = Date.now()): Posted {
+  }, now = Date.now(), backing?: Backing): Posted {
     const { title, statement } = input;
     if (typeof title !== "string" || title.trim().length === 0) return { ok: false, problem: "a bounty needs a title" };
     if (typeof statement !== "string" || statement.trim().length === 0) {
@@ -136,22 +137,43 @@ export class Bounties {
     if (title.length > 200) return { ok: false, problem: "the title is longer than 200 characters" };
     if (statement.length > 20_000) return { ok: false, problem: "the statement is longer than 20,000 characters" };
 
-    if (typeof input.amount !== "string") {
-      return { ok: false, problem: "amount must be a decimal string, like \"500.00\" — not a number" };
-    }
+    /**
+     * Money and time come from the chain when there is an escrow, and from the request when there
+     * is not.
+     *
+     * Not compared — *taken*. A request that disagrees with the contract cannot be half-right, and
+     * reconciling the two would be inventing a rule about whose number wins. The escrow holds what
+     * it holds and expires when it expires; a listing describes it.
+     */
     let amount: Usdc;
-    try {
-      amount = usdc(input.amount);
-    } catch {
-      return { ok: false, problem: `amount is not an amount: ${input.amount}` };
-    }
-    if (amount <= 0n) return { ok: false, problem: "a bounty of nothing is not a bounty" };
+    let deadline: number;
 
-    if (typeof input.deadline !== "number" || !Number.isFinite(input.deadline)) {
-      return { ok: false, problem: "deadline must be a timestamp in milliseconds" };
-    }
-    if (input.deadline < now + MIN_DURATION_MS) {
-      return { ok: false, problem: "the deadline is too soon for anyone to attempt it" };
+    if (backing) {
+      if (backing.settled) return { ok: false, problem: `escrow ${backing.escrowId} has already been paid out or reclaimed` };
+      if (backing.amount <= 0n) return { ok: false, problem: `escrow ${backing.escrowId} holds nothing` };
+      if (backing.deadline < now + MIN_DURATION_MS) {
+        return { ok: false, problem: `escrow ${backing.escrowId} expires too soon for anyone to attempt it` };
+      }
+      amount = backing.amount;
+      deadline = backing.deadline;
+    } else {
+      if (typeof input.amount !== "string") {
+        return { ok: false, problem: "amount must be a decimal string, like \"500.00\" — not a number" };
+      }
+      try {
+        amount = usdc(input.amount);
+      } catch {
+        return { ok: false, problem: `amount is not an amount: ${input.amount}` };
+      }
+      if (amount <= 0n) return { ok: false, problem: "a bounty of nothing is not a bounty" };
+
+      if (typeof input.deadline !== "number" || !Number.isFinite(input.deadline)) {
+        return { ok: false, problem: "deadline must be a timestamp in milliseconds" };
+      }
+      deadline = input.deadline;
+      if (deadline < now + MIN_DURATION_MS) {
+        return { ok: false, problem: "the deadline is too soon for anyone to attempt it" };
+      }
     }
 
     const minRating = input.minRating ?? 0;
@@ -163,9 +185,13 @@ export class Bounties {
     if (!parsed.ok) return { ok: false, problem: parsed.problem, at: parsed.at };
 
     const bounty: Bounty = {
-      id: this.store.nextId(), poster: input.poster, title: title.trim(), statement: statement.trim(),
-      checker: parsed.check, amount, escrowId: typeof input.escrowId === "string" ? input.escrowId : null,
-      deadline: input.deadline, minRating: minRating as number, postedAt: now,
+      id: this.store.nextId(),
+      // The funder, per the contract — never the header. A listing pointing at somebody else's
+      // escrow therefore shows that somebody else as its poster, which is self-correcting.
+      poster: backing ? backing.poster : input.poster,
+      title: title.trim(), statement: statement.trim(),
+      checker: parsed.check, amount, escrowId: backing ? backing.escrowId : null,
+      deadline, minRating: minRating as number, postedAt: now,
       solvedBy: null, solvedAt: null, awardTx: null, attempts: 0,
     };
     this.store.put(bounty);
@@ -199,6 +225,13 @@ export class Bounties {
     if (!b) return { ok: false, closed: `no bounty ${id}` };
     if (b.solvedBy) return { ok: false, closed: "this bounty has already been won" };
     if (now > b.deadline) return { ok: false, closed: "this bounty has expired" };
+
+    // Checked here as well as in `solve`, for the same reason the rating is: a poster should not
+    // pay a submission fee to be told they cannot win their own bounty.
+    if (who && b.poster.toLowerCase() === who.toLowerCase()) {
+      return { ok: false, closed: "a bounty cannot be won by whoever posted it" };
+    }
+
     if (b.minRating === 0 || !who) return { ok: true };
 
     const rating = rate(record, who).rating;
@@ -228,6 +261,18 @@ export class Bounties {
     if (b.solvedBy) return { ok: false, closed: "this bounty has already been won" };
     if (now > b.deadline) return { ok: false, closed: "this bounty has expired" };
     if (!solver) return { ok: false, closed: "a bounty pays an address, so attempting one takes a payment" };
+
+    /**
+     * A poster may not win their own bounty.
+     *
+     * Otherwise the money comes straight back, minus fees, and a record of having won it is bought
+     * for the price of a submission — which is the cheapest reputation on the board. `SPEC.md` has
+     * always listed this; nothing compared the two until now, because until the escrow was read the
+     * poster was a header and comparing headers would have proved nothing.
+     */
+    if (b.poster.toLowerCase() === solver.toLowerCase()) {
+      return { ok: false, closed: "a bounty cannot be won by whoever posted it" };
+    }
 
     const rating = rate(record, solver).rating;
     if (rating < b.minRating) {
