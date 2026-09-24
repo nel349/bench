@@ -1,17 +1,24 @@
-import { useBounties, useFeed } from "../api/useGym.ts";
+import { useBounties, useFeed, useProblems } from "../api/useGym.ts";
 import { Plate } from "../plate/Plate.tsx";
 import { Nav } from "../plate/Nav.tsx";
-import { useView } from "../plate/useView.ts";
+import { useRoute } from "../plate/useView.ts";
 import { Hero } from "../hero/Hero.tsx";
 import { Gigs } from "./Gigs.tsx";
 import { Ledger } from "./Ledger.tsx";
+import { Exercise } from "./Exercise.tsx";
+import { ExerciseRail } from "../components/ExerciseRail.tsx";
 import { Amount } from "../components/Amount.tsx";
 import { chainFor, type ArcChainId } from "../chain/arc.ts";
 
 export interface HomeProps {
   readonly chainId: ArcChainId;
   readonly probePrice: string;
+  /** The reputation registry, for the rep lookup to point at. `null` where the server has none. */
+  readonly registry: string | null;
 }
+
+/** The exercise with a demo of its own. The rest show their card and board. */
+const DEMO = "blackbox";
 
 const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toFixed(6);
 
@@ -23,8 +30,13 @@ const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toF
  * page leads with the payoff and shows the training as the way to it — not the other way round,
  * which is how it read when it opened on "every question costs money".
  */
-export function Home({ chainId, probePrice }: HomeProps) {
-  const view = useView();
+export function Home({ chainId, probePrice, registry }: HomeProps) {
+  const { view, detail } = useRoute();
+  const problems = useProblems();
+  const list = problems.data ?? [];
+  const asked = detail[0];
+  const chosen = asked !== undefined && list.some((p) => p.id === asked) ? asked : DEMO;
+  const showDemo = chosen === DEMO && detail[1] !== "board";
   const bounties = useBounties();
   const feed = useFeed();
   const chain = chainFor(chainId);
@@ -69,11 +81,18 @@ export function Home({ chainId, probePrice }: HomeProps) {
               </a>
             )}
           </section>
-          <Hero probePrice={probePrice} />
+          <div className="stage">
+            {list.length > 0 && <ExerciseRail problems={list} chosen={chosen} />}
+            {showDemo
+              ? <Hero probePrice={probePrice} />
+              : <Exercise id={chosen} number={list.findIndex((p) => p.id === chosen) + 1}
+                          demoHref={chosen === DEMO ? `#rig/${DEMO}` : null} />}
+          </div>
         </div>
       )}
-      {view === "gigs" && <Gigs bounties={bounties.data ?? []} />}
-      {view === "ledger" && <Ledger runs={runs} />}
+      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} />}
+      {view === "ledger" && <Ledger runs={runs} looking={detail[0] ?? ""} registry={registry}
+                                    explorer={chain.blockExplorers.default.url} />}
     </Plate>
   );
 }

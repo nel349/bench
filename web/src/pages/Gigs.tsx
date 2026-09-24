@@ -1,10 +1,12 @@
 import type { BountyWire } from "../../../src/wire.ts";
 import { Amount } from "../components/Amount.tsx";
-import { until } from "../lib/elapsed.ts";
+import { short, until } from "../lib/elapsed.ts";
 import { Empty } from "../components/Empty.tsx";
 
 export interface GigsProps {
   readonly bounties: readonly BountyWire[];
+  /** Where a payout transaction can be looked up. */
+  readonly explorer: string;
 }
 
 /** Open first and richest first, then the ones already taken, then the ones that ran out of time. */
@@ -20,7 +22,7 @@ const order = (a: BountyWire, b: BountyWire) => {
  * allowed to try, and how long is left — the requirement said up front rather than discovered on a
  * refusal after paying to submit.
  */
-export function Gigs({ bounties }: GigsProps) {
+export function Gigs({ bounties, explorer }: GigsProps) {
   const sorted = [...bounties].sort(order);
   return (
     <section className="board">
@@ -42,12 +44,20 @@ export function Gigs({ bounties }: GigsProps) {
               <div className="gig-pay"><Amount value={b.amount} /></div>
               <h3>{b.title}</h3>
               <p>{b.statement.length > 150 ? `${b.statement.slice(0, 150)}…` : b.statement}</p>
+              {b.solvedBy && (
+                <p className="gig-won">
+                  Won by <span className="addr">{short(b.solvedBy)}</span>
+                  {b.awardTx
+                    ? <> · <a href={`${explorer}/tx/${b.awardTx}`}>paid on chain</a></>
+                    : " · paying out"}
+                </p>
+              )}
               <footer className="gig-meta">
                 <span className={b.minRating > 0 ? "req" : "req none"}>
                   {b.minRating > 0 ? `${b.minRating} REP TO ENTER` : "NO REP NEEDED"}
                 </span>
                 <span>
-                  {b.solvedBy ? (b.awaitingPayout ? "TAKEN · PAYING OUT" : "TAKEN")
+                  {b.solvedBy ? "TAKEN"
                     : b.open ? until(b.deadline).toUpperCase() : "EXPIRED"}
                 </span>
               </footer>

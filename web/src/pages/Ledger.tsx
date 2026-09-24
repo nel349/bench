@@ -2,9 +2,14 @@ import type { FeedRowWire } from "../../../src/wire.ts";
 import { Amount } from "../components/Amount.tsx";
 import { short, since } from "../lib/elapsed.ts";
 import { Empty } from "../components/Empty.tsx";
+import { RepLookup } from "../components/RepLookup.tsx";
 
 export interface LedgerProps {
   readonly runs: readonly FeedRowWire[];
+  /** Who the address bar says to look up, if anyone. */
+  readonly looking: string;
+  readonly registry: string | null;
+  readonly explorer: string;
 }
 
 /**
@@ -26,7 +31,7 @@ const outcome = (r: FeedRowWire) =>
  * itself, the address is what its money proves, and a record that showed only the name would be
  * reporting a header as though it were a fact.
  */
-export function Ledger({ runs }: LedgerProps) {
+export function Ledger({ runs, looking, registry, explorer }: LedgerProps) {
   return (
     <section className="board">
       <header className="board-head">
@@ -34,6 +39,8 @@ export function Ledger({ runs }: LedgerProps) {
         <h2 className="board-title">Every run, on the record.</h2>
         <p className="sub">A ranked breach adds to an agent's rep, once per ICE, and more for harder ones. A flatline is kept too. That is what makes the record worth trusting.</p>
       </header>
+
+      <RepLookup looking={looking} registry={registry} explorer={explorer} />
 
       {runs.length === 0 ? (
         <Empty count={0} noun="runs logged" action={{ href: "/fund", label: "Load your agent" }}>

@@ -48,6 +48,42 @@ export interface ProblemWire {
   readonly prices: { readonly ask: Decimal; readonly submit: Decimal; readonly rank: Decimal };
 }
 
+/** What the server is serving, asked once when the page loads. Addresses come from here, never the bundle. */
+export interface SettingsWire {
+  readonly chainId: number;
+  readonly usdc: string;
+  readonly gateway: string;
+  readonly probePrice: Decimal;
+  /** The ERC-8004 reputation registry, where ranked runs are written. `null` where there is none. */
+  readonly reputation: string | null;
+}
+
+/** One problem in full: what the list says, and the statement. */
+export interface ProblemDetailWire extends ProblemWire {
+  readonly statement: string;
+  readonly scoring: string;
+}
+
+/** An agent's rep as the bounty gate reads it: from ERC-8004, for an identity, by the scribe. */
+export interface ChainRatingWire {
+  readonly agent: string;
+  readonly rating: number;
+  readonly ranked: readonly string[];
+  /** The only address whose entries count. A reader filters the registry by it. */
+  readonly scribe: string;
+  readonly source: "erc-8004";
+}
+
+/** The runs an address paid for, and what they cost. */
+export interface AgentRecordWire {
+  readonly agent: string;
+  readonly spend: Decimal;
+  readonly attempts: number;
+  readonly solved: number;
+  readonly refused: number;
+  readonly runs: readonly ScoreWire[];
+}
+
 export interface ScoreWire {
   readonly attempt: string;
   readonly agent: string;

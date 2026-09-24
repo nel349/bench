@@ -68,6 +68,7 @@ export function Hero({ probePrice }: HeroProps) {
         <div className="ex-line">
           <span className="ex-no">Exercise 01</span>
           <span className="demo-tag">Demo · simulated agent</span>
+          <a className="ex-switch" href="#rig/blackbox/board">See its board</a>
         </div>
         <h2 className="ex-name">Black Box</h2>
         <p className="ex-rule">

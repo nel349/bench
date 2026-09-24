@@ -13,6 +13,7 @@ import { ArcAllowances } from "./arc/allowance.ts";
 import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
 import { ArcEscrow } from "./arc/escrow.ts";
 import { ArcReputation } from "./arc/reputation.ts";
+import { paidBy } from "./rating.ts";
 import { privateKeyFrom } from "./arc/keys.ts";
 import { ArcFunds } from "./arc/funds.ts";
 import { PRICE } from "./pricing.ts";
@@ -79,13 +80,14 @@ const store = process.env["BENCH_DB"] === ":memory:" ? new MemoryStore() : new S
  * agent's account and the chain is what enforces it, so a second number here could only ever be a
  * second opinion about somebody else's money — right up until the two disagreed.
  *
- * Runs bind to the address that paid for them, so spend is summed over the payer, falling back to
- * the header for runs that predate a payment.
+ * Runs bind to the address that paid for them, so spend is summed over the payer. A run nobody
+ * paid for spent nothing and belongs to nobody.
  */
 const spentBy = (agent: string): bigint =>
-  store.all()
-    .filter((a) => (a.payer ?? a.agent) === agent)
-    .reduce((total, a) => total + a.spend, 0n);
+  // `paidBy`, so an address is the same account whatever its case. An exact comparison here reported
+  // $0.00 for an agent that had spent real money, because payers are stored lowercase and a record is
+  // looked up by whatever case the caller used. The functional test on testnet found it.
+  paidBy(store.all(), agent).reduce((total, a) => total + a.spend, 0n);
 
 const payments: Payments = payTo
   ? new ArcPayments(new GatewayFacilitator(net, {

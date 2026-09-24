@@ -348,6 +348,18 @@ describe("the boards", () => {
     expect(board).toHaveLength(0);
   });
 
+  /**
+   * Starting a run is free, so a feed that listed every run could be filled by anyone for nothing.
+   * Found on the testnet page: empty "anonymous" rows from runs that never bought a probe.
+   */
+  test("the feed shows runs someone paid for, refusals included, and not runs nobody paid for", async () => {
+    await call("POST", "/attempts", {}, asAgent);                                  // started, never paid
+    const paid = await startAttempt();
+    await call("POST", `/attempts/${paid.id}/ask`, { side: "left", index: 0 }, asAgent);
+    const feed = (await (await call("GET", "/feed")).json()) as { attempt: string }[];
+    expect(feed.map((r) => r.attempt)).toEqual([paid.id]);
+  });
+
   test("an unsolved run never appears on the board", async () => {
     money.grant("agent:quitter", usdc("1"));
     const started = (await (await call("POST", "/attempts", {}, { "x-agent": "agent:quitter" })).json()) as { id: string };
@@ -552,6 +564,45 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
                              minRating: 1, checker: { kind: "equals", value: 7 } }),
     }), without);
     expect(r.status).toBe(409);
+  });
+});
+
+/**
+ * Bodies that are not objects. Found by the functional test on testnet: Codebreaker's documented
+ * probe is a bare string, and the router tested `"question" in body` on it, which throws, so every
+ * Codebreaker probe sent the documented way was a 500. Unit tests had called the lifecycle directly.
+ */
+describe("a body that is not an object", () => {
+  test("a bare string is a question, and Codebreaker answers it", async () => {
+    const { id } = await (await call("POST", "/attempts", { problem: "codebreaker" }, asAgent)).json() as { id: string };
+    const r = await call("POST", `/attempts/${id}/ask`, "AABB", asAgent);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ answer: { guess: "AABB" } });
+  });
+
+  test("a bare array is a question too", async () => {
+    const { id } = await (await call("POST", "/attempts", { problem: "ranking" }, asAgent)).json() as { id: string };
+    expect((await call("POST", `/attempts/${id}/ask`, ["A", "B"], asAgent)).status).toBe(200);
+  });
+
+  test("an answer of 0 or false is still an answer, not a missing body", async () => {
+    const { id } = await (await call("POST", "/attempts", { problem: "liar" }, asAgent)).json() as { id: string };
+    const r = await call("POST", `/attempts/${id}/submit`, { answer: 0 }, asAgent);
+    expect(r.status).toBe(200);
+  });
+
+  test("anything but an object where one is required is a 400, never a 500", async () => {
+    const { id } = await (await call("POST", "/attempts", { problem: "toll" }, asAgent)).json() as { id: string };
+    const withBounties: Deps = { ...deps, bounties: new Bounties() };
+    for (const bad of ["EESS", 7, [1, 2], null, true]) {
+      expect((await call("POST", `/attempts/${id}/submit`, bad, asAgent)).status).toBe(400);
+      const posted = await handle(new Request("http://bench.test/bounties", {
+        method: "POST", headers: { "content-type": "application/json", ...asAgent }, body: JSON.stringify(bad) }), withBounties);
+      expect(posted.status).toBe(400);
+    }
+    const unparsable = await handle(new Request(`http://bench.test/attempts/${id}/ask`, {
+      method: "POST", headers: { "content-type": "application/json", ...asAgent }, body: "{not json" }), deps);
+    expect(unparsable.status).toBe(400);
   });
 });
 

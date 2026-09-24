@@ -23,7 +23,7 @@ import type { FundsReader } from "./arc/funds.ts";
 import { paidBy, rate, weigh } from "./rating.ts";
 import type { Reputation } from "./reputation.ts";
 import { PATHS, FEED_LIMIT } from "./paths.ts";
-import type { ProblemWire } from "./wire.ts";
+import type { AgentRecordWire, ChainRatingWire, ProblemDetailWire, ProblemWire, SettingsWire } from "./wire.ts";
 
 /**
  * The HTTP surface, as one function from a request to a response.
@@ -216,6 +216,23 @@ const receipted = (res: Response, charge: { payer?: string; settlement?: string 
 const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.get("x-agent-id"));
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
+
+/** What `bodyOf` returns when there is no body, or it is not JSON. Distinct from any value JSON can hold. */
+const NO_BODY: unique symbol = Symbol("no body");
+
+/**
+ * The request's JSON, whatever it is: an object, an array, a string, a number, even `false`.
+ *
+ * Every route used to read the body with `.catch(() => null)` and then test `"answer" in body`. A
+ * bare string is valid JSON, and `in` on a string throws, so Codebreaker's documented probe, `"ABCD"`,
+ * was a 500 every time, and a bare `0` was taken for no body at all. The functional test on testnet
+ * found it; the unit tests had called the lifecycle directly and never sent a string.
+ */
+async function bodyOf(req: Request): Promise<unknown> {
+  try { return await req.json(); } catch { return NO_BODY; }
+}
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** What an unqualified agent is told to do, in one place. */
 const HOW_TO_QUALIFY =
@@ -423,12 +440,14 @@ async function route(req: Request, deps: Deps): Promise<Response> {
    */
   if (req.method === "GET" && path === PATHS.settings) {
     const c = contractsOf(deps.net);
-    return json({
+    const settings: SettingsWire = {
       chainId: chainOf(deps.net).id,
       usdc: c.usdc,
       gateway: c.gatewayWallet,
       probePrice: format(PRICE.ask),
-    });
+      reputation: deps.reputation ? c.erc8004?.reputation ?? null : null,
+    };
+    return json(settings);
   }
 
   if (req.method === "GET" && path === PATHS.problems) {
@@ -441,11 +460,12 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     if (!problem) return fail(404, `no problem ${seg[1]}`);
 
     if (seg.length === 2) {
-      return json({
+      const detail: ProblemDetailWire = {
         id: problem.id, title: problem.title, category: problem.category,
         level: problem.level, par: problem.par,
         statement: problem.statement, scoring: SCORING, prices,
-      });
+      };
+      return json(detail);
     }
 
     /**
@@ -462,8 +482,10 @@ async function route(req: Request, deps: Deps): Promise<Response> {
 
   if (req.method === "POST" && path === PATHS.attempts) {
     const agent = agentOf(req) ?? ANONYMOUS;
-    const body = (await req.json().catch(() => ({}))) as
-      { seed?: unknown; problem?: string; budget?: unknown };
+    const read = await bodyOf(req);
+    // No body is allowed and means the defaults; a body that is not an object is a mistake.
+    if (read !== NO_BODY && !isRecord(read)) return fail(400, "starting a run takes a JSON object, or no body");
+    const body = (read === NO_BODY ? {} : read) as { seed?: unknown; problem?: string; budget?: unknown };
     const problem = body.problem ?? "blackbox";
 
     /**
@@ -559,10 +581,11 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
 
     if (req.method === "POST" && seg[2] === "ask") {
-      const body = (await req.json().catch(() => null)) as { question?: unknown } | null;
-      if (!body) return fail(400, "ask takes a JSON body");
-      // A bare body is the question, so `{"side":"left","index":0}` works as well as `{"question":...}`.
-      const question = "question" in body ? body.question : body;
+      const body = await bodyOf(req);
+      if (body === NO_BODY) return fail(400, "ask takes a JSON body");
+      // A bare body is the question, so `{"side":"left","index":0}` and `"ABCD"` work as well as
+      // `{"question":...}`.
+      const question = isRecord(body) && "question" in body ? body.question : body;
       const out = await deps.attempts.ask(attempt.id, question, proofOf(req));
       if ("malformed" in out) {
         const p = problemOf(attempt.problem);
@@ -580,9 +603,11 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
 
     if (req.method === "POST" && seg[2] === "submit") {
-      const body = (await req.json().catch(() => null)) as { answer?: unknown; guess?: unknown } | null;
-      if (!body) return fail(400, "submit takes a JSON body with an answer");
-      const answer = "answer" in body ? body.answer : body.guess;
+      const body = await bodyOf(req);
+      if (!isRecord(body) || !("answer" in body || "guess" in body)) {
+        return fail(400, 'submit takes a JSON object with an answer: {"answer": ...}');
+      }
+      const answer = "answer" in body ? body["answer"] : body["guess"];
       const out = await deps.attempts.submit(attempt.id, answer, proofOf(req));
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path, deps.net);
       if ("badPayment" in out) return paymentRefused(out.badPayment, out.quote, path, deps.net);
@@ -605,14 +630,15 @@ async function route(req: Request, deps: Deps): Promise<Response> {
    */
   if (req.method === "GET" && seg[0] === "agents" && seg[1]) {
     const mine = paidBy(deps.attempts.all(), seg[1]);
-    return json({
+    const record: AgentRecordWire = {
       agent: seg[1],
       spend: format(deps.payments.spentBy(seg[1]!)),
       attempts: mine.length,
       solved: mine.filter((a) => a.outcome === "solved").length,
       refused: mine.filter((a) => a.outcome === "refused").length,
       runs: mine.map((a) => wireScore(score(a))),
-    });
+    };
+    return json(record);
   }
 
   /**
@@ -622,7 +648,10 @@ async function route(req: Request, deps: Deps): Promise<Response> {
    * makes the number mean anything. Hiding refusals would make the gym look easier than it is.
    */
   if (req.method === "GET" && path === PATHS.feed) {
-    const recent = [...deps.attempts.all()]
+    // Paid runs only: starting one is free, so a feed of every run could be filled by anyone for
+    // nothing. A run nobody paid for is nobody's, here as on the boards.
+    const recent = deps.attempts.all()
+      .filter((a) => a.payer !== null)
       .sort((x, y) => y.startedAt - x.startedAt)
       .slice(0, FEED_LIMIT);
     return json(recent.map((a) => ({ ...wireScore(score(a)), startedAt: a.startedAt })));
@@ -642,8 +671,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
 
   if (req.method === "POST" && path === PATHS.bounties) {
     const agent = agentOf(req) ?? ANONYMOUS;
-    const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return fail(400, "posting a bounty takes a JSON body");
+    const body = await bodyOf(req);
+    if (!isRecord(body)) return fail(400, "posting a bounty takes a JSON object");
 
     /**
      * The escrow is checked before the bounty exists, not after.
@@ -706,8 +735,8 @@ async function route(req: Request, deps: Deps): Promise<Response> {
 
     if (req.method === "POST" && seg[2] === "solve") {
       const agent = agentOf(req) ?? ANONYMOUS;
-      const body = (await req.json().catch(() => null)) as { answer?: unknown } | null;
-      if (!body || !("answer" in body)) return fail(400, "solving takes a JSON body with an answer");
+      const body = await bodyOf(req);
+      if (!isRecord(body) || !("answer" in body)) return fail(400, 'solving takes a JSON object with an answer: {"answer": ...}');
 
       /**
        * Refused before charged, where we already know enough to refuse.
@@ -821,8 +850,9 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       } catch {
         return unavailable("the reputation registry could not be read");
       }
-      return json({ agent: agentId.toString(), rating: weigh(problems), ranked: problems,
-                    scribe: deps.reputation.scribe, source: "erc-8004" });
+      const chain: ChainRatingWire = { agent: agentId.toString(), rating: weigh(problems), ranked: problems,
+                                       scribe: deps.reputation.scribe, source: "erc-8004" };
+      return json(chain);
     }
     const r = rate(deps.attempts.all(), seg[1]);
     return json({ ...r, spend: format(r.spend), best: r.best === null ? null : format(r.best) });
