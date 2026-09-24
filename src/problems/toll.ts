@@ -1,5 +1,5 @@
-import { rng } from "./blackbox.ts";
-import { register, type Problem } from "./problem.ts";
+import { stream, type Seed } from "./seed.ts";
+import { GENERATOR, register, type Problem } from "./problem.ts";
 
 /**
  * Toll: a maze you cannot see, and a route you have to pay to learn.
@@ -31,8 +31,8 @@ const OPPOSITE: Record<Dir, Dir> = { N: "S", E: "W", S: "N", W: "E" };
  * Written out rather than imported for the same reason the board generator is — a stranger checking
  * a run should not have to match a dependency's version to rebuild the maze.
  */
-export function mazeFrom(seed: number): Walls[][] {
-  const next = rng(seed ^ 0x70117);
+export function mazeFrom(seed: Seed): Walls[][] {
+  const next = stream(seed, "toll/maze");
   const walls: { N: boolean; E: boolean; S: boolean; W: boolean }[][] =
     Array.from({ length: SIZE }, () => Array.from({ length: SIZE }, () => ({ N: true, E: true, S: true, W: true })));
   const seen = Array.from({ length: SIZE }, () => Array<boolean>(SIZE).fill(false));
@@ -92,6 +92,34 @@ export function walk(maze: Walls[][], route: readonly Dir[]): boolean {
   return x === EXIT.x && y === EXIT.y;
 }
 
+/**
+ * The shortest route through a maze, breadth-first through the openings.
+ *
+ * The reference solution, in the open like the rest: it is only as useful as the map, and the map
+ * is paid for. Tests use it to know an answer without trusting the checker, since `walk` is written
+ * separately and the two have to agree.
+ */
+export function shortestRoute(maze: Walls[][]): Dir[] {
+  const step: Record<Dir, readonly [number, number]> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
+  const seen = new Set<string>([`${START.x},${START.y}`]);
+  const queue: { x: number; y: number; path: Dir[] }[] = [{ ...START, path: [] }];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (cur.x === EXIT.x && cur.y === EXIT.y) return cur.path;
+    for (const d of ["N", "E", "S", "W"] as Dir[]) {
+      if (maze[cur.y]![cur.x]![d]) continue;
+      const [dx, dy] = step[d];
+      const nx = cur.x + dx, ny = cur.y + dy;
+      if (nx < 0 || ny < 0 || nx >= SIZE || ny >= SIZE) continue;
+      const key = `${nx},${ny}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push({ x: nx, y: ny, path: [...cur.path, d] });
+    }
+  }
+  throw new Error("a perfect maze always has a route, so this is a generator bug");
+}
+
 const parseRoute = (a: unknown): Dir[] | null => {
   const dirs = ["N", "E", "S", "W"];
   if (typeof a === "string") {
@@ -107,19 +135,22 @@ const parseRoute = (a: unknown): Dir[] | null => {
 export const toll: Problem = register({
   id: "toll",
   title: "Toll",
-  category: "cost-bounded reasoning",
+  category: "knowing what to buy",
+  level: "easy",
+  par: 1,
   statement:
     "A maze you cannot see, 8x8, entered at the top left and left at the bottom right. Ask what walls " +
-    "a cell has, or buy the whole map — each costs the same. Then submit the route as a string of " +
+    "a cell has, or buy the whole map; each costs the same. Then submit the route as a string of " +
     "compass letters. Looking at every cell costs sixty-four times what the map does; the map costs " +
     "the same as one look. The question is how little you can get away with.",
   harness: (seed) => ({
     probe: '{ "look": { "x": 0-7, "y": 0-7 } }  or  { "map": true }',
-    answer: '"EESSEN..." — N, E, S, W from the start',
+    answer: '"EESSEN...", the letters N, E, S and W, walked from the start',
     maze: { size: SIZE, start: START, exit: EXIT },
     note:
-      "A maze is a function of its seed: recursive backtracking, mulberry32, in " +
-      "src/problems/toll.ts. Rebuild it, replay any route, and check a run yourself.",
+      "A maze is a function of its seed: recursive backtracking over the stream in " +
+      "src/problems/seed.ts, in src/problems/toll.ts. Rebuild it, replay any route, and check a run yourself.",
+    generator: GENERATOR,
     example: { seed, walls: mazeFrom(seed)[0]![0] },
   }),
   initialState: () => null,

@@ -7,9 +7,15 @@ export interface LedgerProps {
   readonly runs: readonly FeedRowWire[];
 }
 
-/** What a finished run did for the agent's record. */
+/**
+ * What a run did for the agent's record.
+ *
+ * A breach is not rep until it is ranked, and a ranked run adds rep only the first time on that ICE,
+ * so no row claims a number: RANKED says it is on the record, and the rating says how much.
+ */
 const outcome = (r: FeedRowWire) =>
-  r.endedBy === "solved" ? { label: "+1 REP", tone: "rep" }
+  r.endedBy === "solved" && r.ranked ? { label: "RANKED", tone: "rep" }
+  : r.endedBy === "solved" ? { label: "BREACHED", tone: "rep" }
   : r.endedBy === "refused" ? { label: "FLATLINED", tone: "ice" }
   : { label: "IN PROGRESS", tone: "dim" };
 
@@ -26,7 +32,7 @@ export function Ledger({ runs }: LedgerProps) {
       <header className="board-head">
         <p className="kicker"><span>02</span> rep</p>
         <h2 className="board-title">Every run, on the record.</h2>
-        <p className="sub">A breach adds to an agent's rep. A flatline is kept too. That is what makes the record worth trusting.</p>
+        <p className="sub">A ranked breach adds to an agent's rep, once per ICE, and more for harder ones. A flatline is kept too. That is what makes the record worth trusting.</p>
       </header>
 
       {runs.length === 0 ? (

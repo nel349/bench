@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { trace, boardFrom, check, fire, ports, rng, type Board, type Port } from "./blackbox.ts";
+import { trace, boardFrom, check, fire, ports, type Board, type Port } from "./blackbox.ts";
 
 /** A board written out by hand, so the expected ray behaviour can be reasoned about rather than trusted. */
 const board = (size: number, ...atoms: [number, number][]): Board =>
@@ -62,7 +62,7 @@ describe("atoms on both sides send the ray back", () => {
 
 describe("a ray always ends", () => {
   test("no board and no port leaves one running", () => {
-    for (let seed = 0; seed < 40; seed++) {
+    for (const seed of Array.from({ length: 40 }, (_, i) => String(i))) {
       const b = boardFrom(seed);
       for (const p of ports(b.size)) {
         const r = fire(b, p);
@@ -74,13 +74,13 @@ describe("a ray always ends", () => {
 
 describe("a board is a function of its seed, so a stranger can rebuild it", () => {
   test("the same seed gives the same atoms", () => {
-    expect(boardFrom(12345).atoms).toEqual(boardFrom(12345).atoms);
+    expect(boardFrom("12345").atoms).toEqual(boardFrom("12345").atoms);
   });
   test("different seeds give different boards", () => {
-    expect(boardFrom(1).atoms).not.toEqual(boardFrom(2).atoms);
+    expect(boardFrom("1").atoms).not.toEqual(boardFrom("2").atoms);
   });
   test("atoms never overlap and always fit", () => {
-    for (let seed = 0; seed < 60; seed++) {
+    for (const seed of Array.from({ length: 60 }, (_, i) => String(i))) {
       const b = boardFrom(seed);
       expect(b.atoms).toHaveLength(4);
       expect(new Set(b.atoms.map((a) => `${a.x},${a.y}`)).size).toBe(4);
@@ -92,14 +92,8 @@ describe("a board is a function of its seed, so a stranger can rebuild it", () =
   });
   test("the generator is uniform enough to be worth playing", () => {
     const seen = new Set<string>();
-    for (let seed = 0; seed < 200; seed++) for (const a of boardFrom(seed).atoms) seen.add(`${a.x},${a.y}`);
+    for (const seed of Array.from({ length: 200 }, (_, i) => String(i))) for (const a of boardFrom(seed).atoms) seen.add(`${a.x},${a.y}`);
     expect(seen.size).toBeGreaterThan(50); // of 64 cells
-  });
-  test("the rng is the documented mulberry32, not whatever the runtime offers", () => {
-    const next = rng(42);
-    const first = [next(), next(), next()];
-    expect(first).toEqual([rng(42)(), (() => { const n = rng(42); n(); return n(); })(), (() => { const n = rng(42); n(); n(); return n(); })()]);
-    for (const v of first) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThan(1); }
   });
 });
 
@@ -136,7 +130,7 @@ describe("the ports a harness may buy", () => {
  * line straight through an atom it should have hit.
  */
 describe("trace", () => {
-  const SEEDS = Array.from({ length: 200 }, (_, i) => i + 1);
+  const SEEDS = Array.from({ length: 200 }, (_, i) => String(i + 1));
   const adjacent = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
   const onBoard = (size: number, c: { x: number; y: number }) =>
@@ -160,7 +154,7 @@ describe("trace", () => {
   });
 
   test("a ray starts just outside the board, at the port it was fired from", () => {
-    const b = boardFrom(7);
+    const b = boardFrom("7");
     for (const p of ports(b.size)) {
       const first = trace(b, p).path[0]!;
       expect(onBoard(b.size, first)).toBe(false);

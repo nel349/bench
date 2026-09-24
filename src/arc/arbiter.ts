@@ -1,3 +1,4 @@
+import { privateKeyFrom } from "./keys.ts";
 import {
   createWalletClient, createPublicClient, http, parseAbi, getAddress,
   type Address, type Hex,
@@ -121,17 +122,7 @@ export function describeFailure(cause: unknown, depth = 0): string {
   return stripUrls(all || "unknown").slice(0, 300);
 }
 
-/**
- * Reads the key an arbiter signs with.
- *
- * Validated here rather than at the point of use, so a malformed key stops the process at startup
- * instead of at the moment somebody wins a bounty — which is the worst time to discover it.
- */
+/** Reads the key an arbiter signs with. See `privateKeyFrom`. */
 export function arbiterKey(raw: string | undefined): Hex | null {
-  if (!raw) return null;
-  const key = raw.trim();
-  if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
-    throw new Error("BENCH_ARBITER_KEY must be a 0x-prefixed 32-byte hex private key");
-  }
-  return key as Hex;
+  return privateKeyFrom("BENCH_ARBITER_KEY", raw);
 }

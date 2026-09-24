@@ -41,9 +41,10 @@ export class MemoryStore implements Store {
 }
 
 interface Row {
-  id: string; agent: string; problem: string; seed: number; payer: string | null; claimed_id: string | null; identity: string | null;
+  id: string; agent: string; problem: string; seed: string | number; payer: string | null; claimed_id: string | null; identity: string | null;
   started_at: number; ended_at: number | null; outcome: string;
   probes: string; submissions: number; spend: string; budget: string | null; state: string | null;
+  rank_paid: number | null; rank_tx: string | null;
 }
 
 /**
@@ -59,11 +60,11 @@ export class SqliteStore implements Store {
     this.#db.exec("PRAGMA journal_mode = WAL");
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS attempts (
-        id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed INTEGER NOT NULL,
+        id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed TEXT NOT NULL,
         payer TEXT, claimed_id TEXT, identity TEXT,
         started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
         probes TEXT NOT NULL, submissions INTEGER NOT NULL,
-        spend TEXT NOT NULL, budget TEXT, state TEXT
+        spend TEXT NOT NULL, budget TEXT, state TEXT, rank_paid INTEGER, rank_tx TEXT
       );
       CREATE INDEX IF NOT EXISTS attempts_agent ON attempts(agent);
       CREATE INDEX IF NOT EXISTS attempts_outcome ON attempts(outcome);
@@ -86,36 +87,43 @@ export class SqliteStore implements Store {
   #migrate(): void {
     const cols = this.#db.query<{ name: string }, []>("PRAGMA table_info(attempts)").all();
     const has = new Set(cols.map((c) => c.name));
-    for (const col of ["payer", "claimed_id", "identity"]) {
+    for (const col of ["payer", "claimed_id", "identity", "rank_tx"]) {
       if (!has.has(col)) this.#db.exec(`ALTER TABLE attempts ADD COLUMN ${col} TEXT`);
     }
+    if (!has.has("rank_paid")) this.#db.exec("ALTER TABLE attempts ADD COLUMN rank_paid INTEGER");
   }
 
   put(a: Attempt): void {
     this.#db.query(`
-      INSERT INTO attempts (id, agent, problem, seed, payer, claimed_id, identity, started_at, ended_at, outcome, probes, submissions, spend, budget, state)
-      VALUES ($id, $agent, $problem, $seed, $payer, $claimed, $identity, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state)
+      INSERT INTO attempts (id, agent, problem, seed, payer, claimed_id, identity, started_at, ended_at, outcome, probes, submissions, spend, budget, state, rank_paid, rank_tx)
+      VALUES ($id, $agent, $problem, $seed, $payer, $claimed, $identity, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state, $rankPaid, $rankTx)
       ON CONFLICT(id) DO UPDATE SET
         ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs,
-        spend = $spend, state = $state, payer = $payer, identity = $identity
+        spend = $spend, state = $state, payer = $payer, identity = $identity,
+        rank_paid = $rankPaid, rank_tx = $rankTx
     `).run({
       $id: a.id, $agent: a.agent, $problem: a.problem, $seed: a.seed, $payer: a.payer, $claimed: a.claimedId, $identity: a.identity,
       $started: a.startedAt, $ended: a.endedAt, $outcome: a.outcome,
       $probes: JSON.stringify(a.probes), $subs: a.submissions,
       $spend: a.spend.toString(), $budget: a.budget === null ? null : a.budget.toString(),
       $state: a.state === null || a.state === undefined ? null : JSON.stringify(a.state),
+      $rankPaid: a.rank ? 1 : 0, $rankTx: a.rank?.tx ?? null,
     });
   }
 
   #hydrate(r: Row): Attempt {
     return {
-      id: r.id, agent: r.agent, problem: r.problem, seed: r.seed, payer: r.payer,
+      id: r.id, agent: r.agent, problem: r.problem,
+      // A database made before seeds were text declared the column INTEGER, and SQLite hands back
+      // what it holds. Those numeric seeds were played under the old generator: see `seed.ts`.
+      seed: String(r.seed), payer: r.payer,
       claimedId: r.claimed_id, identity: r.identity,
       startedAt: r.started_at, endedAt: r.ended_at, outcome: r.outcome as Attempt["outcome"],
       probes: JSON.parse(r.probes) as { question: unknown; answer: unknown }[],
       submissions: r.submissions, spend: BigInt(r.spend),
       budget: r.budget === null ? null : BigInt(r.budget),
       state: r.state === null ? null : JSON.parse(r.state),
+      rank: r.rank_paid ? { tx: r.rank_tx } : null,
     };
   }
 

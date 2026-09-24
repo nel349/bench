@@ -4,8 +4,6 @@ import { run as runCheck } from "./checkers/run.ts";
 import type { Usdc } from "./money.ts";
 import { usdc, format } from "./money.ts";
 import type { AgentId } from "./payments.ts";
-import type { Attempt } from "./attempt.ts";
-import { rate } from "./rating.ts";
 import { MemoryBounties, type BountyStore } from "./bounty-store.ts";
 import type { Backing } from "./arc/escrow.ts";
 
@@ -178,7 +176,7 @@ export class Bounties {
 
     const minRating = input.minRating ?? 0;
     if (!Number.isInteger(minRating) || (minRating as number) < 0) {
-      return { ok: false, problem: "minRating must be a whole number of problems solved" };
+      return { ok: false, problem: "minRating must be a whole number: the weighted rating an agent needs, from 0" };
     }
 
     const parsed = parseCheck(input.checker);
@@ -217,8 +215,11 @@ export class Bounties {
    *
    * Nothing is leaked by answering this: a rating is already public at `/rating/:agent`. What it
    * saves is an unqualified agent paying a graded-submission fee to be refused.
+   *
+   * `rating` is supplied by the caller, read from wherever ranked runs are written: the ERC-8004
+   * registry on Arc. This module decides against a number and does not know where numbers live.
    */
-  eligibility(id: BountyId, who: string | null, record: readonly Attempt[], now = Date.now()):
+  eligibility(id: BountyId, who: string | null, rating: number, now = Date.now()):
     { readonly ok: true } | { readonly ok: false; readonly closed: string }
     | { readonly ok: false; readonly unqualified: true; readonly rating: number; readonly needs: number } {
     const b = this.store.get(id);
@@ -233,8 +234,6 @@ export class Bounties {
     }
 
     if (b.minRating === 0 || !who) return { ok: true };
-
-    const rating = rate(record, who).rating;
     return rating >= b.minRating ? { ok: true } : { ok: false, unqualified: true, rating, needs: b.minRating };
   }
 
@@ -254,7 +253,7 @@ export class Bounties {
   }
 
   solve(
-    id: BountyId, answer: unknown, solver: string | null, record: readonly Attempt[], now = Date.now(),
+    id: BountyId, answer: unknown, solver: string | null, rating: number, now = Date.now(),
   ): Solved {
     const b = this.store.get(id);
     if (!b) return { ok: false, closed: `no bounty ${id}` };
@@ -274,7 +273,6 @@ export class Bounties {
       return { ok: false, closed: "a bounty cannot be won by whoever posted it" };
     }
 
-    const rating = rate(record, solver).rating;
     if (rating < b.minRating) {
       return { ok: false, unqualified: true, rating, needs: b.minRating };
     }

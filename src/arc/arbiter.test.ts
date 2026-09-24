@@ -185,7 +185,7 @@ describe("winning and being paid are different things", () => {
         amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
     );
     if (!p.ok) throw new Error(p.problem);
-    first.solve(p.bounty.id, SECRET, SOLVER, []);
+    first.solve(p.bounty.id, SECRET, SOLVER, 0);
 
     const after = new Bounties(new SqliteBounties(path));
     expect(after.awaitingPayout().map((b) => b.id)).toEqual([p.bounty.id]);
@@ -228,7 +228,7 @@ describe("a stranger cannot burn the arbiter's gas", () => {
         amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
     );
     if (!p.ok) throw new Error(p.problem);
-    bounties.solve(p.bounty.id, 1, "0xsolver", []);
+    bounties.solve(p.bounty.id, 1, "0xsolver", 0);
 
     const retry = () => handle(new Request(`http://x/bounties/${p.bounty.id}/award`, { method: "POST" }), deps);
     await Promise.all(Array.from({ length: 20 }, retry));
@@ -255,7 +255,7 @@ describe("a stranger cannot burn the arbiter's gas", () => {
         amount: usdc("1"), deadline: Date.now() + 7 * 24 * 3600 * 1000, settled: false },
     );
     if (!p.ok) throw new Error(p.problem);
-    bounties.solve(p.bounty.id, 1, "0xsolver", []);
+    bounties.solve(p.bounty.id, 1, "0xsolver", 0);
 
     const r = await handle(new Request(`http://x/bounties/${p.bounty.id}/award`, { method: "POST" }), deps);
     expect(r.status).toBe(503);

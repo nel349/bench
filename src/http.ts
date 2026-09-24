@@ -1,4 +1,4 @@
-import { Attempts, score, wireAttempt, wireScore, type Attempt } from "./attempt.ts";
+import { Attempts, recordHash, score, wireAttempt, wireScore, type Attempt, type IdentityVerifier } from "./attempt.ts";
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE } from "./pricing.ts";
 import { format, usdc, type Usdc } from "./money.ts";
@@ -6,6 +6,11 @@ import { allProblems, problemOf } from "./problems/problem.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
 import "./problems/toll.ts";
+import "./problems/bisect.ts";
+import "./problems/codebreaker.ts";
+import "./problems/ranking.ts";
+import "./problems/liar.ts";
+import { drawSeed, fingerprint } from "./problems/seed.ts";
 import { caip2, chainOf, contractsOf, network, type Network } from "./arc/chain.ts";
 import { Serial } from "./serialize.ts";
 import { parseAgentId } from "./arc/identity.ts";
@@ -15,8 +20,10 @@ import type { AllowanceReader } from "./arc/allowance.ts";
 import type { Arbiter } from "./arc/arbiter.ts";
 import type { Backing, EscrowReader } from "./arc/escrow.ts";
 import type { FundsReader } from "./arc/funds.ts";
-import { rate } from "./rating.ts";
+import { paidBy, rate, weigh } from "./rating.ts";
+import type { Reputation } from "./reputation.ts";
 import { PATHS, FEED_LIMIT } from "./paths.ts";
+import type { ProblemWire } from "./wire.ts";
 
 /**
  * The HTTP surface, as one function from a request to a response.
@@ -50,6 +57,14 @@ export interface Deps {
    * it should answer 404 on these rather than take a posting it cannot pay out.
    */
   readonly bounties?: Bounties;
+  /**
+   * Where ranked runs are written and ratings read back: ERC-8004 on Arc. Absent where there is no
+   * registry, and then nothing can be ranked and no bounty can require a record, because nothing
+   * here could check one.
+   */
+  readonly reputation?: Reputation;
+  /** Whether an ERC-8004 id belongs to the address that paid. Absent where identities are off. */
+  readonly verifyIdentity?: IdentityVerifier;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
@@ -201,6 +216,26 @@ const receipted = (res: Response, charge: { payer?: string; settlement?: string 
 const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.get("x-agent-id"));
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
+
+/** What an unqualified agent is told to do, in one place. */
+const HOW_TO_QUALIFY =
+  "rank solved runs on different problems: easy counts 1, medium 2, hard 3. " +
+  "Send X-Agent-Id with your ERC-8004 id, from the address that id names as its wallet";
+
+/**
+ * The weighted rating of an ERC-8004 id, read from where ranked runs are written.
+ *
+ * No id, or no registry, is a rating of nothing rather than an error: an agent that has not claimed
+ * an identity has no record to read. A registry that cannot be read throws, and the caller says so,
+ * because refusing someone for a record we failed to read would be our fault reported as theirs.
+ */
+async function ratingOf(deps: Deps, agentId: bigint | null): Promise<number> {
+  if (agentId === null || !deps.reputation) return 0;
+  return weigh(await deps.reputation.ranked(agentId));
+}
+
+/** The harness's seed when none is asked for, so its examples are the same for everyone. */
+const PRACTICE_SEED = "1";
 
 /** Whether this request is a person navigating, rather than a client fetching. */
 const wantsHtml = (req: Request): boolean =>
@@ -396,8 +431,9 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     });
   }
 
-  if (req.method === "GET" && path === "/problems") {
-    return json(allProblems().map((p) => ({ id: p.id, title: p.title, category: p.category, prices })));
+  if (req.method === "GET" && path === PATHS.problems) {
+    return json(allProblems().map((p): ProblemWire =>
+      ({ id: p.id, title: p.title, category: p.category, level: p.level, par: p.par, prices })));
   }
 
   if (req.method === "GET" && seg[0] === "problems" && seg[1]) {
@@ -407,23 +443,41 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     if (seg.length === 2) {
       return json({
         id: problem.id, title: problem.title, category: problem.category,
+        level: problem.level, par: problem.par,
         statement: problem.statement, scoring: SCORING, prices,
       });
     }
 
-    /** The harness: everything needed to rebuild an instance and replay a run, offline and free. */
+    /**
+     * The harness: everything needed to rebuild an instance and replay a run, offline and free.
+     *
+     * Any text is a seed here, which makes this the place to practise on an instance of your
+     * choosing, and the place to check a finished run once its seed has been revealed.
+     */
     if (seg[2] === "harness") {
-      const seed = Number(url.searchParams.get("seed") ?? 1);
-      return json({ problem: problem.id, seed, ...(problem.harness(seed) as object) });
+      const seed = url.searchParams.get("seed") ?? PRACTICE_SEED;
+      return json({ problem: problem.id, seed, fingerprint: fingerprint(seed), ...(problem.harness(seed) as object) });
     }
   }
 
   if (req.method === "POST" && path === PATHS.attempts) {
     const agent = agentOf(req) ?? ANONYMOUS;
     const body = (await req.json().catch(() => ({}))) as
-      { seed?: number; problem?: string; budget?: unknown };
+      { seed?: unknown; problem?: string; budget?: unknown };
     const problem = body.problem ?? "blackbox";
-    const seed = Number.isInteger(body.seed) ? body.seed! : Math.floor(Math.random() * 2 ** 31);
+
+    /**
+     * The gym draws the seed, always, and keeps it until the run is over.
+     *
+     * An agent that chose its seed, or was shown it, could rebuild the instance from the public
+     * generator and submit the answer for nothing. Refused rather than ignored, so a client written
+     * against the old contract finds out instead of silently playing a different instance.
+     */
+    if (body.seed !== undefined) {
+      return fail(400, `a run's seed is drawn by the gym and revealed when the run ends. ` +
+        `To practise on a seed of your choosing, use ${PATHS.problems}/${problem}/harness?seed=…, which is free`);
+    }
+    const seed = drawSeed();
 
     /**
      * A cap the agent sets on itself, on top of whatever its allowance permits.
@@ -457,6 +511,38 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     if (!attempt) return fail(404, `no attempt ${seg[1]}`);
 
     if (req.method === "GET" && seg.length === 2) return json(wireAttempt(attempt));
+
+    /**
+     * Rank a solved run: $0.25 to have it written to the agent's ERC-8004 identity.
+     *
+     * Before the finished-run guard below, because a run has to be finished, and solved, to be
+     * ranked. Everything that would make ranking pointless is refused for free; a record already on
+     * chain is returned for free; a record paid for and not yet written is retried for free.
+     */
+    if (req.method === "POST" && seg[2] === "rank") {
+      if (!deps.reputation) {
+        return fail(404, `no reputation registry on ${deps.net}, so a run cannot be ranked here`);
+      }
+      const reputation = deps.reputation;
+      const out = await deps.attempts.rank(attempt.id, (a, agentId) => reputation.write({
+        agentId, problem: a.problem, cost: a.spend,
+        endpoint: url.origin, uri: `${url.origin}${PATHS.attempts}/${a.id}`, hash: recordHash(a),
+      }), proofOf(req));
+      if ("notRankable" in out) return json({ error: out.notRankable, charged: false }, 409);
+      if ("needsPayment" in out) return paymentRequired(out.needsPayment, path, deps.net);
+      if ("badPayment" in out) return paymentRefused(out.badPayment, out.quote, path, deps.net);
+      if ("unavailable" in out) return unavailable(out.unavailable);
+      if ("refused" in out) {
+        return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining) });
+      }
+      const ranked = deps.attempts.get(attempt.id)!;
+      if ("unwritten" in out) {
+        return receipted(json({ ranked: false, because: out.unwritten, paid: format(out.paid),
+                               attempt: wireAttempt(ranked) }, 503), out, deps.net);
+      }
+      return receipted(json({ ranked: true, tx: out.ranked, paid: format(out.paid),
+                             scribe: reputation.scribe, attempt: wireAttempt(ranked) }), out, deps.net);
+    }
 
     /**
      * A finished run is finished.
@@ -512,15 +598,13 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   }
 
   /**
-   * An agent's record.
+   * An agent's record: the runs its money paid for, the same rule `rate` uses.
    *
-   * Matched on the payer *or* the label, the same rule `rate` uses. They disagreed before: this
-   * filtered on the header alone, so `/rating/0xabc…` returned a record and `/agents/0xabc…`
-   * returned nothing for the same agent. One of those is the identity money proves.
+   * They disagreed once: this filtered on the header alone, so `/rating/0xabc…` returned a record
+   * and `/agents/0xabc…` returned nothing for the same agent. Both now go through `paidBy`.
    */
   if (req.method === "GET" && seg[0] === "agents" && seg[1]) {
-    const who = seg[1];
-    const mine = deps.attempts.all().filter((a) => (a.payer ?? a.agent) === who || a.agent === who);
+    const mine = paidBy(deps.attempts.all(), seg[1]);
     return json({
       agent: seg[1],
       spend: format(deps.payments.spentBy(seg[1]!)),
@@ -582,6 +666,12 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       backing = read.backing;
     }
 
+    // A bar nobody here can check is a bar that means nothing, so it is not accepted.
+    if (typeof body["minRating"] === "number" && body["minRating"] > 0 && !deps.reputation) {
+      return fail(409, "this server has no reputation registry to check a record against, " +
+        "so it cannot take a bounty that requires one. Post it with minRating 0");
+    }
+
     const posted = deps.bounties!.post({ poster: agent, ...body } as never, Date.now(), backing);
     if (!posted.ok) {
       return json({ error: posted.problem, ...(posted.at ? { at: posted.at } : {}) }, 400);
@@ -627,12 +717,19 @@ async function route(req: Request, deps: Deps): Promise<Response> {
        * fee to be told it could not play — the same tax on a rejected request that a malformed
        * probe is deliberately spared. A rating is public, so answering this early leaks nothing.
        */
-      const eligible = deps.bounties!.eligibility(bounty.id, agent, deps.attempts.all());
+      const claimed = claimedIdOf(req);
+      let standing: number;
+      try {
+        standing = await ratingOf(deps, claimed);
+      } catch {
+        return unavailable("the reputation registry could not be read, so a record cannot be checked");
+      }
+      const eligible = deps.bounties!.eligibility(bounty.id, agent, standing);
       if (!eligible.ok) {
         if ("closed" in eligible) return json({ error: eligible.closed }, 409);
         return json({
           error: "this bounty is for agents with a record", rating: eligible.rating, needs: eligible.needs,
-          how: `solve ${eligible.needs} different problems here first`,
+          how: HOW_TO_QUALIFY,
           charged: false,
         }, 403);
       }
@@ -649,8 +746,14 @@ async function route(req: Request, deps: Deps): Promise<Response> {
         return json({ refused: charge.refused, wanted: format(charge.wanted), remaining: format(charge.remaining) });
       }
 
+      /**
+       * The record counts only if the identity it was read for is paid for by the address that just
+       * paid. Otherwise anyone could claim a qualified agent's id and borrow its rating.
+       */
       const solver = charge.payer ?? agent;
-      const out = deps.bounties!.solve(bounty.id, body.answer, solver, deps.attempts.all());
+      const owned = claimed !== null && deps.verifyIdentity !== undefined &&
+        await deps.verifyIdentity(claimed, solver).catch(() => false);
+      const out = deps.bounties!.solve(bounty.id, body.answer, solver, owned ? standing : 0);
 
       if (out.ok) {
         /**
@@ -676,8 +779,9 @@ async function route(req: Request, deps: Deps): Promise<Response> {
          */
         return json({
           error: "this bounty is for agents with a record", rating: out.rating, needs: out.needs,
-          how: `solve ${out.needs} different problems here first`,
-          charged: true, note: "the address that paid has a different record from the name you sent",
+          how: HOW_TO_QUALIFY,
+          charged: true,
+          note: "the record was read for the ERC-8004 id you sent, and that id is not paid for by the address that paid",
         }, 403);
       }
       if ("closed" in out) return json({ error: out.closed }, 409);
@@ -704,6 +808,22 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   }
 
   if (req.method === "GET" && seg[0] === "rating" && seg[1]) {
+    /**
+     * An ERC-8004 id is answered from the registry, the number the bounty gate uses, with what a
+     * stranger needs to read it themselves: which registry, and whose entries count.
+     */
+    const agentId = parseAgentId(seg[1]);
+    if (agentId !== null) {
+      if (!deps.reputation) return fail(404, `no reputation registry on ${deps.net} to read a record from`);
+      let problems: readonly string[];
+      try {
+        problems = await deps.reputation.ranked(agentId);
+      } catch {
+        return unavailable("the reputation registry could not be read");
+      }
+      return json({ agent: agentId.toString(), rating: weigh(problems), ranked: problems,
+                    scribe: deps.reputation.scribe, source: "erc-8004" });
+    }
     const r = rate(deps.attempts.all(), seg[1]);
     return json({ ...r, spend: format(r.spend), best: r.best === null ? null : format(r.best) });
   }
@@ -711,7 +831,10 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   /** Cost to solve, cheapest first. Unsolved runs are listed but never rank above a solved one. */
   if (req.method === "GET" && seg[0] === "leaderboard" && seg[1]) {
     if (!problemOf(seg[1])) return fail(404, `no problem ${seg[1]}`);
-    const solved = deps.attempts.all().filter((a: Attempt) => a.outcome === "solved" && a.problem === seg[1]);
+    // Paid runs only. A first submission is free, so a lucky guess can solve a run nobody paid
+    // for, and it would top the board at $0.00. A run nobody paid for is nobody's: `paidBy`.
+    const solved = deps.attempts.all()
+      .filter((a: Attempt) => a.outcome === "solved" && a.problem === seg[1] && a.payer !== null);
     const ranked = [...solved].sort((x, y) =>
       x.spend === y.spend ? x.probes.length - y.probes.length : (x.spend < y.spend ? -1 : 1));
     return json(ranked.map((a) => wireScore(score(a))));

@@ -44,19 +44,19 @@ describe.each([
     const store = make();
     const bounties = new Bounties(store);
     const b = postOne(bounties);
-    expect(new Bounties(store).solve(b.id, SECRET, "0xabc", []).ok).toBe(true);
+    expect(new Bounties(store).solve(b.id, SECRET, "0xabc", 0).ok).toBe(true);
   });
 
   test("a win is written, not just held in memory", () => {
     const store = make();
-    new Bounties(store).solve(postOne(new Bounties(store)).id, SECRET, "0xabc", []);
+    new Bounties(store).solve(postOne(new Bounties(store)).id, SECRET, "0xabc", 0);
     expect(store.all()[0]!.solvedBy).toBe("0xabc");
   });
 
   test("a failed attempt still counts, so a poster sees the interest", () => {
     const store = make();
     const b = postOne(new Bounties(store));
-    new Bounties(store).solve(b.id, 0, "0xabc", []);
+    new Bounties(store).solve(b.id, 0, "0xabc", 0);
     expect(store.get(b.id)!.attempts).toBe(1);
   });
 
@@ -84,7 +84,7 @@ describe("across a real restart", () => {
 
     const after = new Bounties(new SqliteBounties(path)); // a different process would see this
     expect(after.get(b.id)).toBeDefined();
-    expect(after.solve(b.id, SECRET, "0xabc", []).ok).toBe(true);
+    expect(after.solve(b.id, SECRET, "0xabc", 0).ok).toBe(true);
   });
 
   test("money round-trips exactly, to the last micro", () => {
@@ -96,9 +96,9 @@ describe("across a real restart", () => {
   test("a bounty already won stays won", () => {
     const path = scratch();
     const b = postOne(new Bounties(new SqliteBounties(path)));
-    new Bounties(new SqliteBounties(path)).solve(b.id, SECRET, "0xabc", []);
+    new Bounties(new SqliteBounties(path)).solve(b.id, SECRET, "0xabc", 0);
     const after = new Bounties(new SqliteBounties(path));
-    const again = after.solve(b.id, SECRET, "0xdead", []);
+    const again = after.solve(b.id, SECRET, "0xdead", 0);
     expect(again.ok).toBe(false);
     expect(after.get(b.id)!.solvedBy).toBe("0xabc");
   });

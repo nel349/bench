@@ -1,5 +1,5 @@
-import { rng } from "./blackbox.ts";
-import { register, type Problem } from "./problem.ts";
+import { stream, type Seed } from "./seed.ts";
+import { GENERATOR, register, type Problem } from "./problem.ts";
 
 /**
  * Zendo: a hidden rule, learned by proposing examples.
@@ -8,8 +8,8 @@ import { register, type Problem } from "./problem.ts";
  * published set of twenty triples, and you are right only if all twenty are.
  *
  * **The test set is public on purpose.** You are allowed to simply buy the answer — probe all twenty
- * and read them off. It costs $0.40. Working the rule out from four or five well-chosen probes costs
- * a tenth of that. So the puzzle is not "can you find the rule" but "can you find it for less than
+ * and read them off. It costs $0.40. Working the rule out from four well-chosen probes costs a
+ * fifth of that. So the puzzle is not "can you find the rule" but "can you find it for less than
  * the price of not bothering", which is the same decision the maze asked once and this one asks
  * every round.
  *
@@ -43,8 +43,8 @@ const RULES: Rule[] = [
 
 export const TEST_SIZE = 20;
 
-export function ruleFor(seed: number): Rule {
-  return RULES[Math.floor(rng(seed ^ 0x5eed)() * RULES.length)]!;
+export function ruleFor(seed: Seed): Rule {
+  return RULES[Math.floor(stream(seed, "zendo/rule")() * RULES.length)]!;
 }
 
 /**
@@ -53,9 +53,9 @@ export function ruleFor(seed: number): Rule {
  * Built to be mixed: a run of all-true or all-false answers would let an agent pass by guessing one
  * of two constants, so the set is resampled until both classes are well represented.
  */
-export function testSet(seed: number): Triple[] {
+export function testSet(seed: Seed): Triple[] {
   const rule = ruleFor(seed);
-  const next = rng(seed ^ 0x7e57);
+  const next = stream(seed, "zendo/triples");
   const draw = (): Triple =>
     [Math.floor(next() * 20), Math.floor(next() * 20), Math.floor(next() * 20)] as Triple;
 
@@ -67,7 +67,7 @@ export function testSet(seed: number): Triple[] {
   }
   const mixed = [...yes.slice(0, TEST_SIZE / 2), ...no.slice(0, TEST_SIZE / 2)];
   // Shuffle deterministically, so position carries no information.
-  const shuffle = rng(seed ^ 0x5f0f);
+  const shuffle = stream(seed, "zendo/order");
   for (let i = mixed.length - 1; i > 0; i--) {
     const j = Math.floor(shuffle() * (i + 1));
     [mixed[i], mixed[j]] = [mixed[j]!, mixed[i]!];
@@ -84,18 +84,21 @@ const parseTriple = (q: unknown): Triple | null => {
 export const zendo: Problem = register({
   id: "zendo",
   title: "Zendo",
-  category: "cost-bounded reasoning",
+  category: "induction",
+  level: "medium",
+  par: null,
   statement:
     "A rule decides whether a triple of integers belongs. Propose any triple and learn only yes or " +
-    "no; each question costs. Then classify the twenty published triples — all twenty must be right. " +
-    "You may buy the answers to all twenty, and it will cost you ten times what working it out does.",
+    "no; each question costs. Then classify the twenty published triples, and all twenty must be right. " +
+    "You may buy the answers to all twenty, and it will cost you five times what working it out does.",
   harness: (seed) => ({
-    probe: "[a, b, c] — three integers",
+    probe: "[a, b, c], three integers",
     answer: `[${TEST_SIZE} booleans, in the order of the test set]`,
     testSet: testSet(seed),
     note:
       "The test set is public. Probing all of it is allowed and expensive; the rule is cheap. " +
-      "src/problems/zendo.ts holds the rule families — read them, they are not a secret either.",
+      "src/problems/zendo.ts holds the rule families. Read them; they are not a secret either.",
+    generator: GENERATOR,
     ruleFamilies: RULES.length,
   }),
   initialState: () => null,

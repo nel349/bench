@@ -1,3 +1,5 @@
+import { stream, type Seed } from "./seed.ts";
+
 /**
  * Black Box: atoms hidden in a grid, found by firing rays at them.
  *
@@ -36,24 +38,8 @@ const DELTA: Record<Dir, Cell> = {
 const LEFT_OF: Record<Dir, Dir> = { up: "left", left: "down", down: "right", right: "up" };
 const RIGHT_OF: Record<Dir, Dir> = { up: "right", right: "down", down: "left", left: "up" };
 
-/**
- * A seeded generator, so a board is a function of its seed and nothing else.
- *
- * Deliberately small and written out rather than pulled from a library: a stranger reimplementing
- * this to check a run should not have to match a dependency's version. mulberry32.
- */
-export function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-export function boardFrom(seed: number, size = 8, atomCount = 4): Board {
-  const next = rng(seed);
+export function boardFrom(seed: Seed, size = 8, atomCount = 4): Board {
+  const next = stream(seed, "blackbox/atoms");
   const taken = new Set<string>();
   const atoms: Cell[] = [];
   while (atoms.length < atomCount) {

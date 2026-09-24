@@ -99,14 +99,14 @@ const TERMS = {
   const probe = (a: Attempts, id: string) => a.ask(id, { side: "up", index: 0 }, header());
 
   test("a claim is recorded but unproven before anything is paid", () => {
-    const at = gym().start("agent:aria", "blackbox", 7, null, 42n)!;
+    const at = gym().start("agent:aria", "blackbox", "7", null, 42n)!;
     expect(at.claimedId).toBe("42");
     expect(at.identity).toBe(null);
   });
 
   test("paying proves it", async () => {
     const a = gym();
-    const at = a.start("agent:aria", "blackbox", 7, null, 42n)!;
+    const at = a.start("agent:aria", "blackbox", "7", null, 42n)!;
     await probe(a, at.id);
     expect(a.get(at.id)!.identity).toBe("42");
   });
@@ -117,7 +117,7 @@ const TERMS = {
         async verify() { return { isValid: true, payer: OTHER }; },
         async settle() { return { success: true, payer: OTHER }; },
       }, "testnet", "0xbe", () => 0n), new MemoryStore(), verifier);
-    const at = a.start("agent:thief", "blackbox", 7, null, 42n)!;
+    const at = a.start("agent:thief", "blackbox", "7", null, 42n)!;
     await probe(a, at.id);
     const after = a.get(at.id)!;
     expect(after.identity).toBe(null);          // not promoted
@@ -127,7 +127,7 @@ const TERMS = {
 
   test("no claim means no identity, and no error", async () => {
     const a = gym();
-    const at = a.start("agent:aria", "blackbox", 7)!;
+    const at = a.start("agent:aria", "blackbox", "7")!;
     await probe(a, at.id);
     expect(a.get(at.id)!.identity).toBe(null);
   });
@@ -136,7 +136,7 @@ const TERMS = {
     const a = new Attempts(
       new ArcPayments(facilitator, "testnet", "0xbe", () => 0n), new MemoryStore(),
       async () => { throw new Error("rpc is down"); });
-    const at = a.start("agent:aria", "blackbox", 7, null, 42n)!;
+    const at = a.start("agent:aria", "blackbox", "7", null, 42n)!;
     const out = await probe(a, at.id);
     expect("answer" in out).toBe(true);
     expect(a.get(at.id)!.identity).toBe(null);
@@ -144,7 +144,7 @@ const TERMS = {
 
   test("with no verifier at all, a claim stays a claim", async () => {
     const a = new Attempts(new ArcPayments(facilitator, "testnet", "0xbe", () => 0n), new MemoryStore());
-    const at = a.start("agent:aria", "blackbox", 7, null, 42n)!;
+    const at = a.start("agent:aria", "blackbox", "7", null, 42n)!;
     await probe(a, at.id);
     expect(a.get(at.id)!.claimedId).toBe("42");
     expect(a.get(at.id)!.identity).toBe(null);
@@ -153,7 +153,7 @@ const TERMS = {
   test("both the claim and the proof survive SQLite", async () => {
     const db = new SqliteStore(":memory:");
     const a = gym(db);
-    const at = a.start("agent:aria", "blackbox", 7, null, 42n)!;
+    const at = a.start("agent:aria", "blackbox", "7", null, 42n)!;
     await probe(a, at.id);
     expect(db.get(at.id)!.claimedId).toBe("42");
     expect(db.get(at.id)!.identity).toBe("42");

@@ -5,23 +5,23 @@ import { InMemoryAllowance } from "../payments.ts";
 import { usdc, format } from "../money.ts";
 import { PRICE } from "../pricing.ts";
 
-const truthFor = (seed: number): boolean[] => testSet(seed).map((t) => ruleFor(seed).holds(t));
+const truthFor = (seed: string): boolean[] => testSet(seed).map((t) => ruleFor(seed).holds(t));
 
 describe("the rule and the test set come from the seed alone", () => {
   test("the same seed gives the same rule", () => {
-    for (const s of [1, 7, 99, 4242]) expect(ruleFor(s).name).toBe(ruleFor(s).name);
+    for (const s of ["1", "7", "99", "4242"]) expect(ruleFor(s).name).toBe(ruleFor(s).name);
   });
   test("seeds reach more than one rule", () => {
-    const names = new Set(Array.from({ length: 200 }, (_, i) => ruleFor(i).name));
+    const names = new Set(Array.from({ length: 200 }, (_, i) => ruleFor(String(i)).name));
     expect(names.size).toBeGreaterThan(4);
   });
   test("a test set is the same every time it is asked for", () => {
-    expect(testSet(4242)).toEqual(testSet(4242));
+    expect(testSet("4242")).toEqual(testSet("4242"));
   });
 });
 
 describe("the test set cannot be passed by guessing", () => {
-  for (const seed of [1, 7, 42, 99, 4242, 123456]) {
+  for (const seed of ["1", "7", "42", "99", "4242", "123456"]) {
     test(`seed ${seed}: ten true and ten false, so neither constant passes`, () => {
       const ts = testSet(seed);
       expect(ts).toHaveLength(TEST_SIZE);
@@ -34,7 +34,7 @@ describe("the test set cannot be passed by guessing", () => {
 });
 
 describe("grading", () => {
-  const seed = 4242;
+  const seed = "4242";
   test("the honest answer passes", () => expect(zendo.check(seed, truthFor(seed))).toBe(true));
   test("one wrong out of twenty fails — all twenty must be right", () => {
     const nearly = truthFor(seed).map((b, i) => (i === 7 ? !b : b));
@@ -49,7 +49,7 @@ describe("grading", () => {
 });
 
 describe("probing", () => {
-  const seed = 4242;
+  const seed = "4242";
   test("a triple gets a yes or a no and nothing else", () => {
     const out = zendo.probe(seed, [2, 4, 6], null);
     expect(out).not.toBeNull();
@@ -68,14 +68,14 @@ describe("probing", () => {
  * Buying the answer is allowed. It is just dearer than thinking, and by a margin big enough that an
  * agent notices — which is the whole thesis of the gym expressed as one assertion.
  */
-describe("buying the answer costs ten times what working it out does", () => {
+describe("buying the answer costs five times what working it out does", () => {
   test("probing the whole test set costs $0.40", async () => {
     const money = new InMemoryAllowance();
     money.grant("agent:brute", usdc("5"));
     const attempts = new Attempts(money);
-    const a = attempts.start("agent:brute", "zendo", 4242)!;
+    const a = attempts.start("agent:brute", "zendo", "4242")!;
 
-    for (const t of testSet(4242)) await attempts.ask(a.id, t);
+    for (const t of testSet("4242")) await attempts.ask(a.id, t);
     const answer = a.probes.map((p) => (p.answer as { holds: boolean }).holds);
     await attempts.submit(a.id, answer);
 
@@ -88,10 +88,10 @@ describe("buying the answer costs ten times what working it out does", () => {
     const money = new InMemoryAllowance();
     money.grant("agent:thinker", usdc("5"));
     const attempts = new Attempts(money);
-    const a = attempts.start("agent:thinker", "zendo", 4242)!;
+    const a = attempts.start("agent:thinker", "zendo", "4242")!;
 
     for (const t of [[1, 2, 3], [2, 4, 6], [10, 10, 10], [9, 8, 7]]) await attempts.ask(a.id, t);
-    await attempts.submit(a.id, truthFor(4242));
+    await attempts.submit(a.id, truthFor("4242"));
 
     const done = attempts.get(a.id)!;
     expect(done.outcome).toBe("solved");

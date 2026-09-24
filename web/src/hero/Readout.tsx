@@ -1,5 +1,8 @@
 import { Amount } from "../components/Amount.tsx";
 import type { Frame } from "./timeline.ts";
+import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
+import { PRICE } from "../../../src/pricing.ts";
+import { blackbox } from "../../../src/problems/blackbox-problem.ts";
 
 export interface ReadoutProps {
   readonly seed: number;
@@ -11,6 +14,11 @@ export interface ReadoutProps {
 }
 
 const decimal = (micros: number): string => (micros / 1_000_000).toFixed(6);
+
+/** What a first ranked breach of Black Box adds to a rating: its level's weight, from the gym itself. */
+const BLACK_BOX_REP = LEVEL_WEIGHT[blackbox.level];
+/** The ranking fee in words, small, because it is a footnote to the spend and not a second headline. */
+const RANK_PRICE = `$${(Number(PRICE.rank) / 1_000_000).toFixed(2)}`;
 
 /**
  * The run's telemetry, as a runner's HUD would show it.
@@ -44,7 +52,7 @@ export function Readout({ seed, frame, atoms, budget, price }: ReadoutProps) {
       </dl>
       <div className={`verdict ${frame.ending ?? "running"}`} aria-live="polite">
         {frame.ending === "solved" && (
-          <><span>BREACHED · +1 REP</span><Amount value={decimal(spent)} /><span className="rep">spent to earn it</span></>
+          <><span>BREACHED · +{BLACK_BOX_REP} REP</span><Amount value={decimal(spent)} /><span className="rep">once ranked, for {RANK_PRICE}</span></>
         )}
         {frame.ending === "refused" && (
           <><span>FLATLINED · NO REP</span><Amount value={decimal(spent)} /><span className="rep">spent for nothing</span></>

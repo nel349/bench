@@ -1,8 +1,5 @@
 import { expect, test, describe, beforeEach } from "bun:test";
 import { Bounties, wireBounty, MIN_DURATION_MS } from "./bounties.ts";
-import { rate } from "./rating.ts";
-import { Attempts, type Attempt } from "./attempt.ts";
-import { InMemoryAllowance } from "./payments.ts";
 import { usdc } from "./money.ts";
 import "./problems/blackbox-problem.ts";
 import "./problems/zendo.ts";
@@ -82,7 +79,7 @@ describe("the answer key never leaves", () => {
   });
 
   test("a wrong answer is told why without being told what", () => {
-    const out = bounties.solve(posted().id, 1, SOLVER, [], NOW);
+    const out = bounties.solve(posted().id, 1, SOLVER, 0, NOW);
     expect(out.ok).toBe(false);
     if (out.ok || !("because" in out)) return;
     expect(out.because).not.toContain(String(SECRET));
@@ -92,22 +89,22 @@ describe("the answer key never leaves", () => {
 describe("solving one", () => {
   test("the right answer wins it, and names the address that paid", () => {
     const b = posted();
-    const out = bounties.solve(b.id, SECRET, SOLVER, [], NOW);
+    const out = bounties.solve(b.id, SECRET, SOLVER, 0, NOW);
     expect(out).toEqual({ ok: true, solver: SOLVER });
     expect(bounties.get(b.id)!.solvedBy).toBe(SOLVER);
   });
 
   test("a wrong answer leaves it open for someone else", () => {
     const b = posted();
-    bounties.solve(b.id, 1, SOLVER, [], NOW);
+    bounties.solve(b.id, 1, SOLVER, 0, NOW);
     expect(bounties.get(b.id)!.solvedBy).toBe(null);
     expect(wireBounty(bounties.get(b.id)!, NOW).open).toBe(true);
   });
 
   test("it can only be won once", () => {
     const b = posted();
-    bounties.solve(b.id, SECRET, SOLVER, [], NOW);
-    const second = bounties.solve(b.id, SECRET, "0xdd", [], NOW);
+    bounties.solve(b.id, SECRET, SOLVER, 0, NOW);
+    const second = bounties.solve(b.id, SECRET, "0xdd", 0, NOW);
     expect(second.ok).toBe(false);
     if (!second.ok && "closed" in second) expect(second.closed).toContain("already been won");
     expect(bounties.get(b.id)!.solvedBy).toBe(SOLVER);
@@ -115,43 +112,28 @@ describe("solving one", () => {
 
   test("an expired bounty cannot be won", () => {
     const b = posted();
-    const out = bounties.solve(b.id, SECRET, SOLVER, [], LATER + 1);
+    const out = bounties.solve(b.id, SECRET, SOLVER, 0, LATER + 1);
     expect(out.ok).toBe(false);
     if (!out.ok && "closed" in out) expect(out.closed).toContain("expired");
   });
 
   test("attempts are counted, so a poster can see the interest", () => {
     const b = posted();
-    bounties.solve(b.id, 1, SOLVER, [], NOW);
-    bounties.solve(b.id, 2, SOLVER, [], NOW);
+    bounties.solve(b.id, 1, SOLVER, 0, NOW);
+    bounties.solve(b.id, 2, SOLVER, 0, NOW);
     expect(bounties.get(b.id)!.attempts).toBe(2);
   });
 
   test("without a payer there is nobody to pay, so it is refused", () => {
-    const out = bounties.solve(posted().id, SECRET, null, [], NOW);
+    const out = bounties.solve(posted().id, SECRET, null, 0, NOW);
     expect(out.ok).toBe(false);
   });
 });
 
-/** A record built by actually solving things, rather than by asserting a number. */
-async function recordOf(solvedProblems: string[]): Promise<Attempt[]> {
-  const money = new InMemoryAllowance();
-  money.grant(SOLVER, usdc("50"));
-  const a = new Attempts(money);
-  const { boardFrom } = await import("./problems/blackbox.ts");
-  for (const p of solvedProblems) {
-    const at = a.start(SOLVER, p, 7)!;
-    at.payer = SOLVER;
-    if (p === "blackbox") await a.submit(at.id, boardFrom(7).atoms);
-    else { at.outcome = "solved"; at.endedAt = Date.now(); }
-  }
-  return a.all();
-}
-
 describe("the qualification gate", () => {
   test("an agent with no record cannot attempt a gated bounty", async () => {
     const b = posted({ minRating: 2 });
-    const out = bounties.solve(b.id, SECRET, SOLVER, [], NOW);
+    const out = bounties.solve(b.id, SECRET, SOLVER, 0, NOW);
     expect(out.ok).toBe(false);
     if (!out.ok && "unqualified" in out) {
       expect(out.rating).toBe(0);
@@ -166,37 +148,33 @@ describe("the qualification gate", () => {
    */
   test("an unqualified agent cannot learn whether its answer was right", () => {
     const b = posted({ minRating: 5 });
-    const right = bounties.solve(b.id, SECRET, SOLVER, [], NOW);
-    const wrong = bounties.solve(b.id, 0, SOLVER, [], NOW);
+    const right = bounties.solve(b.id, SECRET, SOLVER, 0, NOW);
+    const wrong = bounties.solve(b.id, 0, SOLVER, 0, NOW);
     expect(right).toEqual(wrong);                       // indistinguishable
     expect(bounties.get(b.id)!.solvedBy).toBe(null);    // and it did not win
     expect(bounties.get(b.id)!.attempts).toBe(0);       // it never even counted as an attempt
   });
 
-  test("a record of enough distinct problems opens it", async () => {
-    const record = await recordOf(["blackbox", "zendo"]);
-    expect(rate(record, SOLVER).rating).toBe(2);
-    const b = posted({ minRating: 2 });
-    expect(bounties.solve(b.id, SECRET, SOLVER, record, NOW).ok).toBe(true);
+  /**
+   * The gate decides against a number and nothing else. Where that number comes from, the ranked
+   * runs on an agent's ERC-8004 identity, is `rating.test.ts` and the routes in `http.test.ts`.
+   */
+  test("a rating at the bar opens it, and one short of the bar does not", () => {
+    expect(bounties.solve(posted({ minRating: 5 }).id, SECRET, SOLVER, 5, NOW).ok).toBe(true);
+    const short = bounties.solve(posted({ minRating: 5 }).id, SECRET, SOLVER, 4, NOW);
+    expect(short).toMatchObject({ ok: false, unqualified: true, rating: 4, needs: 5 });
   });
 
-  test("grinding one problem does not qualify you: it counts distinct problems", async () => {
-    const record = await recordOf(["blackbox", "blackbox", "blackbox", "blackbox"]);
-    expect(rate(record, SOLVER).solved).toBe(4);
-    expect(rate(record, SOLVER).rating).toBe(1);
-    const out = bounties.solve(posted({ minRating: 2 }).id, SECRET, SOLVER, record, NOW);
-    expect(out.ok).toBe(false);
+  test("the free check and the paid one agree", () => {
+    const b = posted({ minRating: 3 });
+    expect(bounties.eligibility(b.id, SOLVER, 2, NOW)).toMatchObject({ ok: false, rating: 2, needs: 3 });
+    expect(bounties.eligibility(b.id, SOLVER, 3, NOW)).toEqual({ ok: true });
   });
 
   test("an ungated bounty is open to anyone who pays", () => {
-    expect(bounties.solve(posted({ minRating: 0 }).id, SECRET, SOLVER, [], NOW).ok).toBe(true);
+    expect(bounties.solve(posted({ minRating: 0 }).id, SECRET, SOLVER, 0, NOW).ok).toBe(true);
   });
 
-  test("the rating counts the payer, not a header anyone could send", async () => {
-    const record = await recordOf(["blackbox", "zendo"]);
-    expect(rate(record, SOLVER).rating).toBe(2);
-    expect(rate(record, "0xsomeone-else").rating).toBe(0);
-  });
 });
 
 /**
@@ -234,7 +212,7 @@ describe("what an amount looks like leaving the process", () => {
 describe("the gate is free", () => {
   test("an unqualified name is refused without being charged", () => {
     const b = posted({ minRating: 2 });
-    const out = bounties.eligibility(b.id, SOLVER, [], NOW);
+    const out = bounties.eligibility(b.id, SOLVER, 0, NOW);
     expect(out.ok).toBe(false);
     if (!out.ok && "unqualified" in out) {
       expect(out.rating).toBe(0);
@@ -243,33 +221,32 @@ describe("the gate is free", () => {
   });
 
   test("an ungated bounty needs no record, so nothing is looked up", () => {
-    expect(bounties.eligibility(posted({ minRating: 0 }).id, SOLVER, [], NOW).ok).toBe(true);
+    expect(bounties.eligibility(posted({ minRating: 0 }).id, SOLVER, 0, NOW).ok).toBe(true);
   });
 
   test("a closed bounty is refused before payment too", () => {
     const b = posted();
-    bounties.solve(b.id, SECRET, SOLVER, [], NOW);
-    const out = bounties.eligibility(b.id, SOLVER, [], NOW);
+    bounties.solve(b.id, SECRET, SOLVER, 0, NOW);
+    const out = bounties.eligibility(b.id, SOLVER, 0, NOW);
     expect(out.ok).toBe(false);
     if (!out.ok && "closed" in out) expect(out.closed).toContain("already been won");
   });
 
   test("an expired bounty likewise", () => {
-    const out = bounties.eligibility(posted().id, SOLVER, [], LATER + 1);
+    const out = bounties.eligibility(posted().id, SOLVER, 0, LATER + 1);
     expect(out.ok).toBe(false);
   });
 
-  test("it does not grade, so it cannot leak the answer", async () => {
-    const record = await recordOf(["blackbox", "zendo"]);
+  test("it does not grade, so it cannot leak the answer", () => {
     const b = posted({ minRating: 2 });
     // Qualified: the gate passes and says nothing about whether any answer is right.
-    expect(JSON.stringify(bounties.eligibility(b.id, SOLVER, record, NOW))).not.toContain(String(SECRET));
+    expect(JSON.stringify(bounties.eligibility(b.id, SOLVER, 2, NOW))).not.toContain(String(SECRET));
     expect(bounties.get(b.id)!.attempts).toBe(0);
   });
 
   test("checking eligibility never counts as an attempt", () => {
     const b = posted({ minRating: 5 });
-    for (let i = 0; i < 5; i++) bounties.eligibility(b.id, SOLVER, [], NOW);
+    for (let i = 0; i < 5; i++) bounties.eligibility(b.id, SOLVER, 0, NOW);
     expect(bounties.get(b.id)!.attempts).toBe(0);
   });
 });

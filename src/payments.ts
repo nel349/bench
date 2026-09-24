@@ -41,7 +41,11 @@ export interface Quote {
 }
 
 export type Charge =
-  /** Taken. `payer` and `settlement` appear when the money moved on a chain rather than in a Map. */
+  /**
+   * Taken. `payer` is the account the money left: an address on a chain, or the granted name when
+   * the money is a Map. A run counts for whoever paid it, so a charge that names nobody would leave
+   * a solve that is nobody's. `settlement` appears only when the money moved on a chain.
+   */
   | { readonly ok: true; readonly paid: Usdc; readonly spentSoFar: Usdc;
       readonly payer?: string; readonly settlement?: string }
   /** Out of money. A result, not an error — and on chain this is the session key refusing. */
@@ -101,6 +105,7 @@ export class InMemoryAllowance implements Payments {
     }
     this.#spent.set(agent, this.spentBy(agent) + amount);
     this.log.push({ agent, amount, reason, ok: true });
-    return { ok: true, paid: amount, spentSoFar: this.spentBy(agent) };
+    // The account the money left is the granted name, so that name is who paid. See `Charge`.
+    return { ok: true, paid: amount, spentSoFar: this.spentBy(agent), payer: agent };
   }
 }

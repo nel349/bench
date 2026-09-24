@@ -59,7 +59,7 @@ const as = { "x-agent": agent.address, "content-type": "application/json" };
 
 try {
   const started = await (await fetch(`${base}/attempts`, {
-    method: "POST", headers: as, body: JSON.stringify({ problem: "blackbox", seed: 7 }),
+    method: "POST", headers: as, body: JSON.stringify({ problem: "blackbox" }),
   })).json() as { id: string };
   console.log(`run ${started.id} started (free)\n`);
 

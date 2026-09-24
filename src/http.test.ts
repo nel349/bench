@@ -1,16 +1,22 @@
 import { expect, test, describe, beforeEach } from "bun:test";
 import { handle, type Deps } from "./http.ts";
-import { Attempts } from "./attempt.ts";
+import { Attempts, recordHash } from "./attempt.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "./payments.ts";
 import { usdc, type Usdc } from "./money.ts";
 import { PRICE } from "./pricing.ts";
 import { payableOn } from "./arc/buyer.ts";
 import { X402_VERSION } from "./arc/facilitator.ts";
-import { boardFrom } from "./problems/blackbox.ts";
+import { boardFrom, fire, type Port } from "./problems/blackbox.ts";
+import { ruleFor, testSet } from "./problems/zendo.ts";
+import { mazeFrom, shortestRoute } from "./problems/toll.ts";
+import { fingerprint } from "./problems/seed.ts";
+import { GENERATOR } from "./problems/problem.ts";
+import { MemoryReputation } from "./reputation.ts";
+import { Bounties } from "./bounties.ts";
+import type { ProblemWire } from "./wire.ts";
 import "./problems/blackbox-problem.ts";
 
 const AGENT = "agent:aria";
-const SEED = 4242;
 
 let money: InMemoryAllowance;
 let deps: Deps;
@@ -29,8 +35,16 @@ const call = (method: string, path: string, body?: unknown, headers: Record<stri
   }), deps);
 
 const asAgent = { "x-agent": AGENT };
-const startAttempt = async (seed = SEED) =>
-  (await (await call("POST", "/attempts", { seed }, asAgent)).json()) as { id: string };
+const startAttempt = async () =>
+  (await (await call("POST", "/attempts", {}, asAgent)).json()) as { id: string };
+
+/**
+ * The answer to a run, worked out from the seed the server is keeping secret.
+ *
+ * Only a test may do this, because only a test can reach into the server's own records. Anything a
+ * response carries is exactly what an agent sees, and that is what `FINDINGS.md` 26 was about.
+ */
+const solutionOf = (id: string) => boardFrom(deps.attempts.get(id)!.seed).atoms;
 
 describe("the free surface is free", () => {
   test("the index names the network it serves", async () => {
@@ -47,14 +61,25 @@ describe("the free surface is free", () => {
 
   test("the harness gives away everything needed to check a run", async () => {
     const body = (await (await call("GET", "/problems/blackbox/harness")).json()) as
-      { generator: string; example: { seed: number; atoms: unknown } };
-    expect(body.generator).toBe("mulberry32");
-    expect(body.example.atoms).toEqual(boardFrom(1).atoms);
+      { generator: string; example: { seed: string; atoms: unknown } };
+    expect(body.generator).toBe(GENERATOR);
+    expect(body.example.atoms).toEqual(boardFrom("1").atoms);
   });
 
-  test("both problems are listed", async () => {
-    const body = (await (await call("GET", "/problems")).json()) as { id: string }[];
-    expect(body.map((p) => p.id).sort()).toEqual(["blackbox", "toll", "zendo"]);
+  test("any text is a seed at the harness, for practice", async () => {
+    const body = (await (await call("GET", "/problems/blackbox/harness?seed=my%20practice")).json()) as
+      { seed: string; example: { atoms: unknown } };
+    expect(body.seed).toBe("my practice");
+    expect(body.example.atoms).toEqual(boardFrom("my practice").atoms);
+  });
+
+  test("all seven problems are listed, each with its level and par", async () => {
+    const body = (await (await call("GET", "/problems")).json()) as ProblemWire[];
+    expect(body.map((p) => p.id).sort()).toEqual(["bisect", "blackbox", "codebreaker", "liar", "ranking", "toll", "zendo"]);
+    const levels = new Set(body.map((p) => p.level));
+    expect([...levels].sort()).toEqual(["easy", "hard", "medium"]);
+    expect(body.find((p) => p.id === "ranking")!.par).toBe(16);
+    expect(body.find((p) => p.id === "zendo")!.par).toBe(null);
   });
 
   test("nothing was charged for any of that", () => {
@@ -72,24 +97,91 @@ describe("starting an attempt", () => {
    * never have met.
    */
   test("needs no agent: a run is anonymous until a payment binds it", async () => {
-    const r = await call("POST", "/attempts", { seed: SEED });
+    const r = await call("POST", "/attempts", {});
     expect(r.status).toBe(201);
     const body = await r.json() as { payer: string | null };
     expect(body.payer).toBe(null);
   });
 
   test("a name may still be given, and is kept as a label", async () => {
-    const { id } = await (await call("POST", "/attempts", { seed: SEED }, asAgent)).json() as { id: string };
+    const { id } = await (await call("POST", "/attempts", {}, asAgent)).json() as { id: string };
     const back = await (await call("GET", `/attempts/${id}`)).json() as { payer: string | null };
     expect(back.payer).toBe(null);  // a label is not an identity
   });
 
-  test("returns the seed, and never the board", async () => {
-    const r = await call("POST", "/attempts", { seed: SEED }, asAgent);
+  test("shows a fingerprint, and neither the seed nor the board", async () => {
+    const r = await call("POST", "/attempts", {}, asAgent);
     expect(r.status).toBe(201);
     const body = await r.text();
-    expect(JSON.parse(body).seed).toBe(SEED);
+    const { id, seed, fingerprint: shown } = JSON.parse(body) as { id: string; seed: string | null; fingerprint: string };
+    const secret = deps.attempts.get(id)!.seed;
+    expect(seed).toBe(null);
+    expect(body).not.toContain(secret);
+    expect(shown).toBe(fingerprint(secret));
     expect(body).not.toContain("atoms");
+  });
+
+  test("a seed chosen by the agent is refused, and points at the free harness", async () => {
+    const r = await call("POST", "/attempts", { problem: "toll", seed: 4242 }, asAgent);
+    expect(r.status).toBe(400);
+    expect((await r.json() as { error: string }).error).toContain("/problems/toll/harness?seed=");
+  });
+});
+
+/**
+ * The attack in `FINDINGS.md` 26, kept as a test so it stays closed.
+ *
+ * Start a run on each problem, rebuild the instance from everything any response has said about the
+ * run, and submit. Before the fix this solved all three with no probes and nothing spent.
+ */
+describe("a run cannot be solved from what it shows you", () => {
+  const answerFrom = (problem: string, seed: string): unknown => {
+    if (problem === "blackbox") return boardFrom(seed).atoms;
+    if (problem === "zendo") return testSet(seed).map((t) => ruleFor(seed).holds(t));
+    return shortestRoute(mazeFrom(seed)).join("");
+  };
+
+  for (const problem of ["blackbox", "zendo", "toll"]) {
+    test(`${problem}: nothing any response carries rebuilds the instance`, async () => {
+      const started = await (await call("POST", "/attempts", { problem }, asAgent)).json() as Record<string, unknown>;
+      const id = started["id"] as string;
+      const seen = [
+        JSON.stringify(started),
+        await (await call("GET", `/attempts/${id}`)).text(),
+        await (await call("GET", "/feed")).text(),
+        await (await call("GET", `/agents/${AGENT}`)).text(),
+      ].join("\n");
+      expect(seen).not.toContain(deps.attempts.get(id)!.seed);
+
+      // Every string a response carried, tried as a seed. None of them is the one that matters.
+      const candidates = new Set(seen.match(/"[^"]*"/g)!.map((q) => q.slice(1, -1)));
+      for (const guess of candidates) {
+        const r = await call("POST", `/attempts/${id}/submit`, { answer: answerFrom(problem, guess) }, asAgent);
+        const body = await r.json() as { solved?: boolean };
+        expect(body.solved).not.toBe(true);
+        if (deps.attempts.get(id)!.outcome !== "open") break;
+      }
+    });
+  }
+
+  test("once a run is over its seed is published, matches the fingerprint, and replays the run", async () => {
+    const a = await startAttempt();
+    const probe = { side: "left", index: 3 };
+    const asked = await (await call("POST", `/attempts/${a.id}/ask`, probe, asAgent)).json() as { answer: unknown };
+    const before = await (await call("GET", `/attempts/${a.id}`)).json() as { seed: string | null; fingerprint: string };
+    expect(before.seed).toBe(null);
+
+    await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
+    const after = await (await call("GET", `/attempts/${a.id}`)).json() as { seed: string; fingerprint: string };
+    expect(after.seed).not.toBe(null);
+    expect(fingerprint(after.seed)).toBe(before.fingerprint);
+
+    // A stranger, with nothing but the revealed seed and the free harness.
+    const harness = await (await call("GET", `/problems/blackbox/harness?seed=${after.seed}`)).json() as
+      { fingerprint: string; example: { atoms: unknown } };
+    expect(harness.fingerprint).toBe(before.fingerprint);
+    expect(asked.answer).toEqual(fire(boardFrom(after.seed), probe as Port));
+    expect(harness.example.atoms).toEqual(solutionOf(a.id));
   });
 });
 
@@ -119,7 +211,7 @@ describe("solving", () => {
   test("the right guess solves it and returns the score", async () => {
     const a = await startAttempt();
     await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
-    const r = await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    const r = await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
     const body = (await r.json()) as { solved: boolean; score: { spend: string; probes: number } };
     expect(body.solved).toBe(true);
     expect(body.score.probes).toBe(1);
@@ -221,7 +313,7 @@ describe("the boards", () => {
   test("an agent's page totals its runs", async () => {
     const a = await startAttempt();
     await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
-    await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
     const body = (await (await call("GET", `/agents/${AGENT}`)).json()) as
       { solved: number; attempts: number; spend: string };
     expect(body.solved).toBe(1);
@@ -232,20 +324,33 @@ describe("the boards", () => {
   test("the leaderboard ranks by cost to solve, cheapest first", async () => {
     for (const [agent, probes] of [["agent:thrifty", 1], ["agent:spendy", 5]] as const) {
       money.grant(agent, usdc("5"));
-      const started = (await (await call("POST", "/attempts", { seed: SEED }, { "x-agent": agent })).json()) as { id: string };
+      const started = (await (await call("POST", "/attempts", {}, { "x-agent": agent })).json()) as { id: string };
       for (let i = 0; i < probes; i++) {
         await call("POST", `/attempts/${started.id}/ask`, { side: "left", index: i }, { "x-agent": agent });
       }
-      await call("POST", `/attempts/${started.id}/submit`, { guess: boardFrom(SEED).atoms }, { "x-agent": agent });
+      await call("POST", `/attempts/${started.id}/submit`, { guess: solutionOf(started.id) }, { "x-agent": agent });
     }
     const board = (await (await call("GET", "/leaderboard/blackbox")).json()) as { agent: string; spend: string }[];
     expect(board.map((r) => r.agent)).toEqual(["agent:thrifty", "agent:spendy"]);
     expect(board[0]!.spend).toBe("0.020000");
   });
 
+  /**
+   * A first submission is free, so a run can be solved by a lucky guess with nothing paid. Such a
+   * run is nobody's, and on the board it would sit at $0.00 above every honest solve.
+   */
+  test("a solve nobody paid for never appears on the board", async () => {
+    money.grant("agent:lucky", usdc("1"));
+    const started = (await (await call("POST", "/attempts", {}, { "x-agent": "agent:lucky" })).json()) as { id: string };
+    const r = await (await call("POST", `/attempts/${started.id}/submit`, { guess: solutionOf(started.id) }, { "x-agent": "agent:lucky" })).json() as { solved: boolean };
+    expect(r.solved).toBe(true);
+    const board = (await (await call("GET", "/leaderboard/blackbox")).json()) as unknown[];
+    expect(board).toHaveLength(0);
+  });
+
   test("an unsolved run never appears on the board", async () => {
     money.grant("agent:quitter", usdc("1"));
-    const started = (await (await call("POST", "/attempts", { seed: SEED }, { "x-agent": "agent:quitter" })).json()) as { id: string };
+    const started = (await (await call("POST", "/attempts", {}, { "x-agent": "agent:quitter" })).json()) as { id: string };
     await call("POST", `/attempts/${started.id}/ask`, { side: "left", index: 0 }, { "x-agent": "agent:quitter" });
     const board = (await (await call("GET", "/leaderboard/blackbox")).json()) as unknown[];
     expect(board).toHaveLength(0);
@@ -255,7 +360,7 @@ describe("the boards", () => {
 describe("a finished run says so, rather than throwing", () => {
   test("asking again after solving is a 409, not a 500", async () => {
     const a = await startAttempt();
-    await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
     const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
     expect(r.status).toBe(409);
     expect((await r.json()) as { error: string }).toMatchObject({ error: "this attempt is solved" });
@@ -263,7 +368,7 @@ describe("a finished run says so, rather than throwing", () => {
 
   test("a malformed probe on a finished run is still a 409, and still free", async () => {
     const a = await startAttempt();
-    await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
     const before = money.spentBy(AGENT);
     expect((await call("POST", `/attempts/${a.id}/ask`, { nonsense: true }, asAgent)).status).toBe(409);
     expect(money.spentBy(AGENT)).toBe(before);
@@ -274,7 +379,7 @@ describe("a finished run says so, rather than throwing", () => {
     const a = await startAttempt();
     await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
     await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 1 }, asAgent);
-    const r = await call("POST", `/attempts/${a.id}/submit`, { guess: boardFrom(SEED).atoms }, asAgent);
+    const r = await call("POST", `/attempts/${a.id}/submit`, { guess: solutionOf(a.id) }, asAgent);
     expect(r.status).toBe(409);
   });
 });
@@ -295,7 +400,7 @@ describe("unknown routes", () => {
  */
 describe("a run's own budget", () => {
   const start = (budget?: unknown) =>
-    call("POST", "/attempts", { seed: SEED, ...(budget === undefined ? {} : { budget }) }, asAgent);
+    call("POST", "/attempts", { ...(budget === undefined ? {} : { budget }) }, asAgent);
 
   test("a budget set at the start comes back on the attempt", async () => {
     const r = await start("0.05");
@@ -340,11 +445,121 @@ describe("a run's own budget", () => {
  * `/agents/:id` filtered on the header label while `/rating/:id` matched the payer or the label, so
  * the same agent existed on one and not the other. One of those is the identity money proves.
  */
+/**
+ * Ranked runs and the gate that reads them, through the routes.
+ *
+ * The ledger here is the in-memory one, and identities are checked by a rule written in the test:
+ * id 42 is paid for by AGENT and nothing else. Everything else is the real router.
+ */
+describe("ranking a run, and the bounty gate reading the ledger", () => {
+  const ID = "42";
+  let ledger: MemoryReputation;
+  let bounties: Bounties;
+  let ranked: Deps;
+
+  beforeEach(() => {
+    ledger = new MemoryReputation();
+    bounties = new Bounties();
+    const verify = async (id: bigint, payer: string) => id === 42n && payer === AGENT;
+    ranked = { attempts: new Attempts(money, undefined, verify), payments: money, net: "testnet",
+               bounties, reputation: ledger, verifyIdentity: verify };
+  });
+
+  const as = (headers: Record<string, string>) => ({ ...asAgent, ...headers });
+  const callRanked = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+    handle(new Request(`http://bench.test${path}`, {
+      method, headers: { "content-type": "application/json", ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), ranked);
+
+  const solved = async (headers: Record<string, string> = as({ "x-agent-id": ID })) => {
+    const { id } = await (await callRanked("POST", "/attempts", {}, headers)).json() as { id: string };
+    await callRanked("POST", `/attempts/${id}/ask`, { side: "up", index: 0 }, headers);
+    const seed = ranked.attempts.get(id)!.seed;
+    await callRanked("POST", `/attempts/${id}/submit`, { answer: boardFrom(seed).atoms }, headers);
+    return id;
+  };
+
+  test("a solved run under a proven identity ranks for $0.25, and the record reads back by id", async () => {
+    const id = await solved();
+    const before = money.spentBy(AGENT);
+    const r = await callRanked("POST", `/attempts/${id}/rank`, {}, as({ "x-agent-id": ID }));
+    expect(r.status).toBe(200);
+    const body = await r.json() as { ranked: boolean; paid: string; attempt: { ranked: { tx: string } } };
+    expect(body.ranked).toBe(true);
+    expect(body.paid).toBe("0.250000");
+    expect(money.spentBy(AGENT) - before).toBe(PRICE.rank);
+    expect(body.attempt.ranked.tx).toBe("memory:1");
+
+    const entry = ledger.entriesOf(42n)[0]!;
+    expect(entry.uri).toBe(`http://bench.test/attempts/${id}`);
+    expect(entry.hash).toBe(recordHash(ranked.attempts.get(id)!));
+
+    const rating = await (await callRanked("GET", `/rating/${ID}`)).json() as { rating: number; ranked: string[]; source: string };
+    expect(rating).toMatchObject({ rating: 3, ranked: ["blackbox"], source: "erc-8004" });
+  });
+
+  test("an open run is refused before it is charged", async () => {
+    const { id } = await (await callRanked("POST", "/attempts", {}, as({ "x-agent-id": ID }))).json() as { id: string };
+    const r = await callRanked("POST", `/attempts/${id}/rank`, {}, asAgent);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ charged: false });
+    expect(money.spentBy(AGENT)).toBe(0n);
+  });
+
+  test("a server with no registry cannot rank at all, and says so", async () => {
+    const id = await solved();
+    const { reputation: _off, ...without } = ranked;
+    const r = await handle(new Request(`http://bench.test/attempts/${id}/rank`, { method: "POST", headers: asAgent }), without);
+    expect(r.status).toBe(404);
+  });
+
+  test("a gated bounty lets in an identity whose ranked record meets the bar, and no one borrowing it", async () => {
+    const posted = await (await callRanked("POST", "/bounties", {
+      title: "t", statement: "s", amount: "1.00", deadline: Date.now() + 3 * 3600_000,
+      minRating: 3, checker: { kind: "equals", value: 7 },
+    }, { "x-agent": "0xposter" })).json() as { id: string };
+
+    // No record yet: refused for free.
+    const cold = await callRanked("POST", `/bounties/${posted.id}/solve`, { answer: 7 }, as({ "x-agent-id": ID }));
+    expect(cold.status).toBe(403);
+    expect(await cold.json()).toMatchObject({ rating: 0, needs: 3, charged: false });
+
+    // Solved but not ranked: still nothing, because the gate reads the ledger and not our database.
+    const id = await solved();
+    const unranked = await callRanked("POST", `/bounties/${posted.id}/solve`, { answer: 7 }, as({ "x-agent-id": ID }));
+    expect(await unranked.json()).toMatchObject({ rating: 0 });
+
+    await callRanked("POST", `/attempts/${id}/rank`, {}, as({ "x-agent-id": ID }));
+
+    // Someone else claiming id 42: the free check passes on the record, the paid one refuses.
+    money.grant("agent:borrower", usdc("5"));
+    const borrowed = await callRanked("POST", `/bounties/${posted.id}/solve`, { answer: 7 },
+      { "x-agent": "agent:borrower", "x-agent-id": ID });
+    expect(borrowed.status).toBe(403);
+    expect(await borrowed.json()).toMatchObject({ charged: true });
+
+    // The owner of id 42 gets in, and wins.
+    const won = await callRanked("POST", `/bounties/${posted.id}/solve`, { answer: 7 }, as({ "x-agent-id": ID }));
+    expect(await won.json()).toMatchObject({ solved: true, solver: AGENT });
+  });
+
+  test("a server with no registry refuses to post a bounty that requires a record", async () => {
+    const { reputation: _off, ...without } = ranked;
+    const r = await handle(new Request("http://bench.test/bounties", {
+      method: "POST", headers: { "content-type": "application/json", "x-agent": "0xposter" },
+      body: JSON.stringify({ title: "t", statement: "s", amount: "1.00", deadline: Date.now() + 3 * 3600_000,
+                             minRating: 1, checker: { kind: "equals", value: 7 } }),
+    }), without);
+    expect(r.status).toBe(409);
+  });
+});
+
 describe("who an agent is, consistently", () => {
   const PAYER = "0xabc0000000000000000000000000000000000001";
 
   const runWithPayer = async () => {
-    const { id } = await (await call("POST", "/attempts", { seed: SEED }, asAgent)).json() as { id: string };
+    const { id } = await (await call("POST", "/attempts", {}, asAgent)).json() as { id: string };
     const a = deps.attempts.get(id)!;
     a.payer = PAYER;                       // as the first payment would have bound it
     await call("POST", `/attempts/${id}/ask`, { side: "up", index: 0 }, asAgent);
@@ -359,11 +574,21 @@ describe("who an agent is, consistently", () => {
     expect(rating.attempted).toBe(1);
   });
 
-  test("and so does the label, on both", async () => {
+  /**
+   * A name in a header finds nothing, on either. It used to find the run, and that is what let
+   * three free solves under any name qualify that name for a bounty: `FINDINGS.md` 26.
+   */
+  test("the label alone finds nothing, on both, because a name is a claim", async () => {
     await runWithPayer();
     const agents = await (await call("GET", `/agents/${AGENT}`)).json() as { attempts: number };
     const rating = await (await call("GET", `/rating/${AGENT}`)).json() as { attempted: number };
-    expect(agents.attempts).toBe(1);
+    expect(agents.attempts).toBe(0);
+    expect(rating.attempted).toBe(0);
+  });
+
+  test("an address is the same account whatever its case", async () => {
+    await runWithPayer();
+    const rating = await (await call("GET", `/rating/${PAYER.toUpperCase().replace("0X", "0x")}`)).json() as { attempted: number };
     expect(rating.attempted).toBe(1);
   });
 

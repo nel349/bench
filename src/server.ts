@@ -12,6 +12,8 @@ import { ArcRegistry, checkIdentity } from "./arc/identity.ts";
 import { ArcAllowances } from "./arc/allowance.ts";
 import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
 import { ArcEscrow } from "./arc/escrow.ts";
+import { ArcReputation } from "./arc/reputation.ts";
+import { privateKeyFrom } from "./arc/keys.ts";
 import { ArcFunds } from "./arc/funds.ts";
 import { PRICE } from "./pricing.ts";
 import { DEFAULT_PORT } from "./paths.ts";
@@ -142,8 +144,27 @@ const arbiter = escrow && key
   ? new ArcArbiter(net, { escrow: escrow as `0x${string}`, privateKey: key })
   : undefined;
 
-/** Reads the escrow so a bounty cannot claim money that is not there. */
-const escrowReader = contractsOf(net).bountyEscrow ? new ArcEscrow(net) : undefined;
+/**
+ * Reads the escrow so a bounty cannot claim money that is not there.
+ *
+ * The same contract the arbiter pays from. It used to read the configured address while payouts
+ * went to `BENCH_ESCROW`: identical on testnet, so nothing noticed, and on any other deployment a
+ * bounty would have been checked against one contract and paid from another. `demo:local` found it.
+ */
+const escrowAt = (escrow as `0x${string}` | undefined) ?? contractsOf(net).bountyEscrow;
+const escrowReader = escrowAt ? new ArcEscrow(net, escrowAt) : undefined;
+
+/**
+ * Ranked runs, written to ERC-8004 by the scribe, where there is a registry and a key to sign with.
+ *
+ * The scribe is its own key, not the arbiter's, so a leak of one cannot fake the other's authority.
+ * It needs identities on as well: a record is written to an identity, and only a proven one. Absent,
+ * nothing can be ranked and no bounty can require a record, and the routes say so.
+ */
+const scribeKey = privateKeyFrom("BENCH_SCRIBE_KEY", process.env["BENCH_SCRIBE_KEY"]);
+const reputation = contractsOf(net).erc8004 && identities && scribeKey
+  ? new ArcReputation(net, scribeKey)
+  : undefined;
 
 /** Reads an agent's balances for the funding page. Needs only a public RPC. */
 const funds = new ArcFunds(net, PRICE.ask);
@@ -152,6 +173,7 @@ const deps: Deps = {
   attempts, payments, net, bounties, funds,
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
+  ...(reputation ? { reputation } : {}), ...(identities ? { verifyIdentity: identities } : {}),
 };
 
 const port = Number(process.env["PORT"] ?? DEFAULT_PORT);
@@ -174,6 +196,7 @@ const paying = payTo ? `x402 → ${payTo}` : "in-memory allowance (NOT real mone
 const ids = identities ? "ERC-8004 checked" : "ERC-8004 off (claims stay claims)";
 // The address, never the key.
 const paying2 = arbiter ? `escrow ${escrow} via ${arbiter.address}` : "no arbiter (wins recorded, not paid)";
+const ranking = reputation ? `ranked runs written by ${reputation.scribe}` : "ranking off (no registry or no scribe key)";
 /**
  * Finish what is in flight before going.
  *
@@ -199,6 +222,6 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 
 console.log(
   `bench listening on :${port}  network=${net}  runs=${kept}  payments=${paying}  identity=${ids}` +
-  `  bounties=${paying2}` +
+  `  bounties=${paying2}  ${ranking}` +
   `${devAllowance && !payTo ? `  DEV_ALLOWANCE=$${devAllowance}` : ""}`,
 );

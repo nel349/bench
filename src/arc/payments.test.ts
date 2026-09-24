@@ -161,7 +161,7 @@ describe("when the facilitator is down", () => {
 describe("through a run", () => {
   const run = async (f: Facilitator) => {
     const a = new Attempts(arc(f), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     return { a, at };
   };
 
@@ -214,13 +214,13 @@ describe("who the payment says you are", () => {
 
   test("nothing is bound before anything is paid", async () => {
     const a = new Attempts(arc(ok()), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     expect(at.payer).toBe(null);
   });
 
   test("the first payment binds the run to whoever paid", async () => {
     const a = new Attempts(arc(ok()), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     expect(a.get(at.id)!.payer).toBe(PAYER.toLowerCase());
   });
@@ -232,7 +232,7 @@ describe("who the payment says you are", () => {
       settle: (p, r) => f.inner.settle(p, r),
     };
     const a = new Attempts(arc(swapping), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     f.inner = paidBy(other); // a third party picks up the tab
     await a.ask(at.id, { side: "up", index: 1 }, header());
@@ -243,21 +243,21 @@ describe("who the payment says you are", () => {
   test("a refused payment binds nothing", async () => {
     const f = new Scripted(() => ({ isValid: false, invalidReason: "nope" }));
     const a = new Attempts(arc(f), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     expect(a.get(at.id)!.payer).toBe(null);
   });
 
   test("the binding is on the wire, so an agent can see who it is bound to", async () => {
     const a = new Attempts(arc(ok()), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     expect(wireAttempt(a.get(at.id)!).payer).toBe(PAYER.toLowerCase());
   });
 
   test("the score carries the payer, not just the header name", async () => {
     const a = new Attempts(arc(ok()), new MemoryStore());
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     const s = score(a.get(at.id)!);
     expect(s.agent).toBe(AGENT);           // what they called themselves
@@ -272,7 +272,7 @@ describe("who the payment says you are", () => {
   test("the binding survives SQLite, where it is written on an UPDATE and not an INSERT", async () => {
     const db = new SqliteStore(":memory:");
     const a = new Attempts(arc(ok()), db);
-    const at = a.start(AGENT, "blackbox", 7)!;
+    const at = a.start(AGENT, "blackbox", "7")!;
     await a.ask(at.id, { side: "up", index: 0 }, header());
     expect(db.get(at.id)!.payer).toBe(PAYER.toLowerCase());
   });

@@ -1,11 +1,13 @@
 /**
- * One real bounty on Arc testnet: funded on chain, refused, earned, won and paid.
+ * One real bounty on Arc testnet: funded on chain, refused, earned, ranked, won and paid.
  *
- * This is item 12, and it is the end-to-end test the unit tests stand in for. Every step touches
- * something real — the escrow is our deployed contract, the payments are Circle's, the rating is
- * the gym's own record, and the payout is a transaction hash anyone can look up.
+ * Items 12 and 18, and the end-to-end test the unit tests stand in for. Every step touches something
+ * real: the escrow is our deployed contract, the payments are Circle's, the rating is an ERC-8004
+ * entry the scribe writes to the agent's identity, read back without the gym, and the payout is a
+ * transaction hash anyone can look up.
  *
- * Dry by default. `--send` is the word that spends.
+ * Dry by default. `--send` is the word that spends. `--agent-id=<id>` names the ERC-8004 identity
+ * whose wallet is the agent key.
  */
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -25,8 +27,10 @@ import { ArcArbiter } from "../src/arc/arbiter.ts";
 import { ArcEscrow } from "../src/arc/escrow.ts";
 import { paymentHeader, payableOn } from "../src/arc/buyer.ts";
 import { chainOf, contractsOf, rpcUrl, explorerUrl } from "../src/arc/chain.ts";
-import { mazeFrom, START, EXIT, type Dir } from "../src/problems/toll.ts";
+import { shortestRoute, type Walls } from "../src/problems/toll.ts";
 import { format } from "../src/money.ts";
+import { ArcRegistry, checkIdentity, parseAgentId } from "../src/arc/identity.ts";
+import { ArcReputation, COST_DECIMALS, COST_TAG, REPUTATION_ABI } from "../src/arc/reputation.ts";
 import "../src/problems/blackbox-problem.ts";
 import "../src/problems/zendo.ts";
 import "../src/problems/toll.ts";
@@ -37,10 +41,17 @@ const send = process.argv.includes("--send");
 const PORT = Number(process.env["PORT"] ?? 8905);
 const SECRET = 424242;
 const BOUNTY = 30000n;           // 0.03 USDC
+/** Toll is easy, which counts 1, so one ranked Toll run meets the bar. */
 const MIN_RATING = 1;
 
 const agent = privateKeyToAccount(readFileSync(join(homedir(), ".arc-mandate", "agent.key"), "utf8").trim() as Hex);
 const arbiterKey = readFileSync(join(homedir(), ".bench", "arbiter.key"), "utf8").trim() as Hex;
+const scribeKey = readFileSync(join(homedir(), ".bench", "scribe.key"), "utf8").trim() as Hex;
+const scribeAddress = privateKeyToAccount(scribeKey).address;
+const agentId = parseAgentId(process.argv.find((a) => a.startsWith("--agent-id="))?.split("=")[1]);
+if (agentId === null) { console.error("Name the agent's ERC-8004 identity: --agent-id=<id>"); process.exit(1); }
+const registry = new ArcRegistry(net);
+const verify = async (id: bigint, payer: string) => (await checkIdentity(registry, id, payer)).ok;
 const arbiterAddress = privateKeyToAccount(arbiterKey).address;
 const escrowAddress = getAddress(c.bountyEscrow!);
 
@@ -63,8 +74,13 @@ const deposit = await pub.readContract({ address: c.gatewayWallet as `0x${string
 console.log(`escrow   ${escrowAddress}`);
 console.log(`arbiter  ${arbiterAddress}`);
 console.log(`agent    ${agent.address}  deposit ${formatUnits(deposit, 6)}`);
+const owned = await checkIdentity(registry, agentId, agent.address);
+const scribeGas = await pub.getBalance({ address: scribeAddress });
+console.log(`identity ${agentId}  ${owned.ok ? "names the agent key as its wallet" : `NOT the agent's: ${owned.because}`}`);
+console.log(`scribe   ${scribeAddress}  gas ${formatUnits(scribeGas, 18)} USDC`);
 console.log(`bounty   ${format(BOUNTY)} USDC, minRating ${MIN_RATING}`);
-console.log(`agent needs ~0.07: 0.02 to earn a rating, 0.05 to attempt\n`);
+console.log(`agent needs ~0.32 deposited: 0.02 for the map, 0.25 to rank, 0.05 to attempt the bounty\n`);
+if (!owned.ok) process.exit(1);
 
 if (!send) { console.log("Dry run. Nothing was sent. Add --send to spend."); process.exit(0); }
 
@@ -99,15 +115,17 @@ const facilitator = new GatewayFacilitator(net);
 const payments = new ArcPayments(facilitator, net, poster.address, () => 0n);
 const store = new MemoryStore();
 const bounties = new Bounties(new MemoryBounties());
+const reputation = new ArcReputation(net, scribeKey);
 const deps: Deps = {
-  attempts: new Attempts(payments, store), payments, net, bounties,
+  attempts: new Attempts(payments, store, verify), payments, net, bounties,
+  reputation, verifyIdentity: verify,
   arbiter: new ArcArbiter(net, { escrow: escrowAddress, privateKey: arbiterKey }),
   // The listing is now checked against the chain, so the run proves that too.
   escrow: new ArcEscrow(net, escrowAddress),
 };
 const server = Bun.serve({ port: PORT, fetch: (req) => handle(req, deps) });
 const base = `http://localhost:${PORT}`;
-const mine = { "x-agent": agent.address, "content-type": "application/json" };
+const mine = { "x-agent": agent.address, "x-agent-id": agentId.toString(), "content-type": "application/json" };
 const call = (m: string, p: string, h: Record<string, string>, b?: unknown) =>
   fetch(base + p, { method: m, headers: h, ...(b === undefined ? {} : { body: JSON.stringify(b) }) });
 
@@ -139,29 +157,25 @@ try {
 
   // ── 4. earn the rating, by actually solving something ────────────────────────────────────────
   console.log("4. earning a rating: solving Toll");
-  const run = await (await call("POST", "/attempts", mine, { problem: "toll", seed: 3 })).json() as { id: string };
-  await paid(`/attempts/${run.id}/ask`, { map: true });
+  // Solved from the map it pays for. The seed is the gym's, and secret until the run is over.
+  const run = await (await call("POST", "/attempts", mine, { problem: "toll" })).json() as { id: string };
+  const bought = await (await paid(`/attempts/${run.id}/ask`, { map: true })).json() as { answer: { map: Walls[][] } };
 
-  const maze = mazeFrom(3);
-  const step: Record<Dir, [number, number]> = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
-  const seen = new Set([`${START.x},${START.y}`]);
-  let queue: { x: number; y: number; path: Dir[] }[] = [{ ...START, path: [] }];
-  let route: Dir[] = [];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    if (cur.x === EXIT.x && cur.y === EXIT.y) { route = cur.path; break; }
-    for (const d of ["N", "E", "S", "W"] as const) {
-      if (maze[cur.y]![cur.x]![d]) continue;
-      const [dx, dy] = step[d];
-      const nx = cur.x + dx, ny = cur.y + dy;
-      if (nx < 0 || ny < 0 || ny >= maze.length || nx >= maze[0]!.length || seen.has(`${nx},${ny}`)) continue;
-      seen.add(`${nx},${ny}`);
-      queue.push({ x: nx, y: ny, path: [...cur.path, d] });
-    }
-  }
+  const route = shortestRoute(bought.answer.map);
   const solved = await (await paid(`/attempts/${run.id}/submit`, { answer: route.join("") })).json() as { solved: boolean };
-  const rating = await (await call("GET", `/rating/${agent.address}`, mine)).json() as { rating: number; spend: string };
-  console.log(`   solved: ${solved.solved}, rating now ${rating.rating}, spent ${rating.spend}\n`);
+  console.log(`   solved: ${solved.solved}`);
+
+  const rankedRun = await (await paid(`/attempts/${run.id}/rank`, {})).json() as { ranked: boolean; tx?: string; because?: string };
+  console.log(`   ranked: ${rankedRun.ranked}  ${rankedRun.tx ? `${explorerUrl(net)}/tx/${rankedRun.tx}` : rankedRun.because}`);
+
+  // Read back as a stranger would: straight from the registry, filtered to the scribe, no gym involved.
+  const [, , values, , tag1s] = await pub.readContract({
+    address: c.erc8004!.reputation as `0x${string}`, abi: REPUTATION_ABI, functionName: "readAllFeedback",
+    args: [agentId, [scribeAddress], "", COST_TAG, false],
+  });
+  console.log(`   on chain, by the scribe: ${tag1s.map((t, i) => `${t} ${formatUnits(values[i]!, COST_DECIMALS)}`).join(", ")}`);
+  const rating = await (await call("GET", `/rating/${agentId}`, mine)).json() as { rating: number };
+  console.log(`   rating now ${rating.rating}\n`);
 
   // ── 5. win it ────────────────────────────────────────────────────────────────────────────────
   console.log("5. attempting it again, with a record");

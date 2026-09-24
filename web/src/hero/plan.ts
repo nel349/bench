@@ -1,7 +1,8 @@
 import {
-  boardFrom, ports, rng, trace,
+  boardFrom, ports, trace,
   type Board, type Cell, type Port, type Trace,
 } from "../../../src/problems/blackbox.ts";
+import { stream } from "../../../src/problems/seed.ts";
 
 /**
  * One board, played start to finish, decided before any of it is drawn.
@@ -50,8 +51,9 @@ const INFORMATIVE_WEIGHT = 4;
 const key = (c: Cell) => `${c.x},${c.y}`;
 
 export function planBoard(seed: number, price: number): BoardPlan {
-  const board = boardFrom(seed);
-  const next = rng(seed ^ 0x9e3779b9);
+  // Board numbers are practice seeds, so board 42 here is `?seed=42` at the harness.
+  const board = boardFrom(String(seed));
+  const next = stream(String(seed), "hero/rays");
   const unused = ports(board.size);
   const found = new Set<string>();
   const rays: PlannedRay[] = [];

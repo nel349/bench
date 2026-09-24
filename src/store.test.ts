@@ -11,7 +11,7 @@ import { boardFrom } from "./problems/blackbox.ts";
 import "./problems/blackbox-problem.ts";
 
 const AGENT = "agent:aria";
-const SEED = 4242;
+const SEED = "4242";
 const dirs: string[] = [];
 
 function scratch(): string {
@@ -63,7 +63,7 @@ for (const [name, make] of stores) {
       await attempts.submit(first.id, wrong);
 
       // A second attempt by the same agent at the same problem: no longer free.
-      const second = attempts.start(AGENT, "blackbox", 99)!;
+      const second = attempts.start(AGENT, "blackbox", "99")!;
       await attempts.submit(second.id, wrong);
       expect(format(attempts.get(second.id)!.spend)).toBe("0.050000");
     });
@@ -209,7 +209,7 @@ describe("a database from before the payer column", () => {
     const path = scratch();
     older(path);
     const store = new SqliteStore(path);
-    const at = new Attempts(new InMemoryAllowance(), store).start(AGENT, "blackbox", 7)!;
+    const at = new Attempts(new InMemoryAllowance(), store).start(AGENT, "blackbox", "7")!;
     at.payer = "0xabc";
     store.put(at);
     expect(store.get(at.id)!.payer).toBe("0xabc");

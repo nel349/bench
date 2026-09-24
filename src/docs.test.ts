@@ -3,6 +3,7 @@ import { handle, type Deps } from "./http.ts";
 import { Attempts } from "./attempt.ts";
 import { InMemoryAllowance } from "./payments.ts";
 import { Bounties } from "./bounties.ts";
+import { MemoryReputation } from "./reputation.ts";
 import { describe as describeAllowance } from "./arc/allowance.ts";
 import { usdc } from "./money.ts";
 import "./problems/blackbox-problem.ts";
@@ -40,6 +41,7 @@ beforeEach(() => {
     attempts: new Attempts(money), payments: money, net: "testnet", bounties: new Bounties(),
     // A stand-in, so the route is exercised without the suite reaching a chain. What it returns
     // does not matter here; that the route exists and answers does.
+    reputation: new MemoryReputation(),
     allowances: { async of() { return describeAllowance(
       { hasLimit: true, limit: 5_000_000n, limitUsed: 0n, refreshInterval: 0, lastUsedTime: 0 }, 0); } },
   };
@@ -68,7 +70,7 @@ async function concrete(path: string): Promise<string> {
 
   const made = await handle(new Request("http://x/attempts", {
     method: "POST", headers: { "x-agent": "agent:aria", "content-type": "application/json" },
-    body: JSON.stringify({ problem: "blackbox", seed: 7 }),
+    body: JSON.stringify({ problem: "blackbox" }),
   }), deps);
   const { id } = await made.json() as { id: string };
   return path.replace(":problem", "blackbox").replace(":id", id);
@@ -87,7 +89,7 @@ describe("every route in docs/API.md", () => {
       const r = await handle(new Request(url, {
         method,
         headers: { "x-agent": "agent:aria", "content-type": "application/json" },
-        ...(method === "POST" ? { body: JSON.stringify({ problem: "blackbox", seed: 7, side: "up", index: 0 }) } : {}),
+        ...(method === "POST" ? { body: JSON.stringify({ problem: "blackbox", side: "up", index: 0 }) } : {}),
       }), deps);
 
       // 402 is an answer: a paid route saying what it costs. Only "no route" is a missing route.
@@ -107,7 +109,7 @@ describe("every route in docs/API.md", () => {
 describe("every route in the agent skill", () => {
   const paths = [...new Set(
     [...SKILL.matchAll(/\$BENCH(\/[A-Za-z0-9/_$-]*)/g)].map((m) => m[1]!)
-      .map((p) => p.replace(/\$AGENT/g, "agent:aria").replace(/\$ID/g, ":id"))
+      .map((p) => p.replace(/\$AGENT_ID/g, "42").replace(/\$AGENT/g, "agent:aria").replace(/\$ID/g, ":id"))
       .filter((p) => p.length > 1),
   )];
 
@@ -116,15 +118,15 @@ describe("every route in the agent skill", () => {
   });
 
   for (const path of paths) {
-    // The skill shows these three with `-XPOST`; everything else it shows is a plain GET.
-    const method = /\/(ask|submit)$/.test(path) || path === "/attempts" ? "POST" : "GET";
+    // The skill shows these with `-XPOST`; everything else it shows is a plain GET.
+    const method = /\/(ask|submit|rank)$/.test(path) || path === "/attempts" ? "POST" : "GET";
 
     test(`${method} ${path} exists`, async () => {
       const r = await handle(new Request(`http://bench.test${await concrete(path)}`, {
         method,
         headers: { "x-agent": "agent:aria", "content-type": "application/json" },
         ...(method === "POST"
-          ? { body: JSON.stringify({ problem: "blackbox", seed: 7, side: "up", index: 0, answer: [] }) }
+          ? { body: JSON.stringify({ problem: "blackbox", side: "up", index: 0, answer: [] }) }
           : {}),
       }), deps);
       expect(await r.text()).not.toContain("no route for");
@@ -140,17 +142,8 @@ describe("what the docs promise about prices", () => {
     expect(API).toContain(`$${first!.prices.submit.replace(/0+$/, "")}`); // $0.05
   });
 
-  test("a route the doc calls unbuilt really is unbuilt", async () => {
-    expect(API).toContain("POST /attempts/:id/rank");
-    const made = await handle(new Request("http://x/attempts", {
-      method: "POST", headers: { "x-agent": "agent:aria", "content-type": "application/json" },
-      body: JSON.stringify({ problem: "blackbox", seed: 7 }),
-    }), deps);
-    const { id } = await made.json() as { id: string };
-    const r = await handle(new Request(`http://bench.test/attempts/${id}/rank`, {
-      method: "POST", headers: { "x-agent": "agent:aria", "content-type": "application/json" },
-      body: "{}",
-    }), deps);
-    expect(r.status).toBe(404); // if this ever passes, move it out of "Not built yet"
+  test("the rank route, unbuilt for weeks, is documented as built and answers", async () => {
+    expect(API.split("## Not built yet")[0]).toContain("POST /attempts/:id/rank");
+    expect(API.split("## Not built yet")[1]).not.toContain("/rank");
   });
 });

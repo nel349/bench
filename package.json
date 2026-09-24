@@ -18,6 +18,7 @@
     "pay:once": "bun run scripts/pay-once.ts",
     "top-up": "bun run scripts/top-up.ts",
     "arbiter:key": "bun run scripts/arbiter-key.ts",
+    "scribe:key": "bun run scripts/scribe-key.ts",
     "deploy:escrow": "bun run scripts/deploy-escrow.ts",
     "fund": "bun run scripts/fund.ts",
     "bounty:real": "bun run scripts/real-bounty.ts",

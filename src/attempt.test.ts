@@ -9,7 +9,7 @@ import "./problems/blackbox-problem.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 
 const AGENT = "agent:aria";
-const SEED = 4242;
+const SEED = "4242";
 
 let money: InMemoryAllowance;
 let attempts: Attempts;
@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 const isRefusal = (r: unknown): r is Refusal => typeof r === "object" && r !== null && "refused" in r;
-const solutionFor = (seed: number) => boardFrom(seed).atoms;
+const solutionFor = (seed: string) => boardFrom(seed).atoms;
 
 describe("starting is free; you pay to learn, not to arrive", () => {
   test("no charge to start", async () => {

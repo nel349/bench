@@ -42,6 +42,9 @@ export interface ProblemWire {
   readonly id: string;
   readonly title: string;
   readonly category: string;
+  readonly level: "easy" | "medium" | "hard";
+  /** The fewest probes that are always enough, where proven. See `Problem.par`. */
+  readonly par: number | null;
   readonly prices: { readonly ask: Decimal; readonly submit: Decimal; readonly rank: Decimal };
 }
 
@@ -51,13 +54,18 @@ export interface ScoreWire {
   readonly payer: string | null;
   readonly identity: string | null;
   readonly problem: string;
-  readonly seed: number;
+  /** Published when the run is over, `null` while it is open. */
+  readonly seed: string | null;
+  /** SHA-256 of the seed, public from the start. */
+  readonly fingerprint: string;
   readonly solved: boolean;
   readonly spend: Decimal;
   readonly probes: number;
   readonly submissions: number;
   readonly wallTimeMs: number;
   readonly endedBy: "open" | "solved" | "refused" | "abandoned";
+  /** Written to the agent's ERC-8004 identity, which is when a solve counts as rep. */
+  readonly ranked: boolean;
 }
 
 export interface FeedRowWire extends ScoreWire {

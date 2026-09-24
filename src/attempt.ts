@@ -4,6 +4,8 @@ import { format, type Usdc } from "./money.ts";
 import { MemoryStore, type Store } from "./store.ts";
 import { Serial } from "./serialize.ts";
 import { problemOf, type Problem } from "./problems/problem.ts";
+import { fingerprint, type Seed } from "./problems/seed.ts";
+import { keccak256, stringToBytes } from "viem";
 
 /**
  * One agent's run at one problem: what it bought, what it spent, and whether it got there.
@@ -13,7 +15,8 @@ import { problemOf, type Problem } from "./problems/problem.ts";
  * spend and no solution, not an error the caller has to interpret.
  *
  * The instance is never handed out. It is rebuilt from the seed on every call, so there is no copy
- * of the solution sitting in a response object waiting to be leaked by a careless serialiser.
+ * of the solution sitting in a response object waiting to be leaked by a careless serialiser. The
+ * seed itself is withheld until the run is over, for the same reason: see `Attempt.seed`.
  */
 
 export type AttemptId = string;
@@ -50,8 +53,15 @@ export interface Attempt {
    */
   identity: string | null;
   readonly problem: string;
-  /** Rebuilds the instance. Public on purpose: a stranger checking a run needs it. */
-  readonly seed: number;
+  /**
+   * Rebuilds the instance, so it is **secret while the run is open** and published once it ends.
+   *
+   * It used to be public from the start, so that a stranger could check a run. The generators are
+   * public too, so anyone could rebuild the instance and submit the answer for nothing, and every
+   * problem was solved that way with zero probes. Now the run shows `fingerprint(seed)` while open,
+   * which commits the gym to the instance, and the seed itself once nothing more can be submitted.
+   */
+  readonly seed: Seed;
   readonly startedAt: number;
   endedAt: number | null;
   outcome: "open" | "solved" | "refused" | "abandoned";
@@ -63,6 +73,12 @@ export interface Attempt {
   readonly budget: Usdc | null;
   /** Problems where a probe changes the situation keep it here. Most do not and leave it null. */
   state: unknown;
+  /**
+   * Whether the run was ranked: `null` if not, `{ tx: null }` once the $0.25 is paid and the record
+   * is not yet on chain, and `{ tx }` once it is. The middle state is what lets a failed write be
+   * retried without charging twice.
+   */
+  rank: { readonly tx: string | null } | null;
 }
 
 export type Refusal = { readonly refused: "allowance" | "budget"; readonly wanted: Usdc; readonly remaining: Usdc };
@@ -102,6 +118,11 @@ export type Malformed = { readonly malformed: true };
 export interface Settled { readonly payer?: string; readonly settlement?: string }
 
 export type Asked = Settled & { readonly answer: unknown; readonly paid: Usdc; readonly spend: Usdc };
+/** Ranked: where the record was written, and what this call charged, which is nothing on a retry. */
+export type Ranked = Settled & { readonly ranked: string; readonly paid: Usdc } |
+  Settled & { readonly unwritten: string; readonly paid: Usdc };
+/** Ranking this run would be pointless, and nothing was charged to say so. */
+export type NotRankable = { readonly notRankable: string };
 export type Graded = Settled &
   { readonly solved: boolean; readonly paid: Usdc; readonly spend: Usdc; readonly submissions: number };
 
@@ -171,7 +192,7 @@ export class Attempts {
 
   /** Starting is free. You pay to learn, not to arrive. */
   start(
-    agent: AgentId, problemId: string, seed: number,
+    agent: AgentId, problemId: string, seed: Seed,
     budget: Usdc | null = null, claimedId: bigint | null = null,
   ): Attempt | null {
     const problem = problemOf(problemId);
@@ -180,7 +201,7 @@ export class Attempts {
       id: this.store.nextId(), agent, problem: problem.id, seed,
       startedAt: Date.now(), endedAt: null, outcome: "open",
       payer: null, claimedId: claimedId === null ? null : claimedId.toString(), identity: null,
-      probes: [], submissions: 0, spend: 0n, budget, state: problem.initialState(seed),
+      probes: [], submissions: 0, spend: 0n, budget, state: problem.initialState(seed), rank: null,
     };
     this.store.put(attempt);
     return attempt;
@@ -233,6 +254,64 @@ export class Attempts {
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }
     this.store.put(a);
     return { ...paid, solved, paid: price, spend: a.spend, submissions: a.submissions };
+  }
+
+  /**
+   * Turn a solved run into a credential: charge for ranking it, then have `write` put it on chain.
+   *
+   * Everything that would make ranking pointless is refused before anything is charged. The charge
+   * happens once: if the write fails after it, the run remembers it was paid for, and the next call
+   * retries the write for nothing. `write` is supplied by the caller, so the lifecycle stays
+   * ignorant of chains, the same way `verifyIdentity` does.
+   *
+   * A refusal here never ends the run. It is already finished; being short of money to rank it is
+   * news for the agent, not a verdict on the run.
+   */
+  async rank(id: AttemptId, write: (a: Attempt, agentId: bigint) => Promise<string>, proof?: string | null):
+    Promise<Ranked | NotRankable | Refusal | PaymentRequired | BadPayment | Unavailable> {
+    return this.#serial.run(`attempt:${id}`, () => this.#rank(id, write, proof));
+  }
+
+  async #rank(id: AttemptId, write: (a: Attempt, agentId: bigint) => Promise<string>, proof?: string | null):
+    Promise<Ranked | NotRankable | Refusal | PaymentRequired | BadPayment | Unavailable> {
+    const a = this.store.get(id);
+    if (!a) throw new Error(`no attempt ${id}`);
+    if (a.outcome !== "solved") return { notRankable: "only a solved run can be ranked" };
+    if (!a.payer) return { notRankable: "nobody paid for this run, so it is nobody's to rank" };
+    const identity = a.identity;
+    if (!identity) {
+      return { notRankable: "this run has no proven ERC-8004 identity to write the record to. " +
+        "Send X-Agent-Id when you start a run, from the address the identity names as its wallet" };
+    }
+    if (a.rank?.tx) return { ranked: a.rank.tx, paid: 0n };
+
+    let paid = 0n;
+    let settled: Settled = {};
+    if (!a.rank) {
+      const charge = await this.payments.charge(a.agent, PRICE.rank, "rank", proof);
+      if (!charge.ok) {
+        if ("needsPayment" in charge) return { needsPayment: charge.needsPayment };
+        if ("unavailable" in charge) return { unavailable: charge.unavailable };
+        if (charge.refused === "payment") return { badPayment: charge.reason, quote: charge.quote };
+        return { refused: "allowance", wanted: charge.wanted, remaining: charge.remaining };
+      }
+      a.rank = { tx: null };
+      this.store.put(a);
+      paid = PRICE.rank;
+      settled = {
+        ...(charge.payer ? { payer: charge.payer } : {}),
+        ...(charge.settlement ? { settlement: charge.settlement } : {}),
+      };
+    }
+
+    try {
+      const tx = await write(a, BigInt(identity));
+      a.rank = { tx };
+      this.store.put(a);
+      return { ...settled, ranked: tx, paid };
+    } catch (cause) {
+      return { ...settled, unwritten: cause instanceof Error ? cause.message : String(cause), paid };
+    }
   }
 
   abandon(id: AttemptId): Attempt {
@@ -306,13 +385,18 @@ export interface Score {
   /** The ERC-8004 id the registry confirmed, never the one merely claimed. */
   readonly identity: string | null;
   readonly problem: string;
-  readonly seed: number;
+  /** Published once the run is over, and `null` until then. See `Attempt.seed`. */
+  readonly seed: Seed | null;
+  /** SHA-256 of the seed, public from the start, so a revealed seed can be checked against it. */
+  readonly fingerprint: string;
   readonly solved: boolean;
   readonly spend: Usdc;
   readonly probes: number;
   readonly submissions: number;
   readonly wallTimeMs: number;
   readonly endedBy: Attempt["outcome"];
+  /** Whether the run is written to the agent's ERC-8004 identity, which is when it counts as rep. */
+  readonly ranked: boolean;
 }
 
 /**
@@ -326,11 +410,12 @@ export type IdentityVerifier = (agentId: bigint, payer: string) => Promise<boole
 export function score(a: Attempt): Score {
   return {
     attempt: a.id, agent: a.agent, payer: a.payer, identity: a.identity,
-    problem: a.problem, seed: a.seed,
+    problem: a.problem, ...revealed(a),
     solved: a.outcome === "solved",
     spend: a.spend, probes: a.probes.length, submissions: a.submissions,
     wallTimeMs: (a.endedAt ?? Date.now()) - a.startedAt,
     endedBy: a.outcome,
+    ranked: Boolean(a.rank?.tx),
   };
 }
 
@@ -348,11 +433,21 @@ export function wireScore(s: Score): WireScore {
   return { ...s, spend: format(s.spend) };
 }
 
-/** What an agent may see of its own attempt: never the instance, and never a bigint. */
-export interface WireAttempt {
+/**
+ * The seed if the run is over, and in every case its fingerprint.
+ *
+ * The one place a seed is let out, so no response can publish it early by forgetting to check.
+ */
+function revealed(a: Attempt): { readonly seed: Seed | null; readonly fingerprint: string } {
+  return { seed: isOver(a) ? a.seed : null, fingerprint: fingerprint(a.seed) };
+}
+
+/** What an agent may see of its own attempt: never the instance, never an open run's seed, and never a bigint. */
+export interface WireRecord {
   readonly id: AttemptId;
   readonly problem: string;
-  readonly seed: number;
+  readonly seed: Seed | null;
+  readonly fingerprint: string;
   readonly outcome: Attempt["outcome"];
   /** Who is bound to this run by having paid for it, once anything has been paid. */
   readonly payer: string | null;
@@ -364,9 +459,26 @@ export interface WireAttempt {
   readonly submissions: number;
 }
 
+/** The record, and whether it was ranked: `null`, or where it was written, `null` until it lands. */
+export interface WireAttempt extends WireRecord {
+  readonly ranked: { readonly tx: string | null } | null;
+}
+
 export function wireAttempt(a: Attempt): WireAttempt {
+  return { ...wireRecord(a), ranked: a.rank ? { tx: a.rank.tx } : null };
+}
+
+/**
+ * The hash a ranked run's on-chain entry carries: keccak256 of this run's record as JSON, which is
+ * `GET /attempts/:id` without its `ranked` field. Anyone can fetch the one and check the other.
+ */
+export function recordHash(a: Attempt): `0x${string}` {
+  return keccak256(stringToBytes(JSON.stringify(wireRecord(a))));
+}
+
+export function wireRecord(a: Attempt): WireRecord {
   return {
-    id: a.id, problem: a.problem, seed: a.seed, outcome: a.outcome,
+    id: a.id, problem: a.problem, ...revealed(a), outcome: a.outcome,
     payer: a.payer, identity: a.identity,
     spend: format(a.spend), budget: a.budget === null ? null : format(a.budget),
     probes: a.probes, submissions: a.submissions,
