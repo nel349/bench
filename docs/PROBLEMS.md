@@ -37,11 +37,13 @@ is: a bisect that steps around broken builds costs less than one that walks into
 
 ## Zendo
 
-A hidden rule decides whether a triple of integers belongs. Propose any triple and learn yes or
-no. Then classify twenty published triples; all twenty must be right.
+A hidden rule decides whether a triple of numbers from 0 to 19 belongs. Propose any triple and learn
+yes or no. Then name the rule, from the list the harness publishes.
 
-The twenty are public, so you may simply buy their answers: $0.40. Working the rule out from four
-well-chosen probes costs a fifth of that. The rule families are listed in the source.
+There are over five thousand rules: simple ones, like "the sum is divisible by 3", and pairs of them
+joined by "and" or "or", with any two that agree on every triple counted once. Choosing each triple
+to split what is still possible takes about a dozen questions; asking whatever comes to mind takes
+several times that.
 
 ## Codebreaker
 
@@ -84,8 +86,9 @@ The answer to a question depends on how many came before it, so a run is replaye
 The first graded submission on a problem is free, so any answer can be guessed once for nothing.
 Two things keep that from being worth doing. A run counts, on a leaderboard or towards a rating,
 only when an address paid for it, which takes at least one probe. And every problem is large enough
-that a guess costs, on average, at least fifty times an honest solve, with one exception: Zendo's
-rule families are public and few, and a guess wins about one time in ten. That is being decided.
+that a guess costs, on average, at least fifty times an honest solve. Zendo was the exception for a
+while: it published twenty triples drawn from its rule, which gave the rule away for free. It now
+asks for the rule by name, and a guess wins about one time in five thousand.
 
 ## Scoring
 

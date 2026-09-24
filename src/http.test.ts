@@ -7,7 +7,7 @@ import { PRICE } from "./pricing.ts";
 import { payableOn } from "./arc/buyer.ts";
 import { X402_VERSION } from "./arc/facilitator.ts";
 import { boardFrom, fire, type Port } from "./problems/blackbox.ts";
-import { ruleFor, testSet } from "./problems/zendo.ts";
+import { ruleFor } from "./problems/zendo.ts";
 import { mazeFrom, shortestRoute } from "./problems/toll.ts";
 import { fingerprint } from "./problems/seed.ts";
 import { GENERATOR } from "./problems/problem.ts";
@@ -137,7 +137,7 @@ describe("starting an attempt", () => {
 describe("a run cannot be solved from what it shows you", () => {
   const answerFrom = (problem: string, seed: string): unknown => {
     if (problem === "blackbox") return boardFrom(seed).atoms;
-    if (problem === "zendo") return testSet(seed).map((t) => ruleFor(seed).holds(t));
+    if (problem === "zendo") return ruleFor(seed).name;
     return shortestRoute(mazeFrom(seed)).join("");
   };
 

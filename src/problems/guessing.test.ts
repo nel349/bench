@@ -5,6 +5,8 @@ import { CODES } from "./codebreaker.ts";
 import { ORDERS } from "./ranking.ts";
 import { NUMBERS } from "./liar.ts";
 import { mazeFrom, shortestRoute } from "./toll.ts";
+import { ruleFor, ruleNames, solve } from "./zendo.ts";
+import "./zendo.ts";
 import { problemOf } from "./problem.ts";
 import "./blackbox-problem.ts";
 import "./toll.ts";
@@ -21,8 +23,8 @@ import "./liar.ts";
  * there are. If that is cheap next to solving the problem properly, the leaderboard fills with
  * lucky guesses priced below the best honest play. `plan/PLAN_20.md` in the plans repository.
  *
- * Zendo is not here, because it fails: its ten rule families are public, so applying one at random
- * wins about one time in ten. That is `FINDINGS.md` 27 and item 29, and it is a design decision.
+ * Zendo failed this for as long as it published twenty triples; it now asks for the rule's name, and
+ * is held to the same bar below, with its honest cost measured rather than assumed. `FINDINGS.md` 27.
  */
 const RATIO = 50;
 
@@ -51,6 +53,20 @@ describe("a lucky guess costs at least fifty honest solves", () => {
       expect(c.answers).toBeGreaterThanOrEqual(RATIO * c.honest);
     });
   }
+
+  /**
+   * Zendo's answer is one of its rules by name, each distinct, and a guess is one of them at random.
+   * Its honest cost has no proven par, so the reference solver plays it and the average is used.
+   */
+  test("zendo: a guess costs at least fifty honest solves, honest play measured", async () => {
+    const SEEDS = 6;
+    let asked = 0;
+    for (let s = 0; s < SEEDS; s++) {
+      const rule = ruleFor(`guess-${s}`);
+      asked += (await solve(async (t) => rule.holds(t))).asked;
+    }
+    expect(ruleNames().length).toBeGreaterThanOrEqual(RATIO * (asked / SEEDS));
+  }, 60_000);
 
   /**
    * Toll's answer is a route, and a route can solve more than one maze, so counting answers says

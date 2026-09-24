@@ -1,101 +1,93 @@
 import { expect, test, describe } from "bun:test";
-import { ruleFor, testSet, zendo, TEST_SIZE, type Triple } from "./zendo.ts";
+import { holdsAt, ruleFor, ruleNamed, ruleNames, solve, zendo, DOMAIN, type Triple } from "./zendo.ts";
 import { Attempts } from "../attempt.ts";
 import { InMemoryAllowance } from "../payments.ts";
-import { usdc, format } from "../money.ts";
+import { usdc } from "../money.ts";
 import { PRICE } from "../pricing.ts";
 
-const truthFor = (seed: string): boolean[] => testSet(seed).map((t) => ruleFor(seed).holds(t));
+describe("the rules", () => {
+  test("there are thousands, every one different on some triple", () => {
+    const names = ruleNames();
+    expect(names.length).toBeGreaterThan(3000);
+    expect(new Set(names).size).toBe(names.length);
+    // Distinct as rules, not only as names: no two agree on all 8,000 triples.
+    const seen = new Set<string>();
+    for (let r = 0; r < names.length; r++) {
+      let key = "";
+      for (let i = 0; i < DOMAIN ** 3; i += 1) {
+        const t: Triple = [Math.floor(i / 400), Math.floor(i / 20) % 20, i % 20];
+        key += holdsAt(r, t) ? "1" : "0";
+      }
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+  }, 60_000);
 
-describe("the rule and the test set come from the seed alone", () => {
-  test("the same seed gives the same rule", () => {
-    for (const s of ["1", "7", "99", "4242"]) expect(ruleFor(s).name).toBe(ruleFor(s).name);
+  test("every name is a sentence, and the lookup of a name finds its rule", () => {
+    for (const [i, name] of ruleNames().entries()) {
+      expect(name).toMatch(/^[a-z0-9 ,]+$/);
+      expect(ruleNamed(name)).toBe(i);
+    }
   });
-  test("seeds reach more than one rule", () => {
-    const names = new Set(Array.from({ length: 200 }, (_, i) => ruleFor(String(i)).name));
-    expect(names.size).toBeGreaterThan(4);
-  });
-  test("a test set is the same every time it is asked for", () => {
-    expect(testSet("4242")).toEqual(testSet("4242"));
+
+  test("a rule's name and its bits agree", () => {
+    const i = ruleNamed("the sum is divisible by 3");
+    expect(holdsAt(i, [1, 1, 1])).toBe(true);
+    expect(holdsAt(i, [1, 1, 2])).toBe(false);
   });
 });
 
-describe("the test set cannot be passed by guessing", () => {
-  for (const seed of ["1", "7", "42", "99", "4242", "123456"]) {
-    test(`seed ${seed}: ten true and ten false, so neither constant passes`, () => {
-      const ts = testSet(seed);
-      expect(ts).toHaveLength(TEST_SIZE);
-      const yes = ts.filter((t) => ruleFor(seed).holds(t)).length;
-      expect(yes).toBe(TEST_SIZE / 2);
-      expect(zendo.check(seed, Array(TEST_SIZE).fill(true))).toBe(false);
-      expect(zendo.check(seed, Array(TEST_SIZE).fill(false))).toBe(false);
-    });
-  }
+describe("the rule comes from the seed alone", () => {
+  test("the same seed gives the same rule, and seeds reach many", () => {
+    expect(ruleFor("7").name).toBe(ruleFor("7").name);
+    const names = new Set(Array.from({ length: 300 }, (_, i) => ruleFor(`z-${i}`).name));
+    expect(names.size).toBeGreaterThan(280);
+  });
 });
 
-describe("grading", () => {
+describe("the problem, through its interface", () => {
   const seed = "4242";
-  test("the honest answer passes", () => expect(zendo.check(seed, truthFor(seed))).toBe(true));
-  test("one wrong out of twenty fails — all twenty must be right", () => {
-    const nearly = truthFor(seed).map((b, i) => (i === 7 ? !b : b));
-    expect(zendo.check(seed, nearly)).toBe(false);
+  test("a triple gets yes or no, and nothing else", () => {
+    const out = zendo.probe(seed, [2, 4, 6], null)!;
+    expect(out.answer).toEqual({ holds: ruleFor(seed).holds([2, 4, 6]) });
   });
-  test("a short answer, a long one, or the wrong type all fail", () => {
-    expect(zendo.check(seed, truthFor(seed).slice(0, 19))).toBe(false);
-    expect(zendo.check(seed, [...truthFor(seed), true])).toBe(false);
-    expect(zendo.check(seed, "yes")).toBe(false);
-    expect(zendo.check(seed, truthFor(seed).map(String))).toBe(false);
-  });
-});
-
-describe("probing", () => {
-  const seed = "4242";
-  test("a triple gets a yes or a no and nothing else", () => {
-    const out = zendo.probe(seed, [2, 4, 6], null);
-    expect(out).not.toBeNull();
-    expect(out!.answer).toEqual({ holds: ruleFor(seed).holds([2, 4, 6] as Triple) });
-  });
-  test("anything that is not three integers does not parse, and so is not charged for", () => {
-    for (const bad of [[1, 2], [1, 2, 3, 4], "nope", null, [1, 2, "3"], [1.5, 2, 3], {}]) {
+  test("anything but three whole numbers from 0 to 19 is refused, and so is not charged", () => {
+    for (const bad of [[1, 2], [1, 2, 3, 4], "nope", null, [1, 2, "3"], [1.5, 2, 3], {}, [1, 2, 20], [-1, 2, 3]]) {
       expect(zendo.probe(seed, bad, null)).toBeNull();
     }
   });
+  test("the checker wants the rule's name, in any case and spacing, and nothing else", () => {
+    const name = ruleFor(seed).name;
+    expect(zendo.check(seed, name)).toBe(true);
+    expect(zendo.check(seed, `  ${name.toUpperCase()} `)).toBe(true);
+    const other = ruleNames().find((n) => n !== name)!;
+    expect(zendo.check(seed, other)).toBe(false);
+    expect(zendo.check(seed, "something else")).toBe(false);
+    expect(zendo.check(seed, 3)).toBe(false);
+  });
 });
 
-/**
- * The property the problem is actually built around.
- *
- * Buying the answer is allowed. It is just dearer than thinking, and by a margin big enough that an
- * agent notices — which is the whole thesis of the gym expressed as one assertion.
- */
-describe("buying the answer costs five times what working it out does", () => {
-  test("probing the whole test set costs $0.40", async () => {
+describe("honest play", () => {
+  test("the reference solver names the rule, in around a dozen questions", async () => {
+    let total = 0;
+    const SEEDS = 8;
+    for (let s = 0; s < SEEDS; s++) {
+      const seed = `honest-${s}`;
+      const rule = ruleFor(seed);
+      const out = await solve(async (t) => rule.holds(t));
+      expect(out.name).toBe(rule.name);
+      total += out.asked;
+    }
+    expect(total / SEEDS).toBeLessThan(20);
+  }, 60_000);
+
+  test("a run, end to end, costs what it asked and the name solves it", async () => {
     const money = new InMemoryAllowance();
-    money.grant("agent:brute", usdc("5"));
+    money.grant("agent:zendo", usdc("5"));
     const attempts = new Attempts(money);
-    const a = attempts.start("agent:brute", "zendo", "4242")!;
-
-    for (const t of testSet("4242")) await attempts.ask(a.id, t);
-    const answer = a.probes.map((p) => (p.answer as { holds: boolean }).holds);
-    await attempts.submit(a.id, answer);
-
-    const done = attempts.get(a.id)!;
-    expect(done.outcome).toBe("solved");
-    expect(format(done.spend)).toBe("0.400000");   // 20 probes, first submission free
-  });
-
-  test("four probes and a rule costs $0.08", async () => {
-    const money = new InMemoryAllowance();
-    money.grant("agent:thinker", usdc("5"));
-    const attempts = new Attempts(money);
-    const a = attempts.start("agent:thinker", "zendo", "4242")!;
-
-    for (const t of [[1, 2, 3], [2, 4, 6], [10, 10, 10], [9, 8, 7]]) await attempts.ask(a.id, t);
-    await attempts.submit(a.id, truthFor("4242"));
-
-    const done = attempts.get(a.id)!;
-    expect(done.outcome).toBe("solved");
-    expect(format(done.spend)).toBe("0.080000");
-    expect(done.spend * 5n).toBe(PRICE.ask * 20n);  // exactly a fifth of buying it outright
-  });
+    const a = attempts.start("agent:zendo", "zendo", "4242")!;
+    const out = await solve(async (t) => ((await attempts.ask(a.id, t)) as { answer: { holds: boolean } }).answer.holds);
+    expect((await attempts.submit(a.id, out.name) as { solved: boolean }).solved).toBe(true);
+    expect(attempts.get(a.id)!.spend).toBe(PRICE.ask * BigInt(out.asked));
+  }, 60_000);
 });

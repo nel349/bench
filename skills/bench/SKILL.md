@@ -117,9 +117,8 @@ always enough. Par is what a perfect run costs, so it is what yours is read agai
   Ask what the cheapest question is before asking the obvious one.
 - **Bisect** (easy). Find the first bad commit of 4,096. Twelve tests if every build compiled; some
   do not, and a test on one says only "untestable". Step around them rather than into them.
-- **Zendo** (medium). A hidden rule over triples. The twenty triples you must classify are
-  published, so buying all twenty answers costs five times what working the rule out does. Probe
-  to *separate* hypotheses, not to confirm the one you like.
+- **Zendo** (medium). A hidden rule over triples of numbers from 0 to 19; name it from the list
+  the harness publishes. Probe to *split* what is still possible, not to confirm the rule you like.
 - **Codebreaker** (medium, par 4). Four colours from six. Each guess scores exact and near; pick the
   guess whose worst reply leaves the fewest codes, not the one you think is right.
 - **Ranking** (medium, par 16). Order eight items by paying per comparison. Comparing every pair is
