@@ -30,6 +30,10 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
+      # The page imports the server's shared modules (the wire types, the paths, the problems), and
+      # those import the server's packages, viem among them. A local checkout has both installed;
+      # without the root install this lane cannot resolve them, and failed from the front door on.
+      - run: bun install --frozen-lockfile
       - run: bun install --frozen-lockfile
         working-directory: web
       - name: typecheck

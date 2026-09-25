@@ -136,10 +136,17 @@ export function ruleFor(seed: Seed): Rule { return rules()[indexFor(seed)]!; }
 
 const normal = (name: string) => name.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** Which rule a name names, or -1. Case and spacing do not matter; the words do. */
+let byName: ReadonlyMap<string, number> | null = null;
+
+/**
+ * Which rule a name names, or -1. Case and spacing do not matter; the words do.
+ *
+ * By a map built once. It was a scan of all five thousand names per lookup, which made checking every
+ * name take six seconds on CI and would have made the checker a scan too.
+ */
 export function ruleNamed(name: string): number {
-  const want = normal(name);
-  return rules().findIndex((r) => normal(r.name) === want);
+  byName ??= new Map(rules().map((r, i) => [normal(r.name), i]));
+  return byName.get(normal(name)) ?? -1;
 }
 
 /** Every seventh triple: enough candidate questions to split well, few enough to choose among quickly. */
