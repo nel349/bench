@@ -14,7 +14,7 @@ import { drawSeed, fingerprint } from "./problems/seed.ts";
 import { caip2, chainOf, contractsOf, network, type Network } from "./arc/chain.ts";
 import { Serial } from "./serialize.ts";
 import { parseAgentId } from "./arc/identity.ts";
-import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, SETTLEMENT_HEADER, X402_VERSION } from "./arc/facilitator.ts";
+import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, REQUIRED_HEADER, SETTLEMENT_HEADER, X402_VERSION } from "./arc/facilitator.ts";
 import { wireBounty, type Bounties } from "./bounties.ts";
 import type { AllowanceReader } from "./arc/allowance.ts";
 import type { Arbiter } from "./arc/arbiter.ts";
@@ -80,11 +80,7 @@ const fail = (status: number, error: string): Response => json({ error }, status
  * what fixes it, so the quote goes back out with the reason. The run is untouched — see `BadPayment`.
  */
 const paymentRefused = (reason: string, quote: Quote, path: string, net: Network): Response =>
-  json({
-    x402Version: 1,
-    error: `that payment was not accepted: ${reason}`,
-    accepts: [accepts(quote, path, net)],
-  }, 402);
+  quoted(`that payment was not accepted: ${reason}`, quote, path, net);
 
 /**
  * Our end broke. Deliberately **not** a 402, because the caller's money is fine and telling them
@@ -135,12 +131,17 @@ const accepts = (q: Quote, resource: string, net: Network) => ({
  * it is looked at.
  */
 function paymentRequired(q: Quote, resource: string, net: Network): Response {
-  return json({
-    x402Version: X402_VERSION,
-    error: "payment required",
-    resource: describes(resource),
-    accepts: [accepts(q, resource, net)],
-  }, 402);
+  return quoted("payment required", q, resource, net);
+}
+
+/**
+ * Every 402 this server sends, built one way: the version-2 object in the body, and the same object
+ * in `PAYMENT-REQUIRED`, where a version-2 buyer looks for it. The refusal of a bad payment used to be
+ * built separately, and still said version 1 and carried no resource.
+ */
+function quoted(error: string, q: Quote, resource: string, net: Network): Response {
+  const body = { x402Version: X402_VERSION, error, resource: describes(resource), accepts: [accepts(q, resource, net)] };
+  return json(body, 402, { [REQUIRED_HEADER]: b64.encode(body) });
 }
 
 /**
@@ -213,7 +214,27 @@ const receipted = (res: Response, charge: { payer?: string; settlement?: string 
  * registry says the address that paid is the wallet behind it. Malformed is silently no claim rather
  * than a 400 — an agent that sends a junk id still gets to run, it simply runs unidentified.
  */
-const claimedIdOf = (req: Request): bigint | null => parseAgentId(req.headers.get("x-agent-id"));
+const claimedIdOf = (req: Request): bigint | null =>
+  parseAgentId(req.headers.get("x-agent-id") ?? new URL(req.url).searchParams.get(AGENT_PARAM));
+
+/**
+ * What a request can carry in its URL instead of its body or headers.
+ *
+ * The arc-mandate connector's `buy` tool, the one real client, sends a method and a URL and nothing
+ * else. Every step of a run therefore works from the URL alone too: `?problem=` and `?budget=` to start,
+ * `?q=` for a probe, `?answer=` to submit, and `?agent=` for an ERC-8004 id, which is the parameter the
+ * connector's own instructions tell an agent to use. A body or header, where sent, still wins.
+ */
+const AGENT_PARAM = "agent";
+const QUESTION_PARAM = "q";
+const ANSWER_PARAM = "answer";
+
+/** A value from the URL, as JSON where it is JSON (`748`, `["A","B"]`) and as text where not (`EESS`). */
+function fromUrl(url: URL, name: string): unknown {
+  const raw = url.searchParams.get(name);
+  if (raw === null) return NO_BODY;
+  try { return JSON.parse(raw) as unknown; } catch { return raw; }
+}
 
 const SCORING = "Ranked by cost to solve. Ties break on fewest probes.";
 
@@ -483,9 +504,15 @@ async function route(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "POST" && path === PATHS.attempts) {
     const agent = agentOf(req) ?? ANONYMOUS;
     const read = await bodyOf(req);
-    // No body is allowed and means the defaults; a body that is not an object is a mistake.
+    // No body is allowed and means the URL, then the defaults; a body that is not an object is a mistake.
     if (read !== NO_BODY && !isRecord(read)) return fail(400, "starting a run takes a JSON object, or no body");
-    const body = (read === NO_BODY ? {} : read) as { seed?: unknown; problem?: string; budget?: unknown };
+    const q = url.searchParams;
+    const fromQuery = {
+      ...(q.has("problem") ? { problem: q.get("problem")! } : {}),
+      ...(q.has("budget") ? { budget: q.get("budget")! } : {}),
+      ...(q.has("seed") ? { seed: q.get("seed") } : {}),
+    };
+    const body = (read === NO_BODY ? fromQuery : read) as { seed?: unknown; problem?: string; budget?: unknown };
     const problem = body.problem ?? "blackbox";
 
     /**
@@ -535,6 +562,13 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     if (req.method === "GET" && seg.length === 2) return json(wireAttempt(attempt));
 
     /**
+     * The run as it is now. `attempt` is what was read before this request changed anything, and a
+     * store that hands back copies, as SQLite does, leaves it stale: a solving submission once came
+     * back with a score saying unsolved and still open.
+     */
+    const now = () => deps.attempts.get(attempt.id)!;
+
+    /**
      * Rank a solved run: $0.25 to have it written to the agent's ERC-8004 identity.
      *
      * Before the finished-run guard below, because a run has to be finished, and solved, to be
@@ -581,8 +615,9 @@ async function route(req: Request, deps: Deps): Promise<Response> {
     }
 
     if (req.method === "POST" && seg[2] === "ask") {
-      const body = await bodyOf(req);
-      if (body === NO_BODY) return fail(400, "ask takes a JSON body");
+      const read = await bodyOf(req);
+      const body = read === NO_BODY ? fromUrl(url, QUESTION_PARAM) : read;
+      if (body === NO_BODY) return fail(400, `ask takes a JSON body, or the question as ?${QUESTION_PARAM}=`);
       // A bare body is the question, so `{"side":"left","index":0}` and `"ABCD"` work as well as
       // `{"question":...}`.
       const question = isRecord(body) && "question" in body ? body.question : body;
@@ -596,16 +631,18 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       if ("unavailable" in out) return unavailable(out.unavailable);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
-                      attempt: wireAttempt(attempt) });
+                      attempt: wireAttempt(now()) });
       }
       return receipted(json({ answer: out.answer, paid: format(out.paid), spend: format(out.spend) }),
                        out, deps.net);
     }
 
     if (req.method === "POST" && seg[2] === "submit") {
-      const body = await bodyOf(req);
+      const read = await bodyOf(req);
+      const inUrl = fromUrl(url, ANSWER_PARAM);
+      const body = read === NO_BODY && inUrl !== NO_BODY ? { answer: inUrl } : read;
       if (!isRecord(body) || !("answer" in body || "guess" in body)) {
-        return fail(400, 'submit takes a JSON object with an answer: {"answer": ...}');
+        return fail(400, `submit takes a JSON object with an answer, {"answer": ...}, or ?${ANSWER_PARAM}=`);
       }
       const answer = "answer" in body ? body["answer"] : body["guess"];
       const out = await deps.attempts.submit(attempt.id, answer, proofOf(req));
@@ -614,11 +651,11 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       if ("unavailable" in out) return unavailable(out.unavailable);
       if ("refused" in out) {
         return json({ refused: out.refused, wanted: format(out.wanted), remaining: format(out.remaining),
-                      attempt: wireAttempt(attempt) });
+                      attempt: wireAttempt(now()) });
       }
       return receipted(json({ solved: out.solved, paid: format(out.paid), spend: format(out.spend),
                              submissions: out.submissions,
-                             score: out.solved ? wireScore(score(attempt)) : null }), out, deps.net);
+                             score: out.solved ? wireScore(score(now())) : null }), out, deps.net);
     }
   }
 
@@ -735,8 +772,12 @@ async function route(req: Request, deps: Deps): Promise<Response> {
 
     if (req.method === "POST" && seg[2] === "solve") {
       const agent = agentOf(req) ?? ANONYMOUS;
-      const body = await bodyOf(req);
-      if (!isRecord(body) || !("answer" in body)) return fail(400, 'solving takes a JSON object with an answer: {"answer": ...}');
+      const read = await bodyOf(req);
+      const inUrl = fromUrl(url, ANSWER_PARAM);
+      const body = read === NO_BODY && inUrl !== NO_BODY ? { answer: inUrl } : read;
+      if (!isRecord(body) || !("answer" in body)) {
+        return fail(400, `solving takes a JSON object with an answer, {"answer": ...}, or ?${ANSWER_PARAM}=`);
+      }
 
       /**
        * Refused before charged, where we already know enough to refuse.

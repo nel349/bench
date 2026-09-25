@@ -1,14 +1,15 @@
 import { expect, test, describe, beforeEach } from "bun:test";
-import { handle, type Deps } from "./http.ts";
+import { handle, quoteFor, type Deps } from "./http.ts";
 import { Attempts, recordHash } from "./attempt.ts";
+import { SqliteStore } from "./store.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "./payments.ts";
 import { usdc, type Usdc } from "./money.ts";
 import { PRICE } from "./pricing.ts";
 import { payableOn } from "./arc/buyer.ts";
-import { X402_VERSION } from "./arc/facilitator.ts";
+import { b64, REQUIRED_HEADER, X402_VERSION } from "./arc/facilitator.ts";
 import { boardFrom, fire, type Port } from "./problems/blackbox.ts";
 import { ruleFor } from "./problems/zendo.ts";
-import { mazeFrom, shortestRoute } from "./problems/toll.ts";
+import { mazeFrom, shortestRoute, type Walls } from "./problems/toll.ts";
 import { fingerprint } from "./problems/seed.ts";
 import { GENERATOR } from "./problems/problem.ts";
 import { MemoryReputation } from "./reputation.ts";
@@ -265,6 +266,40 @@ describe("x402: no proof means 402, and the retry succeeds", () => {
    * The buyer is the judge now: if `payableOn` cannot find terms it can sign, the quote is wrong,
    * whatever it looks like.
    */
+  /**
+   * x402 version 2 carries the quote in a `PAYMENT-REQUIRED` header, base64 JSON, and the
+   * arc-mandate connector reads it from there and nowhere else. We sent it only in the body, so the
+   * connector refused every quote with "the seller asked for payment without saying how much".
+   * Found when the connector itself was pointed at the testnet gym; our own buyer reads the body.
+   */
+  test("the quote is in the PAYMENT-REQUIRED header as well as the body, identically", async () => {
+    const a = await startAttempt();
+    const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
+    const header = r.headers.get(REQUIRED_HEADER);
+    expect(header).not.toBe(null);
+    expect(b64.decode(header!)).toEqual(await r.json());
+  });
+
+  test("a refused payment answers the same version-2 quote, header included", async () => {
+    // A payment side that refuses every payment, as Circle does a bad signature.
+    const refusing: Payments = {
+      charge: async (): Promise<Charge> => ({ ok: false, refused: "payment", reason: "bad signature",
+        quote: quoteFor("testnet", PRICE.ask, "0x0000000000000000000000000000000000000001") }),
+      spentBy: () => 0n,
+    };
+    const rejecting: Deps = { ...deps, attempts: new Attempts(refusing), payments: refusing };
+    const { id } = await (await handle(new Request("http://bench.test/attempts", { method: "POST" }), rejecting)).json() as { id: string };
+    const r = await handle(new Request(`http://bench.test/attempts/${id}/ask`, {
+      method: "POST", headers: { "content-type": "application/json", "payment-signature": "x" },
+      body: JSON.stringify({ side: "left", index: 0 }) }), rejecting);
+    expect(r.status).toBe(402);
+    const body = await r.json() as { x402Version: number; resource: { url: string }; error: string };
+    expect(body.x402Version).toBe(X402_VERSION);
+    expect(body.resource.url).toBe(`/attempts/${id}/ask`);
+    expect(body.error).toContain("bad signature");
+    expect(b64.decode(r.headers.get(REQUIRED_HEADER)!)).toEqual(body);
+  });
+
   test("the first ask answers 402 with a quote a real buyer can act on", async () => {
     const a = await startAttempt();
     const r = await call("POST", `/attempts/${a.id}/ask`, { side: "left", index: 0 }, asAgent);
@@ -603,6 +638,78 @@ describe("a body that is not an object", () => {
     const unparsable = await handle(new Request(`http://bench.test/attempts/${id}/ask`, {
       method: "POST", headers: { "content-type": "application/json", ...asAgent }, body: "{not json" }), deps);
     expect(unparsable.status).toBe(400);
+  });
+});
+
+/**
+ * The arc-mandate connector's `buy` tool sends a method and a URL, and nothing else: no body, no
+ * headers. It is the only real client there is, so every step of a run has to work that way too.
+ * Its own instructions tell an agent to give its id as `?agent=`.
+ */
+describe("a run driven entirely from the URL, the way the connector calls", () => {
+  const post = (path: string) => handle(new Request(`http://bench.test${path}`, { method: "POST" }), deps);
+
+  test("start, probe, submit: Toll, with no body and no headers anywhere", async () => {
+    money.grant("anonymous", usdc("1"));
+    const started = await (await post("/attempts?problem=toll&budget=0.50")).json() as { id: string; problem: string; budget: string };
+    expect(started).toMatchObject({ problem: "toll", budget: "0.500000" });
+    const map = await (await post(`/attempts/${started.id}/ask?q=${encodeURIComponent('{"map":true}')}`)).json() as { answer: { map: Walls[][] } };
+    const route = shortestRoute(map.answer.map).join("");
+    const r = await (await post(`/attempts/${started.id}/submit?answer=${route}`)).json() as { solved: boolean };
+    expect(r.solved).toBe(true);
+  });
+
+  test("an answer in the URL is read as JSON when it is JSON, and as text when it is not", async () => {
+    money.grant("anonymous", usdc("1"));
+    const { id } = await (await post("/attempts?problem=codebreaker")).json() as { id: string };
+    const guess = await (await post(`/attempts/${id}/ask?q=AABB`)).json() as { answer: { guess: string } };
+    expect(guess.answer.guess).toBe("AABB");
+    const ranking = await (await post("/attempts?problem=ranking")).json() as { id: string };
+    const compared = await post(`/attempts/${ranking.id}/ask?q=${encodeURIComponent('["A","B"]')}`);
+    expect(compared.status).toBe(200);
+  });
+
+  test("?agent= claims an ERC-8004 id, as the connector's instructions say", async () => {
+    const claims: bigint[] = [];
+    const verify = async (id: bigint) => { claims.push(id); return true; };
+    const withIds: Deps = { ...deps, attempts: new Attempts(money, undefined, verify) };
+    money.grant("anonymous", usdc("1"));
+    const { id } = await (await handle(new Request("http://bench.test/attempts?problem=toll&agent=894767", { method: "POST" }), withIds)).json() as { id: string };
+    await handle(new Request(`http://bench.test/attempts/${id}/ask?q=${encodeURIComponent('{"map":true}')}`, { method: "POST" }), withIds);
+    expect(claims).toEqual([894767n]);
+    expect(withIds.attempts.get(id)!.identity).toBe("894767");
+  });
+
+  test("a seed in the URL is refused like a seed in the body", async () => {
+    expect((await post("/attempts?problem=toll&seed=1")).status).toBe(400);
+  });
+
+  test("with neither a body nor the parameter, it says what it needs", async () => {
+    const { id } = await (await post("/attempts?problem=toll")).json() as { id: string };
+    expect((await post(`/attempts/${id}/ask`)).status).toBe(400);
+    expect((await post(`/attempts/${id}/submit`)).status).toBe(400);
+  });
+});
+
+/**
+ * The response to a submission describes the run after it, not before. Found playing Ranking through
+ * the connector on testnet: "solved": true, with a score beside it saying solved false and still
+ * open. SQLite hands back a copy of a run, so the one read before grading goes stale; the in-memory
+ * store hands back the same object, which is why no test saw it. This one uses SQLite.
+ */
+describe("responses describe the run as it now is", () => {
+  test("a solving submission carries a score that says solved", async () => {
+    const onDisk: Deps = { ...deps, attempts: new Attempts(money, new SqliteStore(":memory:")) };
+    const started = await (await handle(new Request("http://bench.test/attempts", {
+      method: "POST", headers: { "content-type": "application/json", ...asAgent }, body: "{}" }), onDisk)).json() as { id: string };
+    const seed = onDisk.attempts.get(started.id)!.seed;
+    const r = await (await handle(new Request(`http://bench.test/attempts/${started.id}/submit`, {
+      method: "POST", headers: { "content-type": "application/json", ...asAgent },
+      body: JSON.stringify({ answer: boardFrom(seed).atoms }) }), onDisk)).json() as
+      { solved: boolean; score: { solved: boolean; endedBy: string; submissions: number; seed: string | null } };
+    expect(r.solved).toBe(true);
+    expect(r.score).toMatchObject({ solved: true, endedBy: "solved", submissions: 1 });
+    expect(r.score.seed).toBe(seed);
   });
 });
 

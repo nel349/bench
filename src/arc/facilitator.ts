@@ -117,6 +117,14 @@ export const X402_VERSION = 2;
 export const SETTLEMENT_HEADER = "PAYMENT-RESPONSE";
 
 /**
+ * Where a 402 carries its quote in x402 version 2: the same object as the body, base64 JSON.
+ *
+ * A version-2 buyer reads it here and may never look at the body. The arc-mandate connector does
+ * exactly that, and refused every quote Bench sent until this was set.
+ */
+export const REQUIRED_HEADER = "PAYMENT-REQUIRED";
+
+/**
  * The headers a payment may arrive in.
  *
  * `Payment-Signature` is what the buyers on Arc send and `X-PAYMENT` is what the x402 specification
