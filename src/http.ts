@@ -258,6 +258,15 @@ async function bodyOf(req: Request): Promise<unknown> {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * The per-client cap on a free request, or nothing if it may go ahead. For the free routes that
+ * read the chain or ask Circle, which a script could otherwise turn into our cost for nothing.
+ */
+function freeCap(deps: Deps, client: string, what: string): Response | null {
+  const free = deps.limits?.free.take(`client:${client}`);
+  return free && !free.ok ? limited(free.retryAfterMs, what) : null;
+}
+
 /** Past a limit: a 429 that says how long to wait, before anything is charged. */
 function limited(retryAfterMs: number, what: string): Response {
   const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
@@ -391,7 +400,20 @@ const payouts = new Serial();
  */
 export async function handle(req: Request, deps: Deps, client = "unknown"): Promise<Response> {
   try {
-    return await route(req, deps, client);
+    /**
+     * A payment that fails verification costs us a call to Circle and costs its sender nothing, so
+     * failed ones are capped per client. Checked before the route runs, so a client past the cap
+     * causes no call at all, and counted only when a payment was actually refused.
+     */
+    const paying = proofOf(req) !== null && deps.limits !== undefined;
+    const refusedKey = `client:${client}`;
+    if (paying) {
+      const room = deps.limits!.refused.check(refusedKey);
+      if (!room.ok) return limited(room.retryAfterMs, "refused payments");
+    }
+    const res = await route(req, deps, client);
+    if (paying && res.status === 402) deps.limits!.refused.take(refusedKey);
+    return res;
   } catch (cause) {
     /**
      * Logged, never returned.
@@ -453,6 +475,8 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
 
   /** What an agent holds. Polled by the page while a transfer settles. */
   if (req.method === "GET" && seg[0] === "funds" && seg[1]) {
+    const capped = freeCap(deps, client, "balance reads");
+    if (capped) return capped;
     if (!deps.funds) return fail(404, `this server cannot read balances on ${deps.net}`);
     const funds = await deps.funds.read(seg[1]);
     if (!funds) return fail(404, "that is not an address on this network");
@@ -506,16 +530,16 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
      * choosing, and the place to check a finished run once its seed has been revealed.
      */
     if (seg[2] === "harness") {
-      const free = deps.limits?.free.take(`client:${client}`);
-      if (free && !free.ok) return limited(free.retryAfterMs, "free requests");
+      const capped = freeCap(deps, client, "free requests");
+      if (capped) return capped;
       const seed = url.searchParams.get("seed") ?? PRACTICE_SEED;
       return json({ problem: problem.id, seed, fingerprint: fingerprint(seed), ...(problem.harness(seed) as object) });
     }
   }
 
   if (req.method === "POST" && path === PATHS.attempts) {
-    const free = deps.limits?.free.take(`client:${client}`);
-    if (free && !free.ok) return limited(free.retryAfterMs, "runs started");
+    const capped = freeCap(deps, client, "runs started");
+    if (capped) return capped;
     const agent = agentOf(req) ?? ANONYMOUS;
     const read = await bodyOf(req);
     // No body is allowed and means the URL, then the defaults; a body that is not an object is a mistake.
@@ -728,6 +752,8 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
   }
 
   if (req.method === "POST" && path === PATHS.bounties) {
+    const capped = freeCap(deps, client, "bounties posted");
+    if (capped) return capped;
     const agent = agentOf(req) ?? ANONYMOUS;
     const body = await bodyOf(req);
     if (!isRecord(body)) return fail(400, "posting a bounty takes a JSON object");
@@ -894,6 +920,8 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
    * this is a 404 rather than a guess.
    */
   if (req.method === "GET" && seg[0] === "allowance" && seg[1] && seg[2]) {
+    const capped = freeCap(deps, client, "allowance reads");
+    if (capped) return capped;
     if (!deps.allowances) return fail(404, `no session-key plugin on ${deps.net}, so nothing to read`);
     const found = await deps.allowances.of(seg[1], seg[2]);
     if (!found) return fail(404, "no allowance for that account and session key");
@@ -905,6 +933,8 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
   }
 
   if (req.method === "GET" && seg[0] === "rating" && seg[1]) {
+    const capped = freeCap(deps, client, "rating reads");
+    if (capped) return capped;
     /**
      * An ERC-8004 id is answered from the registry, the number the bounty gate uses, with what a
      * stranger needs to read it themselves: which registry, and whose entries count.

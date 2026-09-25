@@ -3,7 +3,8 @@ import { Attempts } from "./attempt.ts";
 import type { Charge, Payments } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { Limiter } from "./limits.ts";
-import { handle, type Deps } from "./http.ts";
+import { handle, quoteFor, type Deps } from "./http.ts";
+import { Bounties } from "./bounties.ts";
 import "./problems/blackbox-problem.ts";
 
 /** Payments that always succeed from one address, whatever label the caller sends, as on chain. */
@@ -68,7 +69,8 @@ describe("limits at the door", () => {
   const deps = (graded = 100, free = 100): Deps => {
     const money = fromOneAddress("0xpayer");
     return { attempts: new Attempts(money), payments: money, net: "testnet",
-             limits: { free: new Limiter(free, 60_000), graded: new Limiter(graded, 3_600_000) } };
+             limits: { free: new Limiter(free, 60_000), graded: new Limiter(graded, 3_600_000),
+                       refused: new Limiter(100, 60_000) } };
   };
   const post = (d: Deps, path: string, body?: unknown, client = "10.0.0.1") =>
     handle(new Request(`http://bench.test${path}`, { method: "POST",
@@ -107,5 +109,58 @@ describe("limits at the door", () => {
     const get = () => handle(new Request("http://bench.test/problems/blackbox/harness"), d, "10.0.0.3");
     expect((await get()).status).toBe(200);
     expect((await get()).status).toBe(429);
+  });
+});
+
+describe("free requests that reach the chain or Circle are capped too", () => {
+  const deps = (): Deps => {
+    const money = fromOneAddress("0xpayer");
+    return { attempts: new Attempts(money), payments: money, net: "testnet",
+             limits: { free: new Limiter(2, 60_000), graded: new Limiter(100, 3_600_000), refused: new Limiter(1, 60_000) } };
+  };
+  const get = (d: Deps, path: string, client = "10.0.0.7") => handle(new Request(`http://bench.test${path}`), d, client);
+
+  for (const path of ["/rating/894767", "/funds/0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce", "/allowance/0x1/0x2"]) {
+    test(`${path.split("/")[1]} is capped per client`, async () => {
+      const d = deps();
+      await get(d, path); await get(d, path);
+      expect((await get(d, path)).status).toBe(429);
+      expect((await get(d, path, "10.0.0.8")).status).not.toBe(429);
+    });
+  }
+
+  test("posting a bounty is capped per client", async () => {
+    const d = { ...deps(), bounties: new Bounties() };
+    const post = () => handle(new Request("http://bench.test/bounties", { method: "POST",
+      headers: { "content-type": "application/json" }, body: "{}" }), d, "10.0.0.9");
+    await post(); await post();
+    expect((await post()).status).toBe(429);
+  });
+
+  /**
+   * A payment that fails verification costs us a call to Circle and the sender nothing, so a script
+   * sending bad signatures is stopped after a few; a payment that works never counts.
+   */
+  test("refused payments are capped per client, and good ones never count", async () => {
+    const refusing: Payments = {
+      charge: async (): Promise<Charge> => ({ ok: false, refused: "payment", reason: "bad signature",
+        quote: quoteFor("testnet", PRICE.ask, "0x0000000000000000000000000000000000000001") }),
+      spentBy: () => 0n,
+    };
+    const d: Deps = { attempts: new Attempts(refusing), payments: refusing, net: "testnet",
+                      limits: { free: new Limiter(100, 60_000), graded: new Limiter(100, 3_600_000), refused: new Limiter(1, 60_000) } };
+    const { id } = await (await handle(new Request("http://bench.test/attempts", { method: "POST" }), d, "10.1.1.1")).json() as { id: string };
+    const ask = () => handle(new Request(`http://bench.test/attempts/${id}/ask`, { method: "POST",
+      headers: { "content-type": "application/json", "payment-signature": "bad" }, body: JSON.stringify({ side: "up", index: 0 }) }), d, "10.1.1.1");
+    expect((await ask()).status).toBe(402);
+    expect((await ask()).status).toBe(429);
+
+    const good = deps();
+    const { id: run } = await (await handle(new Request("http://bench.test/attempts", { method: "POST" }), good, "10.1.1.2")).json() as { id: string };
+    for (let i = 0; i < 3; i++) {
+      const r = await handle(new Request(`http://bench.test/attempts/${run}/ask`, { method: "POST",
+        headers: { "content-type": "application/json", "payment-signature": "fine" }, body: JSON.stringify({ side: "up", index: i }) }), good, "10.1.1.2");
+      expect(r.status).toBe(200);
+    }
   });
 });

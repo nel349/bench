@@ -223,3 +223,28 @@ describe("a database from before the payer column", () => {
     expect(new SqliteStore(path).get("a1")!.payer).toBe(null);
   });
 });
+
+/**
+ * Repeat counts written before item 21 were keyed by the bare label. They are now kept under
+ * `label:` and the paying address, so an old database carries its counts over once, rather than
+ * every agent's rising price quietly starting again from nothing.
+ */
+describe("repeat counts from before labels were prefixed", () => {
+  test("are carried over once, and only once", () => {
+    const path = join(mkdtempSync(join(tmpdir(), "bench-counts-")), "old.sqlite");
+    const old = new Database(path, { create: true });
+    old.exec(`CREATE TABLE submissions (agent TEXT NOT NULL, problem TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (agent, problem));
+              INSERT INTO submissions VALUES ('agent:aria', 'blackbox', 3);
+              INSERT INTO submissions VALUES ('0x3535816e967ad2b6271dfadf9138fb07eab161ce', 'blackbox', 2);`);
+    old.close();
+    const store = new SqliteStore(path);
+    expect(store.priorSubmissions("label:agent:aria", "blackbox")).toBe(3);
+    expect(store.priorSubmissions("agent:aria", "blackbox")).toBe(0);
+    // An address already counted under the new scheme keeps its count.
+    expect(store.priorSubmissions("0x3535816e967ad2b6271dfadf9138fb07eab161ce", "blackbox")).toBe(2);
+    store.noteSubmission("label:agent:aria", "blackbox");
+    const again = new SqliteStore(path);
+    expect(again.priorSubmissions("label:agent:aria", "blackbox")).toBe(4);
+    expect(again.priorSubmissions("label:label:agent:aria", "blackbox")).toBe(0);
+  });
+});

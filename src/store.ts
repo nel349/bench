@@ -52,6 +52,9 @@ interface Row {
  *
  * One file. A gym that needs a database cluster before its first user is a gym that never gets one.
  */
+/** The schema version at which repeat counts gained their `label:` prefix. */
+const COUNTS_PREFIXED = 1;
+
 export class SqliteStore implements Store {
   readonly #db: Database;
 
@@ -91,6 +94,24 @@ export class SqliteStore implements Store {
       if (!has.has(col)) this.#db.exec(`ALTER TABLE attempts ADD COLUMN ${col} TEXT`);
     }
     if (!has.has("rank_paid")) this.#db.exec("ALTER TABLE attempts ADD COLUMN rank_paid INTEGER");
+
+    /**
+     * Repeat counts written before item 21 were keyed by the bare label. They are now kept under
+     * `label:` and the paying address, so they are carried over under their prefix, once. The
+     * database's own version number is what makes it once: without it a second open would prefix
+     * the already prefixed rows again.
+     */
+    const version = this.#db.query<{ user_version: number }, []>("PRAGMA user_version").get()?.user_version ?? 0;
+    if (version < COUNTS_PREFIXED) {
+      this.#db.transaction(() => {
+        // A paying address is always stored lowercase, 0x and forty hex digits, and is already a key
+        // of the new kind: a database opened by the new code before this ran has those, and
+        // prefixing them would lose the count the address has built up.
+        this.#db.exec(`UPDATE submissions SET agent = 'label:' || agent
+                       WHERE agent NOT LIKE 'label:%' AND NOT (agent GLOB '0x${"[0-9a-f]".repeat(40)}')`);
+        this.#db.exec(`PRAGMA user_version = ${COUNTS_PREFIXED}`);
+      })();
+    }
   }
 
   put(a: Attempt): void {

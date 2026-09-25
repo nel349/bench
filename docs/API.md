@@ -198,8 +198,9 @@ Paid probes have no limit but their price. Everything else does, and past a limi
 
 | | Limit | Counted per |
 |---|---|---|
-| Starting a run, reading a harness | 60 a minute | client |
+| Starting a run, reading a harness, posting a bounty, and the reads that reach the chain: `/rating`, `/funds`, `/allowance` | 60 a minute, shared | client |
 | Graded submissions, to problems and to bounties | 30 an hour | paying address, or client before anyone has paid |
+| Payments that fail verification | 10 a minute | client; a payment that works never counts |
 
 The rising price of a repeated submission is counted per paying address as well as per label, so
 changing `X-Agent` does not start it again.

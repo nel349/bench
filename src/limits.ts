@@ -2,8 +2,10 @@
  * How often anyone may do the things that cost us more than they cost them.
  *
  * Paid probes need no limit: each one costs money, which is the limit. What does need one is
- * everything free, which a script could call as fast as it liked, and graded submissions, which
- * `SPEC.md` caps per identity per hour so that brute force is slow whatever it can afford.
+ * everything free, which a script could call as fast as it liked, including the free requests that
+ * make us read the chain or ask Circle; graded submissions, which `SPEC.md` caps per identity per
+ * hour so that brute force is slow whatever it can afford; and payments that fail, which cost us a
+ * call to Circle and the sender nothing.
  *
  * Kept in memory. A restart forgets every count, which costs an attacker a restart they cannot cause.
  */
@@ -12,6 +14,11 @@
 export const FREE_PER_MINUTE = 60;
 /** Graded submissions, per paying address. A reasoning agent submits a handful; a brute force hundreds. */
 export const GRADED_PER_HOUR = 30;
+/**
+ * Payments that fail verification, per client. Each costs us a call to Circle and the sender
+ * nothing, so a few are a mistake and many are an attack. A payment that works never counts.
+ */
+export const REFUSED_PER_MINUTE = 10;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 /** Past this many keys, buckets that have refilled completely are forgotten; they hold nothing. */
@@ -66,9 +73,12 @@ export interface Limits {
   readonly free: Limiter;
   /** Graded submissions, per paying address, or per client where nobody has paid yet. */
   readonly graded: Limiter;
+  /** Payments that failed verification, per client. */
+  readonly refused: Limiter;
 }
 
 export const defaultLimits = (): Limits => ({
   free: new Limiter(FREE_PER_MINUTE, MINUTE),
   graded: new Limiter(GRADED_PER_HOUR, HOUR),
+  refused: new Limiter(REFUSED_PER_MINUTE, MINUTE),
 });
