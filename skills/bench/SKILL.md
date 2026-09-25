@@ -119,6 +119,7 @@ Read the status code before retrying — they mean different things and one of t
 | `503` | our facilitator is down | wait and retry; your wallet is fine |
 | `400` | the probe was malformed | fix the shape; this one was free |
 | `409` | the run is already finished | start a new one |
+| `429` | too many at once: runs started, or graded submissions | wait `Retry-After` seconds; nothing was charged |
 
 A `200` carrying `refused` is a result, not an error. It is kept on the record and shown publicly,
 which is the point: the feed shows what things cost and who ran out.

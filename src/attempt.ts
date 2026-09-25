@@ -137,6 +137,17 @@ const isSettled = (v: Refusal | PaymentRequired | BadPayment | Unavailable | Set
   !("refused" in v) && !("needsPayment" in v) && !("badPayment" in v) && !("unavailable" in v);
 
 const isOver = (a: Attempt): boolean => a.outcome !== "open";
+
+/**
+ * Who a repeated submission is counted against: the label it arrived under, and the address that
+ * pays, once one has. The price is set by whichever has submitted more; a submission counts for both.
+ *
+ * It was the label alone, which anyone can change, so one address rotating labels took a fresh free
+ * first submission, and list price, every time. The address alone would not do either: a run's
+ * first submission can be free before any payment has bound an address, and counting from zero
+ * again once one had would give that address a second free one.
+ */
+const repeatKeys = (a: Attempt): readonly string[] => [`label:${a.agent}`, ...(a.payer ? [a.payer] : [])];
 const budgetLeft = (a: Attempt): Usdc | null => (a.budget === null ? null : a.budget - a.spend);
 
 export class Attempts {
@@ -237,18 +248,22 @@ export class Attempts {
   async submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
     // Two keys, innermost first: the run, and the counter that prices a repeat across all runs.
     const a = this.#open(id);
-    return this.#serial.run(`price:${a.agent}:${a.problem}`, () =>
-      this.#serial.run(`attempt:${id}`, () => this.#submit(id, answer, proof)));
+    // Every counter the price reads, locked in a fixed order, then the run.
+    const locks = repeatKeys(a).map((k) => `price:${k}:${a.problem}`).sort();
+    const run = () => this.#serial.run(`attempt:${id}`, () => this.#submit(id, answer, proof));
+    return locks.reduceRight<() => Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable>>(
+      (inner, key) => () => this.#serial.run(key, inner), run)();
   }
 
   async #submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
     const a = this.#open(id);
-    const price = submissionPrice(this.store.priorSubmissions(a.agent, a.problem));
+    const price = submissionPrice(Math.max(...repeatKeys(a).map((k) => this.store.priorSubmissions(k, a.problem))));
 
     const paid = await this.#spend(a, price, "submit", proof);
     if (!isSettled(paid)) { this.store.put(a); return paid; }
 
-    this.store.noteSubmission(a.agent, a.problem);
+    // After the payment, so an address it has just bound is counted too.
+    for (const k of repeatKeys(a)) this.store.noteSubmission(k, a.problem);
     a.submissions += 1;
     const solved = this.#problem(a).check(a.seed, answer);
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }

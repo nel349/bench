@@ -14,6 +14,7 @@ import { ArcArbiter, arbiterKey } from "./arc/arbiter.ts";
 import { ArcEscrow } from "./arc/escrow.ts";
 import { ArcReputation } from "./arc/reputation.ts";
 import { paidBy } from "./rating.ts";
+import { defaultLimits } from "./limits.ts";
 import { privateKeyFrom } from "./arc/keys.ts";
 import { ArcFunds } from "./arc/funds.ts";
 import { PRICE } from "./pricing.ts";
@@ -176,19 +177,33 @@ const deps: Deps = {
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
   ...(reputation ? { reputation } : {}), ...(identities ? { verifyIdentity: identities } : {}),
+  limits: defaultLimits(),
 };
 
 const port = Number(process.env["PORT"] ?? DEFAULT_PORT);
 
+/**
+ * Who a request came from, for the limits: the address of the connection.
+ *
+ * A proxy in front makes every request look like the proxy, so behind one the first address in
+ * `X-Forwarded-For` is used instead. Only when `BENCH_TRUST_PROXY` says there is one: otherwise the
+ * header is a claim anyone can send, and believing it would let a script be a new client every time.
+ */
+const trustProxy = process.env["BENCH_TRUST_PROXY"] === "1";
+const clientOf = (req: Request, socket: string | undefined): string => {
+  const forwarded = trustProxy ? req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
+  return forwarded || socket || "unknown";
+};
+
 const server = Bun.serve({
   port,
-  fetch(req) {
+  fetch(req, srv) {
     // Dev only: anyone who names an agent gets a budget, so the flow can be walked without a wallet.
     if (devAllowance && !payTo) {
       const agent = req.headers.get("x-agent");
       if (agent && money.capOf(agent) === 0n) money.grant(agent, usdc(devAllowance));
     }
-    return handle(req, deps);
+    return handle(req, deps, clientOf(req, srv.requestIP(req)?.address));
   },
 });
 

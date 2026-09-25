@@ -22,6 +22,7 @@ import type { Backing, EscrowReader } from "./arc/escrow.ts";
 import type { FundsReader } from "./arc/funds.ts";
 import { paidBy, rate, weigh } from "./rating.ts";
 import type { Reputation } from "./reputation.ts";
+import type { Limits } from "./limits.ts";
 import { PATHS, FEED_LIMIT } from "./paths.ts";
 import type { AgentRecordWire, ChainRatingWire, ProblemDetailWire, ProblemWire, SettingsWire } from "./wire.ts";
 
@@ -65,6 +66,8 @@ export interface Deps {
   readonly reputation?: Reputation;
   /** Whether an ERC-8004 id belongs to the address that paid. Absent where identities are off. */
   readonly verifyIdentity?: IdentityVerifier;
+  /** Caps on free requests and graded submissions. Absent, nothing is capped: tests and scripts. */
+  readonly limits?: Limits;
 }
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}): Response =>
@@ -255,6 +258,13 @@ async function bodyOf(req: Request): Promise<unknown> {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/** Past a limit: a 429 that says how long to wait, before anything is charged. */
+function limited(retryAfterMs: number, what: string): Response {
+  const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  return json({ error: `too many ${what}; try again in ${seconds}s`, retryAfter: seconds, charged: false },
+              429, { "Retry-After": String(seconds) });
+}
+
 /** What an unqualified agent is told to do, in one place. */
 const HOW_TO_QUALIFY =
   "rank solved runs on different problems: easy counts 1, medium 2, hard 3. " +
@@ -379,9 +389,9 @@ const payouts = new Serial();
  * was. Found by firing a malformed probe at an attempt that had already been solved: the answer was
  * a 500 where it should have been "that run is over".
  */
-export async function handle(req: Request, deps: Deps): Promise<Response> {
+export async function handle(req: Request, deps: Deps, client = "unknown"): Promise<Response> {
   try {
-    return await route(req, deps);
+    return await route(req, deps, client);
   } catch (cause) {
     /**
      * Logged, never returned.
@@ -397,7 +407,7 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   }
 }
 
-async function route(req: Request, deps: Deps): Promise<Response> {
+async function route(req: Request, deps: Deps, client: string): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const seg = path.split("/").filter(Boolean);
@@ -496,12 +506,16 @@ async function route(req: Request, deps: Deps): Promise<Response> {
      * choosing, and the place to check a finished run once its seed has been revealed.
      */
     if (seg[2] === "harness") {
+      const free = deps.limits?.free.take(`client:${client}`);
+      if (free && !free.ok) return limited(free.retryAfterMs, "free requests");
       const seed = url.searchParams.get("seed") ?? PRACTICE_SEED;
       return json({ problem: problem.id, seed, fingerprint: fingerprint(seed), ...(problem.harness(seed) as object) });
     }
   }
 
   if (req.method === "POST" && path === PATHS.attempts) {
+    const free = deps.limits?.free.take(`client:${client}`);
+    if (free && !free.ok) return limited(free.retryAfterMs, "runs started");
     const agent = agentOf(req) ?? ANONYMOUS;
     const read = await bodyOf(req);
     // No body is allowed and means the URL, then the defaults; a body that is not an object is a mistake.
@@ -645,7 +659,14 @@ async function route(req: Request, deps: Deps): Promise<Response> {
         return fail(400, `submit takes a JSON object with an answer, {"answer": ...}, or ?${ANSWER_PARAM}=`);
       }
       const answer = "answer" in body ? body["answer"] : body["guess"];
+
+      // Checked before anything is charged, spent only once a submission is actually graded, so a
+      // 402 round trip does not count twice. Per paying address, or per client before anyone pays.
+      const gradedKey = attempt.payer ?? `client:${client}`;
+      const room = deps.limits?.graded.check(gradedKey);
+      if (room && !room.ok) return limited(room.retryAfterMs, "graded submissions");
       const out = await deps.attempts.submit(attempt.id, answer, proofOf(req));
+      if ("solved" in out) deps.limits?.graded.take(gradedKey);
       if ("needsPayment" in out) return paymentRequired(out.needsPayment, path, deps.net);
       if ("badPayment" in out) return paymentRefused(out.badPayment, out.quote, path, deps.net);
       if ("unavailable" in out) return unavailable(out.unavailable);
@@ -788,6 +809,11 @@ async function route(req: Request, deps: Deps): Promise<Response> {
        * probe is deliberately spared. A rating is public, so answering this early leaks nothing.
        */
       const claimed = claimedIdOf(req);
+      // Attempting a bounty is a graded submission too, capped per client since the payer is not
+      // known until the payment arrives.
+      const bountyKey = `client:${client}`;
+      const room = deps.limits?.graded.check(bountyKey);
+      if (room && !room.ok) return limited(room.retryAfterMs, "graded submissions");
       let standing: number;
       try {
         standing = await ratingOf(deps, claimed);
@@ -824,6 +850,7 @@ async function route(req: Request, deps: Deps): Promise<Response> {
       const owned = claimed !== null && deps.verifyIdentity !== undefined &&
         await deps.verifyIdentity(claimed, solver).catch(() => false);
       const out = deps.bounties!.solve(bounty.id, body.answer, solver, owned ? standing : 0);
+      deps.limits?.graded.take(bountyKey);
 
       if (out.ok) {
         /**

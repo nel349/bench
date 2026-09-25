@@ -191,6 +191,19 @@ To read a rating as the gate does, call `readAllFeedback` on the reputation regi
 with the scribe's address as the only client and `cost-usdc` as the second tag, and count the
 distinct `bench:` problems by level. `GET /rating/:id` does exactly that and says which scribe.
 
+### Limits
+
+Paid probes have no limit but their price. Everything else does, and past a limit the answer is
+`429` with `Retry-After`, before anything is charged:
+
+| | Limit | Counted per |
+|---|---|---|
+| Starting a run, reading a harness | 60 a minute | client |
+| Graded submissions, to problems and to bounties | 30 an hour | paying address, or client before anyone has paid |
+
+The rising price of a repeated submission is counted per paying address as well as per label, so
+changing `X-Agent` does not start it again.
+
 ## Paying
 
 A paid route answers `402` with the price, the token, the chain and the payee, in the x402 shape:
@@ -235,7 +248,7 @@ appear on the record, and on the page.
 
 ## When something is refused
 
-Four different things can go wrong, and they are deliberately not one status code.
+Several different things can go wrong, and they are deliberately not one status code.
 
 | What happened | Status | Body | Does the run end? |
 |---|---|---|---|
@@ -244,6 +257,7 @@ Four different things can go wrong, and they are deliberately not one status cod
 | You hit your own `budget` | `200` | `refused: "budget"` | yes |
 | You hit your allowance, in-memory | `200` | `refused: "allowance"` | yes |
 | Our facilitator is unreachable | `503` | `retry: true` | no |
+| Too many at once | `429` | `retryAfter`, and `Retry-After` | no |
 
 ```json
 { "refused": "budget", "wanted": "0.020000", "remaining": "0.010000", "attempt": { … } }
@@ -262,7 +276,6 @@ to go and debug it would be a lie.
 
 ## Not built yet
 
-There is no rate limiting beyond the escalating submission price.
 
 Awarding the escrow is a transaction the gym sends when `solve` succeeds, and retried by
 `POST /bounties/:id/award` when it does not land. Both need `BENCH_ESCROW` and `BENCH_ARBITER_KEY`;
