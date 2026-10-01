@@ -1,4 +1,4 @@
-import { Attempts, recordHash, score, wireAttempt, wireScore, type Attempt, type IdentityVerifier } from "./attempt.ts";
+import { ANONYMOUS, Attempts, recordHash, score, wireAttempt, wireScore, type Attempt, type IdentityVerifier } from "./attempt.ts";
 import type { AgentId, Payments, Quote } from "./payments.ts";
 import { PRICE } from "./pricing.ts";
 import { format, usdc, type Usdc } from "./money.ts";
@@ -179,8 +179,6 @@ function agentOf(req: Request): AgentId | null {
   return id && id.trim().length > 0 ? id.trim() : null;
 }
 
-/** The label a run carries before anything has been paid. Replaced by the payer at first payment. */
-const ANONYMOUS = "anonymous";
 
 /**
  * The payment, from whichever header it arrived in. See `PAYMENT_HEADERS`.

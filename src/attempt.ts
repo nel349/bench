@@ -138,16 +138,27 @@ const isSettled = (v: Refusal | PaymentRequired | BadPayment | Unavailable | Set
 
 const isOver = (a: Attempt): boolean => a.outcome !== "open";
 
+/** The label a run carries when the caller sends none, as the arc-mandate connector does. */
+export const ANONYMOUS = "anonymous";
+
 /**
  * Who a repeated submission is counted against: the label it arrived under, and the address that
  * pays, once one has. The price is set by whichever has submitted more; a submission counts for both.
+ *
+ * Not the default label. Every caller that names nothing shares it, so counting under it charged a
+ * stranger's first submission as a repeat of somebody else's: on 1 October a new agent paying
+ * through the connector paid $0.05 for its first Toll answer. A run with neither a label nor a
+ * payer has nothing to be counted against, and counts for nobody anyway.
  *
  * It was the label alone, which anyone can change, so one address rotating labels took a fresh free
  * first submission, and list price, every time. The address alone would not do either: a run's
  * first submission can be free before any payment has bound an address, and counting from zero
  * again once one had would give that address a second free one.
  */
-const repeatKeys = (a: Attempt): readonly string[] => [`label:${a.agent}`, ...(a.payer ? [a.payer] : [])];
+const repeatKeys = (a: Attempt): readonly string[] => [
+  ...(a.agent === ANONYMOUS ? [] : [`label:${a.agent}`]),
+  ...(a.payer ? [a.payer] : []),
+];
 const budgetLeft = (a: Attempt): Usdc | null => (a.budget === null ? null : a.budget - a.spend);
 
 export class Attempts {
@@ -257,7 +268,7 @@ export class Attempts {
 
   async #submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
     const a = this.#open(id);
-    const price = submissionPrice(Math.max(...repeatKeys(a).map((k) => this.store.priorSubmissions(k, a.problem))));
+    const price = submissionPrice(Math.max(0, ...repeatKeys(a).map((k) => this.store.priorSubmissions(k, a.problem))));
 
     const paid = await this.#spend(a, price, "submit", proof);
     if (!isSettled(paid)) { this.store.put(a); return paid; }

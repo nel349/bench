@@ -1,5 +1,5 @@
 import { expect, test, describe } from "bun:test";
-import { Attempts } from "./attempt.ts";
+import { ANONYMOUS, Attempts } from "./attempt.ts";
 import type { Charge, Payments } from "./payments.ts";
 import { PRICE, submissionPrice } from "./pricing.ts";
 import { Limiter } from "./limits.ts";
@@ -38,6 +38,27 @@ describe("repeats are counted per paying address, not per label", () => {
     expect(prices).toEqual([submissionPrice(0), submissionPrice(1), submissionPrice(2)]);
     expect(prices[0]).toBe(0n);
     expect(prices[1]).toBe(PRICE.submit);
+  });
+
+  /**
+   * The connector sends no label, so all its agents arrived as "anonymous", and the second one to
+   * answer a problem was charged as though it were repeating the first.
+   */
+  test("two payers with no label each get their own free first submission", async () => {
+    // One gym, so one store of counts, and each payment comes from whichever payer is current.
+    let payer = "0xfirst";
+    const attempts = new Attempts({
+      async charge(_agent, amount): Promise<Charge> { return { ok: true, paid: amount, spentSoFar: 0n, payer }; },
+      spentBy: () => 0n,
+    });
+    const prices: bigint[] = [];
+    for (const who of ["0xfirst", "0xsecond"]) {
+      payer = who;
+      const a = attempts.start(ANONYMOUS, "blackbox", `seed-${who}`)!;
+      await attempts.ask(a.id, { side: "up", index: 0 });      // binds this payer
+      prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+    }
+    expect(prices).toEqual([0n, 0n]);
   });
 });
 
