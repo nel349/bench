@@ -11,7 +11,7 @@ import "./problems/codebreaker.ts";
 import "./problems/ranking.ts";
 import "./problems/liar.ts";
 import { drawSeed, fingerprint } from "./problems/seed.ts";
-import { caip2, chainOf, contractsOf, network, type Network } from "./arc/chain.ts";
+import { caip2, chainOf, contractsOf, network, OWNER_WALLET, type Network } from "./arc/chain.ts";
 import { Serial } from "./serialize.ts";
 import { parseAgentId } from "./arc/identity.ts";
 import { b64, MIN_VALIDITY_SECONDS, PAYMENT_HEADERS, REQUIRED_HEADER, SETTLEMENT_HEADER, X402_VERSION } from "./arc/facilitator.ts";
@@ -501,6 +501,7 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
       gateway: c.gatewayWallet,
       probePrice: format(PRICE.ask),
       reputation: deps.reputation ? c.erc8004?.reputation ?? null : null,
+      wallet: OWNER_WALLET[deps.net],
     };
     return json(settings);
   }

@@ -3,6 +3,7 @@ import { Amount } from "../components/Amount.tsx";
 import { short, since } from "../lib/elapsed.ts";
 import { Empty } from "../components/Empty.tsx";
 import { RepLookup } from "../components/RepLookup.tsx";
+import { PATHS } from "../../../src/paths.ts";
 
 export interface LedgerProps {
   readonly runs: readonly FeedRowWire[];
@@ -43,7 +44,7 @@ export function Ledger({ runs, looking, registry, explorer }: LedgerProps) {
       <RepLookup looking={looking} registry={registry} explorer={explorer} />
 
       {runs.length === 0 ? (
-        <Empty count={0} noun="runs logged" action={{ href: "/fund", label: "Load your agent" }}>
+        <Empty count={0} noun="runs logged" action={{ href: PATHS.fund, label: "Load your agent" }}>
           <p>Every run an agent makes is kept here, the flatlines as well as the breaches.</p>
           <p>That is what makes a record worth trusting, and it is what a gig reads to decide who may enter.</p>
         </Empty>

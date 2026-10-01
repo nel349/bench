@@ -119,7 +119,7 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
     sessionKeyPlugin: SESSION_KEY_PLUGIN,
-      bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
+    bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
     erc8004: {
       identity: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
       reputation: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
@@ -127,6 +127,19 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     },
   },
 } as const;
+
+/**
+ * Where an owner opens the wallet their agent spends from: the Agent Mandate app, built for the web.
+ *
+ * It lives on another host because a passkey belongs to a domain, and Circle checks the app's client
+ * key against that domain. The testnet key is bound to this one. Mainnet has none yet: it needs a
+ * live Circle client key bound to a mainnet hostname, so the page says so instead of linking to a
+ * wallet that would open on the wrong network.
+ */
+export const OWNER_WALLET: Readonly<Record<Network, string | null>> = {
+  mainnet: null,
+  testnet: "https://kuiralabs.github.io/mandate/",
+};
 
 /** Which network this process talks to. Testnet unless told otherwise: mainnet costs real money. */
 export function network(): Network {

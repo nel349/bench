@@ -9,6 +9,7 @@ import { Exercise } from "./Exercise.tsx";
 import { ExerciseRail } from "../components/ExerciseRail.tsx";
 import { Amount } from "../components/Amount.tsx";
 import { chainFor, type ArcChainId } from "../chain/arc.ts";
+import { PATHS } from "../../../src/paths.ts";
 
 export interface HomeProps {
   readonly chainId: ArcChainId;
@@ -69,7 +70,7 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
               real money, posted by people who need the work done.
             </p>
             <div className="ctas">
-              <a className="btn primary" href="/fund">Load your agent</a>
+              <a className="btn primary" href={PATHS.fund}>Load your agent</a>
               <a className="btn" href="/#gigs">See the gigs</a>
             </div>
             {open.length > 0 && (

@@ -45,6 +45,8 @@ export function App() {
         usdc={getAddress(settings.data.usdc)}
         gateway={getAddress(settings.data.gateway)}
         probePrice={settings.data.probePrice}
+        wallet={settings.data.wallet}
+        gym={window.location.origin}
         initialAgent={new URLSearchParams(window.location.search).get("agent")}
       />
     );

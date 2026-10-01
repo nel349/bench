@@ -1,55 +1,51 @@
 import { useState } from "react";
-import { isAddress, type Address } from "viem";
-import { useFunds } from "../api/useFunds.ts";
-import { useFundAgent } from "../chain/useFundAgent.ts";
+import type { Address } from "viem";
 import { chainFor, type ArcChainId } from "../chain/arc.ts";
 import { Plate } from "../plate/Plate.tsx";
 import { Nav } from "../plate/Nav.tsx";
-import { Balance } from "../components/Balance.tsx";
-import { AmountChoice } from "../components/AmountChoice.tsx";
-import { FundingProgress } from "../components/FundingProgress.tsx";
-import { standingOf } from "../lib/standing.ts";
+import { Journey } from "../components/Journey.tsx";
+import { DepositPanel } from "../components/DepositPanel.tsx";
 import { asDollars } from "../lib/money.ts";
+import { PATHS } from "../../../src/paths.ts";
 
-/** What a person is offered. Three choices decide faster than a free field. */
-const AMOUNTS = ["1", "5", "25"] as const;
-
-/** Stands in while no address is confirmed. The funding controls are not rendered in that state. */
-const ZERO = "0x0000000000000000000000000000000000000000" as const;
+/** The two ways an agent can pay here. */
+type Way = "allowance" | "own-key";
 
 export interface FundProps {
   readonly chainId: ArcChainId;
   readonly usdc: Address;
   readonly gateway: Address;
   readonly probePrice: string;
+  /** The owner's wallet. `null` where none serves this network, which leaves only the agent's own key. */
+  readonly wallet: string | null;
+  /** This gym's address, for the sentence the agent is given. */
+  readonly gym: string;
   readonly initialAgent: string | null;
 }
 
 /**
- * Load an agent: put money where it can spend it.
+ * Load an agent: give it something to spend.
  *
- * The first step of the loop, and the only screen here where a person's own wallet does anything.
+ * The first step of the loop. The way offered first is an allowance from the owner's wallet: a limit
+ * the chain enforces, and one that can be revoked. An agent that brings its own key can be given a
+ * deposit instead, which is the second way, and a link carrying `?agent=` opens on it because that
+ * link names a key.
  */
-export function Fund({ chainId, usdc, gateway, probePrice, initialAgent }: FundProps) {
-  const [typed, setTyped] = useState(initialAgent ?? "");
-  const [agent, setAgent] = useState<string | null>(initialAgent);
-  const funds = useFunds(agent);
-  const standing = standingOf(funds.data);
+export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialAgent }: FundProps) {
+  const [way, setWay] = useState<Way>(wallet !== null && initialAgent === null ? "allowance" : "own-key");
   const chain = chainFor(chainId);
-
-  /**
-   * Funding follows the **checked** address, never what is currently in the box. Reading the box
-   * meant editing it without pressing Check would send money to one agent while the balances on
-   * screen described another.
-   */
-  const confirmed: Address | null = agent !== null && isAddress(agent) ? agent : null;
-  const funding = useFundAgent({ contracts: { usdc, gateway }, chainId, agent: confirmed ?? ZERO });
+  const tab = (id: Way, label: string) => (
+    <button type="button" aria-pressed={way === id}
+            className={way === id ? "way on" : "way"} onClick={() => setWay(id)}>
+      {label}
+    </button>
+  );
 
   return (
     <Plate
-      top={{ start: <a className="brand" href="/">BENCH<b>//</b></a>, end: <Nav current="load" /> }}
+      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" /> }}
       left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
-      right={<>YOUR WALLET MUST BE ON ARC</>}
+      right={way === "allowance" ? <>A LIMIT ON CHAIN · REVOKE ANY TIME</> : <>YOUR WALLET MUST BE ON ARC</>}
       bottom={{
         start: <>STEP 00 OF THE LOOP</>,
         middle: <span className="loop-line">LOAD&nbsp;&nbsp;→&nbsp;&nbsp;TRAIN&nbsp;&nbsp;→&nbsp;&nbsp;REP&nbsp;&nbsp;→&nbsp;&nbsp;GIGS</span>,
@@ -59,63 +55,42 @@ export function Fund({ chainId, usdc, gateway, probePrice, initialAgent }: FundP
       <div className="load">
         <section className="load-intro">
           <p className="kicker"><span>00</span> load</p>
-          <h1 className="headline small">Give your agent<br />something to <em>spend</em>.</h1>
-          <p className="sub">
-            It pays {asDollars(probePrice)} for every question it asks while it trains. What you give it
-            is the most it can ever spend.
-          </p>
-          <p className="warn">
-            <b>This cannot be undone.</b> Money given to an agent belongs to the agent. Give what you are
-            willing to lose.
-          </p>
+          {way === "allowance" ? (
+            <>
+              <h1 className="headline small">Give your agent<br />an <em>allowance</em>.</h1>
+              <p className="sub">
+                It pays {asDollars(probePrice)} for every question it asks while it trains, from your
+                wallet and inside a limit you set on your phone. The chain refuses anything past the
+                limit, and you can revoke it in one step.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="headline small">Give your agent<br />something to <em>spend</em>.</h1>
+              <p className="sub">
+                It pays {asDollars(probePrice)} for every question it asks while it trains, from a
+                deposit made for its own key. What you deposit is the most it can spend.
+              </p>
+            </>
+          )}
+          {wallet === null && (
+            <p className="warn">
+              <b>No wallet serves this network yet.</b> Until one does, an agent here pays from its own
+              key.
+            </p>
+          )}
         </section>
 
         <section className="load-panel">
-          <div className="panel-title"><span className="blink" />AGENT</div>
-
-          <form className="lookup" onSubmit={(e) => { e.preventDefault(); setAgent(typed.trim()); }}>
-            <label htmlFor="agent">The address your agent printed when it started</label>
-            <div className="field-row">
-              <input id="agent" value={typed} spellCheck={false} autoComplete="off" placeholder="0x…"
-                     onChange={(e) => {
-                       setTyped(e.target.value);
-                       // Clear the result rather than leave it describing an address no longer shown.
-                       if (agent !== null && e.target.value.trim() !== agent) setAgent(null);
-                     }} />
-              <button type="submit" className="btn" disabled={!isAddress(typed.trim())}>Check</button>
-            </div>
-          </form>
-
-          {agent === null && <p className="state idle">Paste an address to see what it holds.</p>}
-          {funds.isError && <p className="state bad">That is not an address on this network.</p>}
-          {standing === "ready" && funds.data && (
-            <p className="state good">
-              Loaded. It can ask {funds.data.probes} {funds.data.probes === 1 ? "question" : "questions"}.
-            </p>
-          )}
-          {standing === "short" && <p className="state wait">Empty. It cannot ask anything yet.</p>}
-
-          {funds.data && (
-            <dl className="balances">
-              <Balance label="Can spend" amount={funds.data.deposit} tone={standing === "ready" ? "ready" : "short"}>
-                What it pays for questions with.
-              </Balance>
-              <Balance label="In its wallet" amount={funds.data.wallet} tone="idle">
-                {funds.data.wallet === "0.000000"
-                  ? "Nothing needs to be here."
-                  : "Sent here by mistake? This cannot pay for anything. It has to be moved across."}
-              </Balance>
-            </dl>
-          )}
-
-          {funds.data && confirmed && (
-            <div className="give">
-              <p className="give-label">Add</p>
-              <AmountChoice amounts={AMOUNTS} disabled={funding.busy} onChoose={(usd) => void funding.fund(usd)} />
-              <p className="fine">Two confirmations in your wallet: one to approve, one to send.</p>
-              <FundingProgress state={funding.state} explorer={chain.blockExplorers.default.url} />
+          {wallet !== null && (
+            <div className="ways" role="group" aria-label="How your agent pays">
+              {tab("allowance", "With an allowance")}
+              {tab("own-key", "From its own key")}
             </div>
           )}
+          {way === "allowance" && wallet !== null
+            ? <Journey wallet={wallet} gym={gym} />
+            : <DepositPanel chainId={chainId} usdc={usdc} gateway={gateway} initialAgent={initialAgent} />}
         </section>
       </div>
     </Plate>

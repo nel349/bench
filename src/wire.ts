@@ -56,6 +56,8 @@ export interface SettingsWire {
   readonly probePrice: Decimal;
   /** The ERC-8004 reputation registry, where ranked runs are written. `null` where there is none. */
   readonly reputation: string | null;
+  /** The owner's wallet, where an allowance is granted and revoked. `null` where there is none yet. */
+  readonly wallet: string | null;
 }
 
 /** One problem in full: what the list says, and the statement. */

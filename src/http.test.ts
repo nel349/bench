@@ -14,7 +14,8 @@ import { fingerprint } from "./problems/seed.ts";
 import { GENERATOR } from "./problems/problem.ts";
 import { MemoryReputation } from "./reputation.ts";
 import { Bounties } from "./bounties.ts";
-import type { ProblemWire } from "./wire.ts";
+import type { ProblemWire, SettingsWire } from "./wire.ts";
+import { OWNER_WALLET } from "./arc/chain.ts";
 import "./problems/blackbox-problem.ts";
 
 const AGENT = "agent:aria";
@@ -81,6 +82,19 @@ describe("the free surface is free", () => {
     expect([...levels].sort()).toEqual(["easy", "hard", "medium"]);
     expect(body.find((p) => p.id === "ranking")!.par).toBe(16);
     expect(body.find((p) => p.id === "zendo")!.par).toBe(null);
+  });
+
+  /**
+   * The Load page leads an owner to their wallet, and on mainnet there is none yet. A link carried
+   * over from testnet would open a wallet on the wrong network, so mainnet names none.
+   */
+  test("the settings name the owner's wallet where there is one, and none on mainnet", async () => {
+    const testnet = (await (await call("GET", "/settings")).json()) as SettingsWire;
+    expect(testnet.wallet).toBe(OWNER_WALLET.testnet);
+    expect(testnet.wallet).toStartWith("https://");
+
+    const mainnet = await handle(new Request("http://bench.test/settings"), { ...deps, net: "mainnet" });
+    expect(((await mainnet.json()) as SettingsWire).wallet).toBeNull();
   });
 
   test("nothing was charged for any of that", () => {

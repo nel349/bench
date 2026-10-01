@@ -1,4 +1,5 @@
 import type { View } from "./useView.ts";
+import { PATHS } from "../../../src/paths.ts";
 
 export interface NavProps {
   readonly current: View | "load";
@@ -19,7 +20,7 @@ export function Nav({ current }: NavProps) {
   );
   return (
     <nav className="nav" aria-label="The loop">
-      {item("load", "/fund", "Load", "00")}
+      {item("load", PATHS.fund, "Load", "00")}
       <span className="arrow">→</span>
       {item("rig", "/#rig", "Train", "01")}
       <span className="arrow">→</span>

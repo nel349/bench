@@ -37,18 +37,27 @@ function show(node: React.ReactNode) {
   );
 }
 
-const page = (initialAgent: string | null) => (
+const WALLET = "https://kuiralabs.github.io/mandate/";
+const GYM = "https://bench.example";
+
+const page = (initialAgent: string | null, wallet: string | null = WALLET) => (
   <Fund chainId={5042002} usdc={"0x3600000000000000000000000000000000000000" as Address}
         gateway={"0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address}
-        probePrice="0.020000" initialAgent={initialAgent} />
+        probePrice="0.020000" wallet={wallet} gym={GYM} initialAgent={initialAgent} />
 );
+
+/** The deposit is the second way; a page opened without an agent in its link starts on the first. */
+const toOwnKey = (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(screen.getByRole("button", { name: /from its own key/i }));
 
 beforeEach(() => { vi.restoreAllMocks(); });
 
 describe("the front door", () => {
-  test("asks for an address before anything else", () => {
+  test("asks for an address before anything else", async () => {
+    const user = userEvent.setup();
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
+    await toOwnKey(user);
     expect(screen.getByText(/paste an address to see what it holds/i)).toBeInTheDocument();
   });
 
@@ -117,9 +126,73 @@ describe("the front door", () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", serving({ [OTHER]: funds({ agent: OTHER }) }));
     show(page(null));
+    await toOwnKey(user);
     const check = screen.getByRole("button", { name: /check/i });
     expect(check).toBeDisabled();
     await user.type(screen.getByLabelText(/the address your agent printed/i), OTHER);
     expect(check).toBeEnabled();
+  });
+});
+
+describe("with an allowance, the way offered first", () => {
+  test("the five steps, in order, in the words the wallet and the connector use", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(titles).toEqual([
+      "Get the app, and add test USDC phone",
+      "Connect your agent laptop",
+      "Scan to grant phone",
+      "Tell your agent to play laptop",
+      "Watch it spend, revoke any time phone",
+    ]);
+  });
+
+  test("step 1 opens the owner's wallet", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    expect(screen.getByRole("link", { name: /open the wallet/i })).toHaveAttribute("href", WALLET);
+  });
+
+  test("step 4's sentence names this gym, and copies whole", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+
+    const sentence = `Train on Bench at ${GYM}: rank as many problems as you can, and spend as little as you can.`;
+    expect(screen.getByText(sentence)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /copy the sentence for your agent/i }));
+    expect(writeText).toHaveBeenCalledWith(sentence);
+    expect(await screen.findByRole("button", { name: /copy the sentence/i })).toHaveTextContent("Copied");
+  });
+
+  test("no deposit is offered, and nothing says it cannot be undone", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    expect(screen.queryByLabelText(/the address your agent printed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cannot be undone/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/an allowance/i);
+  });
+
+  /** A link carrying an agent names a key, and the key is what a deposit is for. */
+  test("a link naming an agent opens on its own key", async () => {
+    vi.stubGlobal("fetch", serving({ [AGENT]: funds() }));
+    show(page(AGENT));
+    expect(screen.getByRole("button", { name: /from its own key/i })).toHaveAttribute("aria-pressed", "true");
+    // The headline follows the way chosen, rather than promising an allowance beside a deposit.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/something to spend/i);
+    expect(await screen.findByText(/can ask 25 questions/i)).toBeInTheDocument();
+  });
+
+  /** Mainnet has no wallet yet. A testnet link there would open a wallet on the wrong network. */
+  test("where no wallet serves the network, only the agent's own key is offered, and the page says why", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null, null));
+    expect(screen.queryByRole("button", { name: /with an allowance/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /open the wallet/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/no wallet serves this network yet/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/the address your agent printed/i)).toBeInTheDocument();
   });
 });
