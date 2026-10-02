@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
-  AgentRecordWire, BountyWire, ChainRatingWire, FeedRowWire, ProblemDetailWire, ProblemWire, ScoreWire,
+  AgentRecordWire, BountyWire, ChainRatingWire, FeedRowWire, OwnerWire, ProblemDetailWire, ProblemWire, ScoreWire,
 } from "../../../src/wire.ts";
 import { PATHS } from "../../../src/paths.ts";
 import { ApiError, getJson } from "./client.ts";
@@ -79,3 +79,19 @@ export function useAgentRecord(address: string | null) {
     enabled: address !== null,
   });
 }
+
+/** While an agent is playing, its page follows each probe; otherwise it checks now and then. */
+const LIVE_REFRESH_MS = 3_000;
+const IDLE_REFRESH_MS = 15_000;
+
+/** One owner's page: their wallet's agents, what each is doing, spent and earned. */
+export function useOwner(wallet: string | null) {
+  return useQuery({
+    queryKey: ["owner", wallet],
+    queryFn: ({ signal }) => getJson<OwnerWire>(`${PATHS.owner}/${wallet}`, signal),
+    enabled: wallet !== null,
+    refetchInterval: (query) =>
+      query.state.data?.agents.some((a) => a.live !== null) ? LIVE_REFRESH_MS : IDLE_REFRESH_MS,
+  });
+}
+

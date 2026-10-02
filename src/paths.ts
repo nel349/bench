@@ -16,6 +16,11 @@ export const PATHS = {
   bounties: "/bounties",
   /** An agent's record, and the rating that qualifies it for a bounty. */
   rating: "/rating",
+  /**
+   * One owner's page: a wallet's agents, what each is doing now, what each spent and earned, and
+   * the gigs each qualifies for. Keyed by the wallet, which is public, so there is nothing to sign.
+   */
+  owner: "/owner",
   /** What the chain says a session key may still spend. Read from the plugin, never metered here. */
   allowance: "/allowance",
   /** The front door: give your agent money so it can buy answers. */

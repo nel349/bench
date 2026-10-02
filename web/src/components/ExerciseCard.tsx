@@ -1,6 +1,7 @@
 import type { ProblemDetailWire } from "../../../src/wire.ts";
 import { Amount } from "./Amount.tsx";
 import { parCost, probes } from "../lib/par.ts";
+import { PATHS } from "../../../src/paths.ts";
 
 export interface ExerciseCardProps {
   readonly problem: ProblemDetailWire;
@@ -32,6 +33,9 @@ export function ExerciseCard({ problem, number }: ExerciseCardProps) {
         <div><dt>Per probe</dt><dd><Amount value={problem.prices.ask} /></dd></div>
         <div><dt>To rank</dt><dd><Amount value={problem.prices.rank} /></dd></div>
       </dl>
+      {/* The card said what the problem is and not how an agent gets to it. */}
+      <p className="ex-start">Your agent plays this itself, through the Bench skill. To set it up, follow the
+        steps on <a href={PATHS.fund}>Load</a>.</p>
     </header>
   );
 }

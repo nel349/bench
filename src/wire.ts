@@ -76,6 +76,42 @@ export interface ChainRatingWire {
   readonly source: "erc-8004";
 }
 
+/** What a wallet's allowance to one agent stands at, read from the plugin. */
+export interface OwnerAllowanceWire {
+  readonly limit: Decimal;
+  readonly used: Decimal;
+  readonly remaining: Decimal;
+  /** Unix seconds; zero when it never ends. */
+  readonly validUntil: number;
+  readonly live: boolean;
+}
+
+/** One of a wallet's agents, as its owner wants to see it. */
+export interface OwnerAgentWire {
+  /** The agent's own key: the address that pays. */
+  readonly address: string;
+  /** `null` when the plugin will not say, which reads as unknown rather than as nothing. */
+  readonly allowance: OwnerAllowanceWire | null;
+  /** The ERC-8004 identity its runs carry, once a run has carried one. */
+  readonly identity: string | null;
+  /** Rep from the registry for that identity, and what it ranked. `null` without an identity. */
+  readonly rep: number | null;
+  readonly ranked: readonly string[];
+  /** The run it is playing now, if any. */
+  readonly live: ScoreWire | null;
+  /** Its paid runs, newest first. */
+  readonly runs: readonly FeedRowWire[];
+  readonly spend: Decimal;
+  /** Open gigs its rep already admits it to. */
+  readonly qualifies: readonly string[];
+}
+
+/** One owner's page: a wallet and its agents. */
+export interface OwnerWire {
+  readonly wallet: string;
+  readonly agents: readonly OwnerAgentWire[];
+}
+
 /** The runs an address paid for, and what they cost. */
 export interface AgentRecordWire {
   readonly agent: string;

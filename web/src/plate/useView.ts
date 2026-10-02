@@ -6,9 +6,10 @@ import { useEffect, useState } from "react";
  * inside changes.
  *
  * The hash is the view and then its detail: `#rig/liar` is the rig with Liar chosen, `#ledger/894767`
- * is the record with that agent looked up. A view that ignores detail simply ignores it.
+ * is the record with that agent looked up, `#yours/0x…` is one owner's page. A view that ignores
+ * detail simply ignores it.
  */
-export const VIEWS = ["rig", "gigs", "ledger"] as const;
+export const VIEWS = ["rig", "gigs", "ledger", "yours"] as const;
 export type View = (typeof VIEWS)[number];
 
 export interface Route {

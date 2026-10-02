@@ -5,6 +5,8 @@ import { useRoute } from "../plate/useView.ts";
 import { Hero } from "../hero/Hero.tsx";
 import { Gigs } from "./Gigs.tsx";
 import { Ledger } from "./Ledger.tsx";
+import { Yours } from "./Yours.tsx";
+import { useOwnerWallet } from "../lib/ownerWallet.ts";
 import { Exercise } from "./Exercise.tsx";
 import { ExerciseRail } from "../components/ExerciseRail.tsx";
 import { Amount } from "../components/Amount.tsx";
@@ -33,6 +35,7 @@ const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toF
  */
 export function Home({ chainId, probePrice, registry }: HomeProps) {
   const { view, detail } = useRoute();
+  const [owner, remember] = useOwnerWallet();
   const problems = useProblems();
   const list = problems.data ?? [];
   const asked = detail[0];
@@ -50,10 +53,10 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
     <Plate
       top={{
         start: <span className="brand">BENCH<b>//</b></span>,
-        end: <Nav current={view} />,
+        end: <Nav current={view} owner={owner} />,
       }}
       left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
-      right={<>{open.length} GIGS OPEN · <Amount value={onOffer} /> ON OFFER</>}
+      right={<>{open.length} {open.length === 1 ? "GIG" : "GIGS"} OPEN · <Amount value={onOffer} /> ON OFFER</>}
       bottom={{
         start: <>{runs.length} RUNS LOGGED</>,
         middle: <span className="loop-line">TRAIN&nbsp;&nbsp;→&nbsp;&nbsp;REP&nbsp;&nbsp;→&nbsp;&nbsp;GIGS&nbsp;&nbsp;→&nbsp;&nbsp;PAID</span>,
@@ -77,7 +80,7 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
               <a className="gig-teaser" href="/#gigs">
                 <span className="gig-count">{open.length}</span>
                 <span className="gig-label">
-                  gigs open now<br /><Amount value={onOffer} /> on offer
+                  {open.length === 1 ? "gig" : "gigs"} open now<br /><Amount value={onOffer} /> on offer
                 </span>
               </a>
             )}
@@ -91,6 +94,7 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
           </div>
         </div>
       )}
+      {view === "yours" && <Yours wallet={detail[0] ?? ""} remember={remember} />}
       {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} />}
       {view === "ledger" && <Ledger runs={runs} looking={detail[0] ?? ""} registry={registry}
                                     explorer={chain.blockExplorers.default.url} />}

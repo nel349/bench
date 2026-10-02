@@ -20,6 +20,7 @@ export const SESSION_KEY_ABI = parseAbi([
   "struct SpendLimitInfo { bool hasLimit; uint256 limit; uint256 limitUsed; uint48 refreshInterval; uint48 lastUsedTime; }",
   "function getERC20SpendLimitInfo(address account, address sessionKey, address token) view returns (SpendLimitInfo)",
   "function getKeyTimeRange(address account, address sessionKey) view returns (uint48 validAfter, uint48 validUntil)",
+  "function sessionKeysOf(address account) view returns (address[])",
 ]);
 
 export interface Allowance {
@@ -39,6 +40,11 @@ export interface Allowance {
 
 export interface AllowanceReader {
   of(account: string, sessionKey: string): Promise<Allowance | null>;
+  /**
+   * The agents a wallet has granted an allowance to and not revoked: one read, from the plugin's own
+   * list, rather than a scan of its history. `null` for something that is not an address.
+   */
+  agentsOf(account: string): Promise<readonly Address[] | null>;
 }
 
 /** Reads the session-key plugin on Arc. `null` when there is no allowance to read. */
@@ -60,6 +66,18 @@ export class ArcAllowances implements AllowanceReader {
   }
 
   get plugin(): Address { return this.#plugin; }
+
+  async agentsOf(account: string): Promise<readonly Address[] | null> {
+    let a: Address;
+    try {
+      a = getAddress(account);
+    } catch {
+      return null;
+    }
+    return this.#client.readContract({
+      address: this.#plugin, abi: SESSION_KEY_ABI, functionName: "sessionKeysOf", args: [a],
+    });
+  }
 
   async of(account: string, sessionKey: string): Promise<Allowance | null> {
     let a: Address, k: Address;

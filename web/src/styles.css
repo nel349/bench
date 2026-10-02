@@ -360,6 +360,8 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 }
 .ex-rule { margin: 6px 0 0; font-size: 13px; line-height: 1.55; color: var(--text-dim); max-width: 62ch; }
 .ex-rule b { color: var(--signal); font-weight: 600; }
+.ex-start { margin: 12px 0 0; font-size: 12px; color: var(--text-faint); }
+.ex-start a { color: var(--text-dim); }
 
 /*
  * As large as the height allows, because the board is the thing being shown. It was a small tilted
@@ -508,6 +510,31 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .gig-meta .req.none { color: var(--text-dim); }
 
 .ledger-scroll { overflow-x: auto; }
+
+/* ═══ yours: one owner's agents ══════════════════════════════════════════════════════════════ */
+
+.nav .nav-gap { width: 1px; height: 14px; margin: 0 4px; background: var(--lattice-hot); }
+
+.owner-agent {
+  max-width: 900px; margin: 0 0 22px; padding: 18px 20px 20px;
+  background: var(--panel); border: 1px solid var(--lattice-hot);
+  clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+}
+.owner-agent-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.owner-agent-head h3 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+.owner-agent-head .proof { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.owner-stats dd .of { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.owner-live {
+  display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding: 10px 12px;
+  font-size: 13px; color: var(--text-dim); border: 1px dashed var(--lattice);
+}
+.owner-live.on { color: var(--signal); border-style: solid; border-color: var(--signal-dim); }
+.owner-ranked { margin: 12px 0 0; font-size: 12.5px; color: var(--text-dim); }
+.owner-gigs { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--lattice); }
+.owner-gigs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.owner-gigs li { font-size: 13px; color: var(--text); }
+.owner-gigs a { color: var(--core); }
+.owner-runs { margin-top: 16px; }
 .ledger { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ledger th {
   text-align: left; font-weight: 500; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
@@ -541,7 +568,9 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .edge.bottom    { order: 4; padding: 6px 24px; font-size: 10px; }
   .edge.bottom.end { padding-bottom: 26px; }
   .edge.middle    { transform: none; }
-  .nav { flex-wrap: nowrap; }
+  .nav { flex-wrap: wrap; row-gap: 8px; }
+  /* "Yours" on a line of its own under the loop, rather than scrolled off the edge. */
+  .nav .nav-gap { flex-basis: 100%; height: 0; margin: 0; background: none; }
 
   .home { grid-template-columns: 1fr; height: auto; gap: 44px; }
   .stage { height: auto; }
@@ -584,7 +613,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
 }
 /* Five steps and their lines to copy run taller than a short screen; the panel scrolls, the plate does not. */
-.load-panel { max-height: 100%; overflow-y: auto; }
+.load .load-panel { max-height: 100%; overflow-y: auto; }
 
 /* The two ways an agent pays, as one control. */
 .ways { display: flex; gap: 0; margin: 0 0 18px; border: 1px solid var(--lattice-hot); }

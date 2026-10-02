@@ -3,6 +3,8 @@ import { Amount } from "../components/Amount.tsx";
 import { short, since } from "../lib/elapsed.ts";
 import { Empty } from "../components/Empty.tsx";
 import { RepLookup } from "../components/RepLookup.tsx";
+import { outcomeOf } from "../lib/outcome.ts";
+import { runnerName } from "../lib/runner.ts";
 import { PATHS } from "../../../src/paths.ts";
 
 export interface LedgerProps {
@@ -12,18 +14,6 @@ export interface LedgerProps {
   readonly registry: string | null;
   readonly explorer: string;
 }
-
-/**
- * What a run did for the agent's record.
- *
- * A breach is not rep until it is ranked, and a ranked run adds rep only the first time on that ICE,
- * so no row claims a number: RANKED says it is on the record, and the rating says how much.
- */
-const outcome = (r: FeedRowWire) =>
-  r.endedBy === "solved" && r.ranked ? { label: "RANKED", tone: "rep" }
-  : r.endedBy === "solved" ? { label: "BREACHED", tone: "rep" }
-  : r.endedBy === "refused" ? { label: "FLATLINED", tone: "ice" }
-  : { label: "IN PROGRESS", tone: "dim" };
 
 /**
  * Rep being earned, run by run — the flatlines included.
@@ -56,10 +46,10 @@ export function Ledger({ runs, looking, registry, explorer }: LedgerProps) {
             </thead>
             <tbody>
               {runs.map((r) => {
-                const o = outcome(r);
+                const o = outcomeOf(r);
                 return (
                   <tr key={r.attempt}>
-                    <td><span className="agent">{r.agent}</span>{r.payer && <span className="proof">paid by {short(r.payer)}</span>}</td>
+                    <td><span className="agent">{runnerName(r)}</span>{r.payer && <span className="proof">paid by {short(r.payer)}</span>}</td>
                     <td className="dim">{r.problem}</td>
                     <td className={o.tone}>{o.label}</td>
                     <td className="num">{r.probes}</td>

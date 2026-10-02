@@ -2,6 +2,7 @@ import type { ScoreWire } from "../../../src/wire.ts";
 import { Amount } from "./Amount.tsx";
 import { short } from "../lib/elapsed.ts";
 import { probes } from "../lib/par.ts";
+import { runnerName } from "../lib/runner.ts";
 
 export interface BoardProps {
   /** Cheapest first, as the gym ranks them. Shown in the order given. */
@@ -32,7 +33,7 @@ export function Board({ rows, title }: BoardProps) {
           {rows.slice(0, BOARD_PLACES).map((r, i) => (
             <li key={r.attempt}>
               <span className="place">{String(i + 1).padStart(2, "0")}</span>
-              <span className="who">{r.agent}<span className="proof">paid by {short(r.payer)}</span></span>
+              <span className="who">{runnerName(r)}<span className="proof">paid by {short(r.payer)}</span></span>
               <span className="probes">{probes(r.probes)}</span>
               <span className={r.ranked ? "mark ranked" : "mark"}>{r.ranked ? "ranked" : ""}</span>
               <span className="cost"><Amount value={r.spend} /></span>

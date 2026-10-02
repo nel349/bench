@@ -1,5 +1,6 @@
 import { expect, test, describe, beforeEach } from "bun:test";
 import { handle, quoteFor, type Deps } from "./http.ts";
+import { LIVE_FOR_MS, playingNow } from "./live.ts";
 import { Attempts, recordHash } from "./attempt.ts";
 import { SqliteStore } from "./store.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "./payments.ts";
@@ -13,8 +14,9 @@ import { mazeFrom, shortestRoute, type Walls } from "./problems/toll.ts";
 import { fingerprint } from "./problems/seed.ts";
 import { GENERATOR } from "./problems/problem.ts";
 import { MemoryReputation } from "./reputation.ts";
+import { describe as describeAllowance } from "./arc/allowance.ts";
 import { Bounties } from "./bounties.ts";
-import type { ProblemWire, SettingsWire } from "./wire.ts";
+import type { OwnerWire, ProblemWire, SettingsWire } from "./wire.ts";
 import { OWNER_WALLET } from "./arc/chain.ts";
 import "./problems/blackbox-problem.ts";
 
@@ -540,6 +542,69 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     await callRanked("POST", `/attempts/${id}/submit`, { answer: boardFrom(seed).atoms }, headers);
     return id;
   };
+
+  /**
+   * What an owner opens after step 4: their wallet's agents, with what each did and earned. Before
+   * this there was no page of theirs; they had only the agent's own messages.
+   */
+  test("an owner's page lists the wallet's agents, their runs, rep and the gigs they now qualify for", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const owned: Deps = { ...ranked, allowances: {
+      async agentsOf(account) { return account === WALLET ? [AGENT as `0x${string}`] : []; },
+      async of() { return describeAllowance({ hasLimit: true, limit: 5_000_000n, limitUsed: 1_250_000n,
+                                              refreshInterval: 0, lastUsedTime: 0 }, 1_900_000_000, 1_800_000_000); },
+    } };
+    const posted = bounties.post({ poster: "agent:poster", title: "Easy", statement: "s", amount: "0.10",
+                                   deadline: Date.now() + 2 * 60 * 60 * 1000, minRating: 3,
+                                   checker: { kind: "equals", value: 1 } });
+    const hard = bounties.post({ poster: "agent:poster", title: "Hard", statement: "s", amount: "0.10",
+                                 deadline: Date.now() + 2 * 60 * 60 * 1000, minRating: 9,
+                                 checker: { kind: "equals", value: 1 } });
+    if (!posted.ok || !hard.ok) throw new Error("could not post the test gigs");
+
+    const id = await solved();
+    await callRanked("POST", `/attempts/${id}/rank`, {}, as({ "x-agent-id": ID }));
+    const open = await (await callRanked("POST", "/attempts", {}, as({ "x-agent-id": ID }))).json() as { id: string };
+    await callRanked("POST", `/attempts/${open.id}/ask`, { side: "up", index: 0 }, as({ "x-agent-id": ID }));
+
+    const r = await handle(new Request(`http://bench.test/owner/${WALLET}`), owned);
+    expect(r.status).toBe(200);
+    const page = await r.json() as OwnerWire;
+    expect(page.wallet).toBe(WALLET);
+    expect(page.agents).toHaveLength(1);
+    const agent = page.agents[0]!;
+    expect(agent.address).toBe(AGENT);
+    expect(agent.identity).toBe(ID);
+    expect(agent).toMatchObject({ rep: 3, ranked: ["blackbox"] });
+    expect(agent.allowance).toEqual({ limit: "5.000000", used: "1.250000", remaining: "3.750000",
+                                      validUntil: 1_900_000_000, live: true });
+    // The run it is playing now, and every run newest first.
+    expect(agent.live?.attempt).toBe(open.id);
+    expect(agent.runs.map((x) => x.attempt)).toEqual([open.id, id]);
+    // Rep 3 admits it to the gig asking 3, not the one asking 9.
+    expect(agent.qualifies).toEqual([posted.bounty.id]);
+
+    const nobody = await (await handle(new Request("http://bench.test/owner/0x0000000000000000000000000000000000000001"), owned)).json() as OwnerWire;
+    expect(nobody.agents).toEqual([]);
+  });
+
+  /** An abandoned run is never closed; three days later it read as the agent playing now. */
+  test("only an open run started within the hour is being played now", () => {
+    const now = 10 * LIVE_FOR_MS;
+    const runs = [
+      { attempt: "solved", endedBy: "solved", startedAt: now - 1_000 },
+      { attempt: "fresh", endedBy: "open", startedAt: now - LIVE_FOR_MS + 1_000 },
+      { attempt: "left", endedBy: "open", startedAt: now - 3 * LIVE_FOR_MS },
+    ];
+    expect(playingNow(runs, now)?.attempt).toBe("fresh");
+    expect(playingNow([runs[0]!, runs[2]!], now)).toBeNull();
+  });
+
+  test("an owner's page needs a wallet address, and says so", async () => {
+    const owned: Deps = { ...ranked, allowances: { async agentsOf() { return null; }, async of() { return null; } } };
+    expect((await handle(new Request("http://bench.test/owner/not-a-wallet"), owned)).status).toBe(400);
+    expect((await handle(new Request("http://bench.test/owner/0x1"), ranked)).status).toBe(404);
+  });
 
   test("a solved run under a proven identity ranks for $0.25, and the record reads back by id", async () => {
     const id = await solved();

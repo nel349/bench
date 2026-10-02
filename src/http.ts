@@ -24,7 +24,8 @@ import { paidBy, rate, weigh } from "./rating.ts";
 import type { Reputation } from "./reputation.ts";
 import type { Limits } from "./limits.ts";
 import { PATHS, FEED_LIMIT } from "./paths.ts";
-import type { AgentRecordWire, ChainRatingWire, ProblemDetailWire, ProblemWire, SettingsWire } from "./wire.ts";
+import { playingNow } from "./live.ts";
+import type { AgentRecordWire, ChainRatingWire, FeedRowWire, OwnerAgentWire, OwnerWire, ProblemDetailWire, ProblemWire, SettingsWire } from "./wire.ts";
 
 /**
  * The HTTP surface, as one function from a request to a response.
@@ -720,6 +721,63 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
       runs: mine.map((a) => wireScore(score(a))),
     };
     return json(record);
+  }
+
+  /**
+   * One owner's page: a wallet's agents, what each is doing now, what each has spent and earned, and
+   * the gigs each qualifies for.
+   *
+   * After step 4 an owner had only their agent's own messages: no page said whose runs were whose,
+   * what was running, or that an agent now qualified for a gig. Keyed by the wallet, which is public,
+   * so there is nothing to sign in to: the agents come from the plugin's own list, each allowance from
+   * the plugin, the runs from this gym's record, the rep from the registry. Each is what the chain or
+   * the record already says to anyone who asks.
+   */
+  if (req.method === "GET" && seg[0] === "owner" && seg[1]) {
+    const capped = freeCap(deps, client, "owner reads");
+    if (capped) return capped;
+    if (!deps.allowances) return fail(404, `no session-key plugin on ${deps.net}, so no wallet's agents to read`);
+    let agents: readonly string[] | null;
+    try {
+      agents = await deps.allowances.agentsOf(seg[1]);
+    } catch {
+      return unavailable("the session-key plugin could not be read");
+    }
+    if (agents === null) return fail(400, "that is not a wallet address");
+    const wallet = seg[1];
+    const all = deps.attempts.all();
+    const open = deps.bounties ? deps.bounties.all().map((b) => wireBounty(b)).filter((b) => b.open) : [];
+
+    const one = async (agent: string): Promise<OwnerAgentWire> => {
+      const mine = paidBy(all, agent).sort((x, y) => y.startedAt - x.startedAt);
+      const runs: FeedRowWire[] = mine.map((a) => ({ ...wireScore(score(a)), startedAt: a.startedAt }));
+      const identity = runs.find((r) => r.identity !== null)?.identity ?? null;
+      let ranked: readonly string[] = [];
+      let rep: number | null = null;
+      if (identity !== null && deps.reputation) {
+        try {
+          ranked = await deps.reputation.ranked(BigInt(identity));
+          rep = weigh(ranked);
+        } catch {
+          // Unread rather than zero: an owner told their agent has no rep would be told something false.
+        }
+      }
+      const found = await deps.allowances!.of(wallet, agent).catch(() => null);
+      return {
+        address: agent,
+        allowance: found === null ? null : {
+          limit: format(found.limit), used: format(found.used), remaining: format(found.remaining),
+          validUntil: found.validUntil, live: found.live,
+        },
+        identity, rep, ranked,
+        live: playingNow(runs),
+        runs,
+        spend: format(deps.payments.spentBy(agent)),
+        qualifies: rep === null ? [] : open.filter((b) => b.minRating <= rep).map((b) => b.id),
+      };
+    };
+    const owner: OwnerWire = { wallet, agents: await Promise.all(agents.map(one)) };
+    return json(owner);
   }
 
   /**

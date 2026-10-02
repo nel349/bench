@@ -7,6 +7,7 @@ import { Journey } from "../components/Journey.tsx";
 import { DepositPanel } from "../components/DepositPanel.tsx";
 import { asDollars } from "../lib/money.ts";
 import { PATHS } from "../../../src/paths.ts";
+import { useOwnerWallet } from "../lib/ownerWallet.ts";
 
 /** The two ways an agent can pay here. */
 type Way = "allowance" | "own-key";
@@ -34,6 +35,7 @@ export interface FundProps {
 export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialAgent }: FundProps) {
   const [way, setWay] = useState<Way>(wallet !== null && initialAgent === null ? "allowance" : "own-key");
   const chain = chainFor(chainId);
+  const [owner] = useOwnerWallet();
   const tab = (id: Way, label: string) => (
     <button type="button" aria-pressed={way === id}
             className={way === id ? "way on" : "way"} onClick={() => setWay(id)}>
@@ -43,7 +45,7 @@ export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialA
 
   return (
     <Plate
-      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" /> }}
+      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" owner={owner} /> }}
       left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
       right={way === "allowance" ? <>A LIMIT ON CHAIN · REVOKE ANY TIME</> : <>YOUR WALLET MUST BE ON ARC</>}
       bottom={{

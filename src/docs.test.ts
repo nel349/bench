@@ -42,8 +42,11 @@ beforeEach(() => {
     // A stand-in, so the route is exercised without the suite reaching a chain. What it returns
     // does not matter here; that the route exists and answers does.
     reputation: new MemoryReputation(),
-    allowances: { async of() { return describeAllowance(
-      { hasLimit: true, limit: 5_000_000n, limitUsed: 0n, refreshInterval: 0, lastUsedTime: 0 }, 0); } },
+    allowances: {
+      async of() { return describeAllowance(
+        { hasLimit: true, limit: 5_000_000n, limitUsed: 0n, refreshInterval: 0, lastUsedTime: 0 }, 0); },
+      async agentsOf() { return []; },
+    },
   };
 });
 
@@ -58,6 +61,7 @@ async function concrete(path: string): Promise<string> {
                .replace(":key", "0x0000000000000000000000000000000000000002");
   }
   if (path.startsWith("/leaderboard")) return path.replace(":problem", "blackbox");
+  if (path.startsWith("/owner")) return path.replace(":wallet", "0x0000000000000000000000000000000000000001");
 
   if (path.startsWith("/bounties")) {
     const p = deps.bounties!.post({
