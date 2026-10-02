@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { viewHref } from "../plate/useView.ts";
 import { useAgentRecord, useChainRating, useProblems } from "../api/useGym.ts";
 import { ApiError } from "../api/client.ts";
 import { whoIs } from "../lib/who.ts";
@@ -36,7 +37,7 @@ export function RepLookup({ looking, registry, explorer }: RepLookupProps) {
 
   const look = (e: FormEvent) => {
     e.preventDefault();
-    window.location.hash = `#ledger/${draft.trim()}`;
+    window.location.assign(viewHref("ledger", draft.trim()));
   };
 
   return (

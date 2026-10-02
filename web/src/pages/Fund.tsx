@@ -8,6 +8,10 @@ import { DepositPanel } from "../components/DepositPanel.tsx";
 import { asDollars } from "../lib/money.ts";
 import { PATHS } from "../../../src/paths.ts";
 import { useOwnerWallet } from "../lib/ownerWallet.ts";
+import { useOwner } from "../api/useGym.ts";
+import { useOwnerFunds } from "../api/useFunds.ts";
+import { setupProgress } from "../lib/setupProgress.ts";
+import { useMoreBelow } from "../lib/useMoreBelow.ts";
 
 /** The two ways an agent can pay here. */
 type Way = "allowance" | "own-key";
@@ -35,7 +39,11 @@ export interface FundProps {
 export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialAgent }: FundProps) {
   const [way, setWay] = useState<Way>(wallet !== null && initialAgent === null ? "allowance" : "own-key");
   const chain = chainFor(chainId);
-  const [owner] = useOwnerWallet();
+  const ownerWallet = useOwnerWallet(wallet);
+  const owner = useOwner(ownerWallet.owner);
+  const ownerFunds = useOwnerFunds(ownerWallet.owner);
+  const progress = ownerWallet.owner === null ? null : setupProgress(ownerFunds.data, owner.data);
+  const panel = useMoreBelow<HTMLElement>();
   const tab = (id: Way, label: string) => (
     <button type="button" aria-pressed={way === id}
             className={way === id ? "way on" : "way"} onClick={() => setWay(id)}>
@@ -45,7 +53,7 @@ export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialA
 
   return (
     <Plate
-      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" owner={owner} /> }}
+      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" wallet={ownerWallet} /> }}
       left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
       right={way === "allowance" ? <>A LIMIT ON CHAIN · REVOKE ANY TIME</> : <>YOUR WALLET MUST BE ON ARC</>}
       bottom={{
@@ -83,7 +91,7 @@ export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialA
           )}
         </section>
 
-        <section className="load-panel">
+        <section className="load-panel" ref={panel.ref}>
           {wallet !== null && (
             <div className="ways" role="group" aria-label="How your agent pays">
               {tab("allowance", "With an allowance")}
@@ -91,8 +99,10 @@ export function Fund({ chainId, usdc, gateway, probePrice, wallet, gym, initialA
             </div>
           )}
           {way === "allowance" && wallet !== null
-            ? <Journey wallet={wallet} gym={gym} />
+            ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.connectHref}
+                       owner={ownerWallet.owner} />
             : <DepositPanel chainId={chainId} usdc={usdc} gateway={gateway} initialAgent={initialAgent} />}
+          {panel.more && <button type="button" className="more-below" onClick={panel.showMore}>More steps below</button>}
         </section>
       </div>
     </Plate>

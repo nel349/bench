@@ -1,4 +1,5 @@
 import type { ProblemWire } from "../../../src/wire.ts";
+import { viewHref } from "../plate/useView.ts";
 
 export interface ExerciseRailProps {
   readonly problems: readonly ProblemWire[];
@@ -18,7 +19,7 @@ export function ExerciseRail({ problems, chosen }: ExerciseRailProps) {
   return (
     <nav className="rail" aria-label="Exercises">
       {problems.map((p, i) => (
-        <a key={p.id} href={`#rig/${p.id}`} className={p.id === chosen ? "rail-item on" : "rail-item"}
+        <a key={p.id} href={viewHref("rig", p.id)} className={p.id === chosen ? "rail-item on" : "rail-item"}
            aria-current={p.id === chosen ? "true" : undefined}>
           <span className="rail-no">{String(i + 1).padStart(2, "0")}</span>
           <span className="rail-name">{p.title}</span>

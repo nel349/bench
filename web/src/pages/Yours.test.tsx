@@ -3,11 +3,15 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BountyWire, FeedRowWire, OwnerAgentWire, OwnerWire, ProblemWire } from "../../../src/wire.ts";
 import { Yours } from "./Yours.tsx";
+import { WalletButton } from "../plate/WalletButton.tsx";
+import { connectUrl } from "../lib/ownerWallet.ts";
+import userEvent from "@testing-library/user-event";
 import { runnerName } from "../lib/runner.ts";
 import { outcomeOf } from "../lib/outcome.ts";
 import { LIVE_FOR_MS } from "../../../src/live.ts";
 
 const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+const CONNECT = "https://kuiralabs.github.io/mandate/connect?return=x";
 const AGENT = "0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce";
 const PRICES = { ask: "0.020000", submit: "0.050000", rank: "0.250000" };
 const PROBLEMS: ProblemWire[] = [
@@ -23,12 +27,13 @@ const agent = (over: Partial<OwnerAgentWire> = {}): OwnerAgentWire => ({
   address: AGENT,
   allowance: { limit: "5.000000", used: "1.255000", remaining: "3.745000", validUntil: 1_791_500_983, live: true },
   identity: "894767", rep: 4, ranked: ["liar", "toll"], live: null, runs: [], spend: "1.730000", qualifies: [],
+  current: true, won: [],
   ...over,
 });
 const gig: BountyWire = {
   id: "b3", poster: "0xposter", title: "The largest twenty-bit number", statement: "s", amount: "0.100000",
   escrowId: "5", deadline: Date.now() + 3_600_000, minRating: 8, postedAt: 0, solvedBy: null, solvedAt: null,
-  awardTx: null, attempts: 0, open: true, awaitingPayout: false,
+  awardTx: null, attempts: 0, open: true, awaitingPayout: false, solverIdentity: null,
 };
 
 function serving(owner: OwnerWire | 500) {
@@ -53,7 +58,7 @@ beforeEach(() => { vi.restoreAllMocks(); });
 describe("the owner's page", () => {
   test("shows each agent: its identity, rep, what is left to spend, and when the allowance ends", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent()] }));
-    show(<Yours wallet={WALLET} remember={() => {}} />);
+    show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByRole("heading", { name: "Agent #894767" })).toBeInTheDocument();
     expect(screen.getByText("4 / 4")).toBeInTheDocument();
     expect(screen.getByText(/ranked: liar, toll/i)).toBeInTheDocument();
@@ -63,41 +68,48 @@ describe("the owner's page", () => {
   /** The gap this page exists for: after step 4 nothing showed what the agent was doing. */
   test("a run being played shows live, with its questions and what it has cost so far", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ live: run("a20"), runs: [run("a20")] })] }));
-    show(<Yours wallet={WALLET} remember={() => {}} />);
+    show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByText(/playing liar now: 7 questions/i)).toBeInTheDocument();
   });
 
   test("names the gigs an agent already qualifies for, and how to enter", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ qualifies: ["b3"] })] }));
-    show(<Yours wallet={WALLET} remember={() => {}} />);
-    expect(await screen.findByRole("link", { name: gig.title })).toHaveAttribute("href", "#gigs");
+    show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
+    expect(await screen.findByRole("link", { name: gig.title })).toHaveAttribute("href", "/#gigs");
     expect(screen.getByText(/tell your agent which gig to take/i)).toBeInTheDocument();
   });
 
   test("the wallet is remembered once its page has opened", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [] }));
     const remember = vi.fn();
-    show(<Yours wallet={WALLET} remember={remember} />);
+    show(<Yours wallet={WALLET} remember={remember} connectHref={CONNECT} explorer="https://arcscan.app" />);
     await waitFor(() => expect(remember).toHaveBeenCalledWith(WALLET));
   });
 
   test("a wallet with no agents says so and points to Load", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [] }));
-    show(<Yours wallet={WALLET} remember={() => {}} />);
+    show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByText(/has not granted an allowance/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /load your agent/i })).toBeInTheDocument();
   });
 
+  test("without a wallet it offers to connect one, and still takes a pasted address", () => {
+    vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [] }));
+    show(<Yours wallet="" remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
+    expect(screen.getByRole("link", { name: "Connect wallet" })).toHaveAttribute("href", CONNECT);
+    expect(screen.getByLabelText(/or paste your wallet's address/i)).toBeInTheDocument();
+  });
+
   test("without a wallet it says where the link comes from, and asks for the address", () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [] }));
-    show(<Yours wallet="" remember={() => {}} />);
+    show(<Yours wallet="" remember={() => {}} connectHref={null} explorer="https://arcscan.app" />);
     expect(screen.getByText(/gives you this page's link when it starts training/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open" })).toBeDisabled();
   });
 
   test("a read that fails is said, not shown as an empty wallet", async () => {
     vi.stubGlobal("fetch", serving(500));
-    show(<Yours wallet={WALLET} remember={() => {}} />);
+    show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByText(/could not be read just now/i)).toBeInTheDocument();
     expect(screen.queryByText(/has not granted/i)).not.toBeInTheDocument();
   });
@@ -115,5 +127,32 @@ describe("who ran it, and how it ended", () => {
     const now = 10 * LIVE_FOR_MS;
     expect(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 60_000 }, now).label).toBe("IN PROGRESS");
     expect(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 2 * LIVE_FOR_MS }, now).label).toBe("LEFT OPEN");
+  });
+});
+
+describe("connecting a wallet", () => {
+  /** The wallet sends the owner back to #connected/<address>, which this page reads. */
+  test("Connect wallet asks the wallet to return here, to the view that keeps the address", () => {
+    expect(connectUrl("https://kuiralabs.github.io/mandate/", "http://bench.test:8975")).toBe(
+      "https://kuiralabs.github.io/mandate/connect?return=" + encodeURIComponent("http://bench.test:8975/#connected/"));
+    expect(connectUrl(null, "http://bench.test")).toBeNull();
+  });
+
+  test("the header offers Connect wallet, or the connected wallet with its agents and Disconnect", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<WalletButton owner={null} connectHref={CONNECT} onDisconnect={() => {}} current={false} />);
+    expect(screen.getByRole("link", { name: "Connect wallet" })).toHaveAttribute("href", CONNECT);
+
+    const disconnect = vi.fn();
+    rerender(<WalletButton owner={WALLET} connectHref={CONNECT} onDisconnect={disconnect} current={false} />);
+    expect(screen.getByRole("link", { name: /your agents/i })).toHaveAttribute("href", `/#yours/${WALLET}`);
+    expect(screen.getByText("0x9fa9…8b28")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(disconnect).toHaveBeenCalled();
+  });
+
+  test("where no wallet serves the network, the header offers nothing to connect", () => {
+    const { container } = render(<WalletButton owner={null} connectHref={null} onDisconnect={() => {}} current={false} />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

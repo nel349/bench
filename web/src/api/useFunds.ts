@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { FundsWire } from "../../../src/wire.ts";
+import { PATHS } from "../../../src/paths.ts";
 import { ApiError, getJson } from "./client.ts";
 import { POLL_WHILE_SETTLING_MS } from "../lib/timing.ts";
 import { isAddress } from "viem";
@@ -18,7 +19,7 @@ export function useFunds(agent: string | null) {
   return useQuery({
     queryKey: ["funds", agent],
     enabled: valid,
-    queryFn: ({ signal }) => getJson<FundsWire>(`/funds/${agent}`, signal),
+    queryFn: ({ signal }) => getJson<FundsWire>(`${PATHS.funds}/${agent}`, signal),
     // While it cannot pay, something may be on its way. Once it can, stop asking.
     refetchInterval: (query) => (query.state.data?.ready ? false : POLL_WHILE_SETTLING_MS),
     staleTime: POLL_WHILE_SETTLING_MS,
@@ -27,3 +28,21 @@ export function useFunds(agent: string | null) {
     retry: (failures, error) => !(error instanceof ApiError && error.status === 404) && failures < 2,
   });
 }
+
+/** How often Set up checks whether the owner's wallet has money yet. Test USDC arrives in minutes. */
+const OWNER_FUNDS_REFRESH_MS = 30_000;
+
+/**
+ * What an owner's own wallet holds, for Set up's first step. Not `useFunds`: that one watches an
+ * agent's balance settle and asks every few seconds until it can pay, which an owner's wallet never
+ * reaches, so it would ask for ever against the gym's limit on free requests.
+ */
+export function useOwnerFunds(wallet: string | null) {
+  return useQuery({
+    queryKey: ["owner-funds", wallet],
+    enabled: wallet !== null && isAddress(wallet),
+    queryFn: ({ signal }) => getJson<FundsWire>(`${PATHS.funds}/${wallet}`, signal),
+    refetchInterval: OWNER_FUNDS_REFRESH_MS,
+  });
+}
+

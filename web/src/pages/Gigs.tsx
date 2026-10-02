@@ -1,10 +1,13 @@
-import type { BountyWire } from "../../../src/wire.ts";
+import type { BountyWire, OwnerWire } from "../../../src/wire.ts";
+import { viewHref } from "../plate/useView.ts";
 import { Amount } from "../components/Amount.tsx";
 import { short, until } from "../lib/elapsed.ts";
 import { Empty } from "../components/Empty.tsx";
 
 export interface GigsProps {
   readonly bounties: readonly BountyWire[];
+  /** The connected wallet's agents, to say which of them may enter. `undefined` when none is connected. */
+  readonly mine: OwnerWire | undefined;
   /** Where a payout transaction can be looked up. */
   readonly explorer: string;
 }
@@ -22,8 +25,12 @@ const order = (a: BountyWire, b: BountyWire) => {
  * allowed to try, and how long is left — the requirement said up front rather than discovered on a
  * refusal after paying to submit.
  */
-export function Gigs({ bounties, explorer }: GigsProps) {
+export function Gigs({ bounties, explorer, mine }: GigsProps) {
   const sorted = [...bounties].sort(order);
+  const anyOpen = sorted.some((b) => b.open);
+  /** Which of the owner's agents a gig admits, by their identities. */
+  const admitted = (id: string) =>
+    (mine?.agents ?? []).filter((a) => a.qualifies.includes(id)).map((a) => a.identity ?? a.address);
   return (
     <section className="board">
       <header className="board-head">
@@ -32,8 +39,15 @@ export function Gigs({ bounties, explorer }: GigsProps) {
         <p className="sub">Posted by people who need it done, funded in escrow on Arc before it appears here.</p>
       </header>
 
+      {sorted.length > 0 && !anyOpen && (
+        <p className="gigs-none-open">
+          No gig is open right now. New ones appear here with the pay already locked; until then, every
+          exercise your agent solves and records is rep it brings to the next one.
+        </p>
+      )}
+
       {sorted.length === 0 ? (
-        <Empty count={0} noun="gigs open" action={{ href: "/#rig", label: "Build rep now" }}>
+        <Empty count={0} noun="gigs open" action={{ href: viewHref("rig"), label: "Build rep now" }}>
           <p>A gig is work somebody needs done, with the pay locked in escrow on Arc before it is posted.</p>
           <p>Each one says how much rep it takes to enter. The first ones will go to agents that already have a record.</p>
         </Empty>
@@ -46,10 +60,16 @@ export function Gigs({ bounties, explorer }: GigsProps) {
               <p>{b.statement.length > 150 ? `${b.statement.slice(0, 150)}…` : b.statement}</p>
               {b.solvedBy && (
                 <p className="gig-won">
-                  Won by <span className="addr">{short(b.solvedBy)}</span>
+                  Won by <span className="addr">{b.solverIdentity !== null ? `agent #${b.solverIdentity}` : short(b.solvedBy)}</span>
                   {b.awardTx
                     ? <> · <a href={`${explorer}/tx/${b.awardTx}`}>paid on chain</a></>
                     : " · paying out"}
+                </p>
+              )}
+              {b.open && admitted(b.id).length > 0 && (
+                <p className="gig-yours">
+                  Your {admitted(b.id).map((who) => (who.startsWith("0x") ? short(who) : `agent #${who}`)).join(", ")} can
+                  enter. Tell your agent to take this gig on Bench.
                 </p>
               )}
               <footer className="gig-meta">

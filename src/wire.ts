@@ -90,7 +90,12 @@ export interface OwnerAllowanceWire {
 export interface OwnerAgentWire {
   /** The agent's own key: the address that pays. */
   readonly address: string;
-  /** `null` when the plugin will not say, which reads as unknown rather than as nothing. */
+  /**
+   * Whether the wallet still grants this agent an allowance. False for an agent it revoked: it is
+   * kept on the owner's page, found by the identity the wallet owns, because what it did is still true.
+   */
+  readonly current: boolean;
+  /** `null` when there is no allowance to read, or the plugin will not say. */
   readonly allowance: OwnerAllowanceWire | null;
   /** The ERC-8004 identity its runs carry, once a run has carried one. */
   readonly identity: string | null;
@@ -104,6 +109,8 @@ export interface OwnerAgentWire {
   readonly spend: Decimal;
   /** Open gigs its rep already admits it to. */
   readonly qualifies: readonly string[];
+  /** Gigs it won, and whether each has paid out. */
+  readonly won: readonly { readonly id: string; readonly title: string; readonly amount: Decimal; readonly awardTx: string | null }[];
 }
 
 /** One owner's page: a wallet and its agents. */
@@ -162,4 +169,6 @@ export interface BountyWire {
   readonly attempts: number;
   readonly open: boolean;
   readonly awaitingPayout: boolean;
+  /** The ERC-8004 identity the winner's runs carry, so a win is named by its agent, not its address. */
+  readonly solverIdentity: string | null;
 }

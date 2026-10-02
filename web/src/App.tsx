@@ -16,15 +16,28 @@ import { Home } from "./pages/Home.tsx";
  * testnet address on mainnet.
  */
 
+/** How often to ask again while the gym does not answer. */
+const GYM_RETRY_MS = 5_000;
+
 export function App() {
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: ({ signal }) => getJson<SettingsWire>(PATHS.settings, signal),
     staleTime: Infinity,
+    // Asked again while the gym does not answer, so the page recovers when it comes back.
+    refetchInterval: (query) => (query.state.status === "error" ? GYM_RETRY_MS : false),
   });
 
   if (settings.isPending) return <div className="wrap narrow"><p className="lede">Loading…</p></div>;
-  if (settings.isError || !isArcChainId(settings.data?.chainId)) {
+  // A gym that does not answer is not a wrong network, and was reported as one.
+  if (settings.isError) {
+    return (
+      <div className="wrap narrow">
+        <p className="verdict bad">Bench is not answering right now. This page tries again on its own.</p>
+      </div>
+    );
+  }
+  if (!isArcChainId(settings.data?.chainId)) {
     return (
       <div className="wrap narrow">
         <p className="verdict bad">This server is not on a network this page can write to.</p>
@@ -52,5 +65,5 @@ export function App() {
     );
   }
   return <Home chainId={settings.data.chainId} probePrice={settings.data.probePrice}
-               registry={settings.data.reputation} />;
+               registry={settings.data.reputation} walletUrl={settings.data.wallet} />;
 }

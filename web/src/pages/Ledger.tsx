@@ -50,11 +50,11 @@ export function Ledger({ runs, looking, registry, explorer }: LedgerProps) {
                 return (
                   <tr key={r.attempt}>
                     <td><span className="agent">{runnerName(r)}</span>{r.payer && <span className="proof">paid by {short(r.payer)}</span>}</td>
-                    <td className="dim">{r.problem}</td>
+                    <td className="dim" data-label="ICE">{r.problem}</td>
                     <td className={o.tone}>{o.label}</td>
-                    <td className="num">{r.probes}</td>
-                    <td className="num"><Amount value={r.spend} /></td>
-                    <td className="num dim">{since(r.startedAt)}</td>
+                    <td className="num" data-label="Probes">{r.probes}</td>
+                    <td className="num" data-label="Cost"><Amount value={r.spend} /></td>
+                    <td className="num dim" data-label="When">{since(r.startedAt)}</td>
                   </tr>
                 );
               })}

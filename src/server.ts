@@ -103,11 +103,9 @@ const payments: Payments = payTo
  * go up — and a null verifier means a claimed id stays a claim. That is the honest failure: runs
  * still score under the address that paid, which was always the part that could not be faked.
  */
-const identities = contractsOf(net).erc8004 && payTo
-  ? (() => {
-      const registry = new ArcRegistry(net);
-      return async (agentId: bigint, payer: string) => (await checkIdentity(registry, agentId, payer)).ok;
-    })()
+const registry = contractsOf(net).erc8004 ? new ArcRegistry(net) : null;
+const identities = registry && payTo
+  ? async (agentId: bigint, payer: string) => (await checkIdentity(registry, agentId, payer)).ok
   : null;
 
 const attempts = new Attempts(payments, store, identities);
@@ -177,6 +175,7 @@ const deps: Deps = {
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
   ...(reputation ? { reputation } : {}), ...(identities ? { verifyIdentity: identities } : {}),
+  ...(registry ? { ownerOf: (agentId: bigint) => registry.ownerOf(agentId) } : {}),
   limits: defaultLimits(),
 };
 

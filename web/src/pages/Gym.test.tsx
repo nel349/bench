@@ -47,7 +47,7 @@ describe("the rack", () => {
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(7);
     expect(links[0]).toHaveTextContent("01");
-    expect(links[6]).toHaveAttribute("href", "#rig/liar");
+    expect(links[6]).toHaveAttribute("href", "/#rig/liar");
     expect(links[6]).toHaveAttribute("aria-current", "true");
     expect(links[0]).not.toHaveAttribute("aria-current");
   });
@@ -139,18 +139,38 @@ describe("looking up rep", () => {
 describe("a won gig", () => {
   const gig = (over: Partial<BountyWire>): BountyWire => ({
     id: "b1", poster: "0xposter", title: "Hash the gym's name", statement: "Return it.", amount: "0.100000",
-    deadline: Date.now() + 86_400_000, minRating: 3, postedAt: 0, attempts: 1, open: false,
+    deadline: Date.now() + 86_400_000, minRating: 3, postedAt: 0, attempts: 1, open: false, solverIdentity: null,
     solvedBy: AGENT, solvedAt: 1, awardTx: "0xb0c6aae8", awaitingPayout: false, escrowId: "3", ...over,
   });
 
   test("says who won it and links the payout", () => {
-    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" />);
+    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
     expect(screen.getByText(/0x3535…61ce/i).closest("p")).toHaveTextContent(/Won by 0x3535…61ce · paid on chain/i);
     expect(screen.getByRole("link", { name: "paid on chain" })).toHaveAttribute("href", "https://testnet.arcscan.app/tx/0xb0c6aae8");
   });
 
+  /** Every other screen names the agent; a win named only an address. */
+  test("a winner with an identity is named by its agent", () => {
+    show(<Gigs bounties={[gig({ solverIdentity: "894767" })]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    expect(screen.getByText(/agent #894767/i).closest("p")).toHaveTextContent(/Won by agent #894767/i);
+  });
+
+  test("with every gig closed, the page says what to do rather than showing only faded cards", () => {
+    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    expect(screen.getByText(/no gig is open right now/i)).toBeInTheDocument();
+  });
+
+  test("an open gig says which of the connected wallet's agents may enter", () => {
+    const open = gig({ id: "b9", open: true, solvedBy: null, solvedAt: null, awardTx: null });
+    const mine = { wallet: "0xw", agents: [{ address: AGENT, current: true, identity: "894767", rep: 14, ranked: [], live: null,
+      runs: [], spend: "0", qualifies: ["b9"], won: [], allowance: null }] };
+    show(<Gigs bounties={[open]} explorer="https://testnet.arcscan.app" mine={mine} />);
+    expect(screen.getByText(/your agent #894767 can enter/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no gig is open right now/i)).not.toBeInTheDocument();
+  });
+
   test("a win whose payout has not landed says so", () => {
-    show(<Gigs bounties={[gig({ awardTx: null, awaitingPayout: true })]} explorer="https://testnet.arcscan.app" />);
+    show(<Gigs bounties={[gig({ awardTx: null, awaitingPayout: true })]} explorer="https://testnet.arcscan.app" mine={undefined} />);
     expect(screen.getByText(/paying out/i)).toBeInTheDocument();
   });
 });

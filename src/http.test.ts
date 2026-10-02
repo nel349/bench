@@ -588,6 +588,28 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     expect(nobody.agents).toEqual([]);
   });
 
+  /**
+   * A revoke takes an agent off the plugin's list, and its whole history went with it from the
+   * owner's page. The wallet still holds the agent's identity, so the agent is found through that.
+   */
+  test("an agent the wallet revoked stays on its page, found by the identity the wallet holds", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const id = await solved();
+    await callRanked("POST", `/attempts/${id}/rank`, {}, as({ "x-agent-id": ID }));
+    const revoked: Deps = { ...ranked,
+      allowances: { async agentsOf() { return []; }, async of() { return null; } },
+      ownerOf: async (agentId) => (agentId === 42n ? WALLET : null) };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), revoked)).json() as OwnerWire;
+    expect(page.agents).toHaveLength(1);
+    expect(page.agents[0]).toMatchObject({ address: AGENT.toLowerCase(), current: false, allowance: null,
+                                           identity: ID, rep: 3, qualifies: [] });
+    expect(page.agents[0]!.runs.map((r) => r.attempt)).toEqual([id]);
+
+    // Somebody else's wallet does not collect it.
+    const other = await (await handle(new Request("http://bench.test/owner/0x0000000000000000000000000000000000000002"), revoked)).json() as OwnerWire;
+    expect(other.agents).toEqual([]);
+  });
+
   /** An abandoned run is never closed; three days later it read as the agent playing now. */
   test("only an open run started within the hour is being played now", () => {
     const now = 10 * LIVE_FOR_MS;
@@ -668,6 +690,17 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     // The owner of id 42 gets in, and wins.
     const won = await callRanked("POST", `/bounties/${posted.id}/solve`, { answer: 7 }, as({ "x-agent-id": ID }));
     expect(await won.json()).toMatchObject({ solved: true, solver: AGENT });
+
+    // The gig names its winner by the agent's identity, and the winner's owner sees the win.
+    const listed = await (await callRanked("GET", "/bounties")).json() as { id: string; solverIdentity: string | null }[];
+    expect(listed.find((b) => b.id === posted.id)?.solverIdentity).toBe(ID);
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const owned: Deps = { ...ranked, allowances: {
+      async agentsOf() { return [AGENT as `0x${string}`]; },
+      async of() { return null; },
+    } };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), owned)).json() as OwnerWire;
+    expect(page.agents[0]!.won).toEqual([{ id: posted.id, title: expect.any(String), amount: expect.any(String), awardTx: null }]);
   });
 
   test("a server with no registry refuses to post a bounty that requires a record", async () => {

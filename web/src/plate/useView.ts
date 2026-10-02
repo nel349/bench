@@ -6,11 +6,21 @@ import { useEffect, useState } from "react";
  * inside changes.
  *
  * The hash is the view and then its detail: `#rig/liar` is the rig with Liar chosen, `#ledger/894767`
- * is the record with that agent looked up, `#yours/0x…` is one owner's page. A view that ignores
+ * is the record with that agent looked up, `#yours/0x…` is one owner's page, and `#connected/0x…` is
+ * where the wallet sends an owner back after Connect wallet. A view that ignores
  * detail simply ignores it.
  */
-export const VIEWS = ["rig", "gigs", "ledger", "yours"] as const;
+export const VIEWS = ["rig", "gigs", "ledger", "yours", "connected"] as const;
 export type View = (typeof VIEWS)[number];
+
+/**
+ * The link to a view, with its detail: `viewHref("yours", wallet)` is `/#yours/0x…`.
+ *
+ * One place that writes these, as `PATHS` is for the server's routes, so a view renamed in `VIEWS`
+ * cannot leave a link pointing at the old name.
+ */
+export const viewHref = (view: View, ...detail: readonly string[]): string =>
+  `/#${[view, ...detail].join("/")}`;
 
 export interface Route {
   readonly view: View;

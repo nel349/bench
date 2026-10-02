@@ -1,12 +1,13 @@
-import { useBounties, useFeed, useProblems } from "../api/useGym.ts";
+import { useBounties, useFeed, useOwner, useProblems } from "../api/useGym.ts";
 import { Plate } from "../plate/Plate.tsx";
 import { Nav } from "../plate/Nav.tsx";
-import { useRoute } from "../plate/useView.ts";
+import { useRoute, viewHref } from "../plate/useView.ts";
 import { Hero } from "../hero/Hero.tsx";
 import { Gigs } from "./Gigs.tsx";
 import { Ledger } from "./Ledger.tsx";
 import { Yours } from "./Yours.tsx";
-import { useOwnerWallet } from "../lib/ownerWallet.ts";
+import { CONNECTED_VIEW, isWallet, useOwnerWallet } from "../lib/ownerWallet.ts";
+import { useEffect } from "react";
 import { Exercise } from "./Exercise.tsx";
 import { ExerciseRail } from "../components/ExerciseRail.tsx";
 import { Amount } from "../components/Amount.tsx";
@@ -18,6 +19,8 @@ export interface HomeProps {
   readonly probePrice: string;
   /** The reputation registry, for the rep lookup to point at. `null` where the server has none. */
   readonly registry: string | null;
+  /** The owner's wallet app, for Connect wallet. `null` where none serves this network. */
+  readonly walletUrl: string | null;
 }
 
 /** The exercise with a demo of its own. The rest show their card and board. */
@@ -33,9 +36,23 @@ const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toF
  * page leads with the payoff and shows the training as the way to it — not the other way round,
  * which is how it read when it opened on "every question costs money".
  */
-export function Home({ chainId, probePrice, registry }: HomeProps) {
+export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   const { view, detail } = useRoute();
-  const [owner, remember] = useOwnerWallet();
+  const wallet = useOwnerWallet(walletUrl);
+  const { remember } = wallet;
+  const mine = useOwner(wallet.owner);
+
+  // Back from the wallet's Connect: keep the address and open its page, or, cancelled, the front page.
+  const returned = view === CONNECTED_VIEW ? detail[0] ?? "" : null;
+  useEffect(() => {
+    if (returned === null) return;
+    if (isWallet(returned)) {
+      remember(returned);
+      window.location.replace(viewHref("yours", returned));
+    } else {
+      window.location.replace(viewHref("rig"));
+    }
+  }, [returned, remember]);
   const problems = useProblems();
   const list = problems.data ?? [];
   const asked = detail[0];
@@ -53,7 +70,7 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
     <Plate
       top={{
         start: <span className="brand">BENCH<b>//</b></span>,
-        end: <Nav current={view} owner={owner} />,
+        end: <Nav current={view} wallet={wallet} />,
       }}
       left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
       right={<>{open.length} {open.length === 1 ? "GIG" : "GIGS"} OPEN · <Amount value={onOffer} /> ON OFFER</>}
@@ -74,10 +91,10 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
             </p>
             <div className="ctas">
               <a className="btn primary" href={PATHS.fund}>Load your agent</a>
-              <a className="btn" href="/#gigs">See the gigs</a>
+              <a className="btn" href={viewHref("gigs")}>See the gigs</a>
             </div>
             {open.length > 0 && (
-              <a className="gig-teaser" href="/#gigs">
+              <a className="gig-teaser" href={viewHref("gigs")}>
                 <span className="gig-count">{open.length}</span>
                 <span className="gig-label">
                   {open.length === 1 ? "gig" : "gigs"} open now<br /><Amount value={onOffer} /> on offer
@@ -90,12 +107,13 @@ export function Home({ chainId, probePrice, registry }: HomeProps) {
             {showDemo
               ? <Hero probePrice={probePrice} />
               : <Exercise id={chosen} number={list.findIndex((p) => p.id === chosen) + 1}
-                          demoHref={chosen === DEMO ? `#rig/${DEMO}` : null} />}
+                          demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
           </div>
         </div>
       )}
-      {view === "yours" && <Yours wallet={detail[0] ?? ""} remember={remember} />}
-      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} />}
+      {view === "yours" && <Yours wallet={detail[0] ?? ""} remember={remember} connectHref={wallet.connectHref}
+                                  explorer={chain.blockExplorers.default.url} />}
+      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} mine={mine.data} />}
       {view === "ledger" && <Ledger runs={runs} looking={detail[0] ?? ""} registry={registry}
                                     explorer={chain.blockExplorers.default.url} />}
     </Plate>

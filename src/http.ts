@@ -67,6 +67,8 @@ export interface Deps {
   readonly reputation?: Reputation;
   /** Whether an ERC-8004 id belongs to the address that paid. Absent where identities are off. */
   readonly verifyIdentity?: IdentityVerifier;
+  /** Who holds an ERC-8004 identity: the owner's wallet. Absent where there is no registry. */
+  readonly ownerOf?: (agentId: bigint) => Promise<string | null>;
   /** Caps on free requests and graded submissions. Absent, nothing is capped: tests and scripts. */
   readonly limits?: Limits;
 }
@@ -288,6 +290,29 @@ const HOW_TO_QUALIFY =
 async function ratingOf(deps: Deps, agentId: bigint | null): Promise<number> {
   if (agentId === null || !deps.reputation) return 0;
   return weigh(await deps.reputation.ranked(agentId));
+}
+
+/** The identity a paying address's runs carry, newest first: how a win or a payer is named. */
+function identityOfPayer(all: readonly Attempt[], payer: string | null): string | null {
+  if (payer === null) return null;
+  const p = payer.toLowerCase();
+  const run = [...all].sort((x, y) => y.startedAt - x.startedAt)
+    .find((a) => a.payer?.toLowerCase() === p && a.identity !== null);
+  return run?.identity ?? null;
+}
+
+/**
+ * Who holds each identity, remembered for a while: an owner's page asks about every identity in the
+ * record, and an identity changes hands rarely if ever.
+ */
+const OWNER_CACHE_MS = 10 * 60 * 1000;
+const ownerCache = new Map<string, { readonly owner: string | null; readonly at: number }>();
+async function cachedOwnerOf(deps: Deps, identity: string): Promise<string | null> {
+  const hit = ownerCache.get(identity);
+  if (hit && Date.now() - hit.at < OWNER_CACHE_MS) return hit.owner;
+  const owner = await deps.ownerOf!(BigInt(identity)).catch(() => null);
+  ownerCache.set(identity, { owner, at: Date.now() });
+  return owner;
 }
 
 /** The harness's seed when none is asked for, so its examples are the same for everyone. */
@@ -746,7 +771,25 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
     if (agents === null) return fail(400, "that is not a wallet address");
     const wallet = seg[1];
     const all = deps.attempts.all();
-    const open = deps.bounties ? deps.bounties.all().map((b) => wireBounty(b)).filter((b) => b.open) : [];
+    const gigs = deps.bounties ? deps.bounties.all().map((b) => wireBounty(b)) : [];
+    const open = gigs.filter((b) => b.open);
+
+    /**
+     * Agents the wallet no longer grants to, found by the identity it owns. A revoke takes an agent
+     * off the plugin's list, and with it went the agent's whole history from this page, although
+     * every run it paid for, and the rep it earned, is still true and still the owner's.
+     */
+    const current = new Set(agents.map((a) => a.toLowerCase()));
+    const former: string[] = [];
+    if (deps.ownerOf) {
+      const byPayer = new Map<string, string>();
+      for (const a of all) if (a.payer !== null && a.identity !== null) byPayer.set(a.payer.toLowerCase(), a.identity);
+      for (const [payer, identity] of byPayer) {
+        if (current.has(payer)) continue;
+        const holder = await cachedOwnerOf(deps, identity);
+        if (holder !== null && holder.toLowerCase() === wallet.toLowerCase()) former.push(payer);
+      }
+    }
 
     const one = async (agent: string): Promise<OwnerAgentWire> => {
       const mine = paidBy(all, agent).sort((x, y) => y.startedAt - x.startedAt);
@@ -762,9 +805,11 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
           // Unread rather than zero: an owner told their agent has no rep would be told something false.
         }
       }
-      const found = await deps.allowances!.of(wallet, agent).catch(() => null);
+      const isCurrent = current.has(agent.toLowerCase());
+      const found = isCurrent ? await deps.allowances!.of(wallet, agent).catch(() => null) : null;
       return {
         address: agent,
+        current: isCurrent,
         allowance: found === null ? null : {
           limit: format(found.limit), used: format(found.used), remaining: format(found.remaining),
           validUntil: found.validUntil, live: found.live,
@@ -773,10 +818,12 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
         live: playingNow(runs),
         runs,
         spend: format(deps.payments.spentBy(agent)),
-        qualifies: rep === null ? [] : open.filter((b) => b.minRating <= rep).map((b) => b.id),
+        qualifies: rep === null || !isCurrent ? [] : open.filter((b) => b.minRating <= rep).map((b) => b.id),
+        won: gigs.filter((b) => b.solvedBy?.toLowerCase() === agent.toLowerCase())
+          .map((b) => ({ id: b.id, title: b.title, amount: b.amount, awardTx: b.awardTx })),
       };
     };
-    const owner: OwnerWire = { wallet, agents: await Promise.all(agents.map(one)) };
+    const owner: OwnerWire = { wallet, agents: await Promise.all([...agents, ...former].map(one)) };
     return json(owner);
   }
 
@@ -805,7 +852,8 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
   if (seg[0] === "bounties" && !deps.bounties) return fail(404, "bounties are not enabled on this server");
 
   if (req.method === "GET" && path === PATHS.bounties) {
-    return json(deps.bounties!.all().map((b) => wireBounty(b)));
+    const all = deps.attempts.all();
+    return json(deps.bounties!.all().map((b) => ({ ...wireBounty(b), solverIdentity: identityOfPayer(all, b.solvedBy) })));
   }
 
   if (req.method === "POST" && path === PATHS.bounties) {
