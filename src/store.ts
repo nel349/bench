@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Attempt } from "./attempt.ts";
 import type { AgentId } from "./payments.ts";
 
@@ -52,14 +54,29 @@ interface Row {
  *
  * One file. A gym that needs a database cluster before its first user is a gym that never gets one.
  */
+/**
+ * Where the gym keeps its records unless `BENCH_DB` says otherwise: a git-ignored folder, never the
+ * repository's root, where it used to land beside the source.
+ */
+export const DEFAULT_DB = "data/bench.sqlite";
+
+/** The database file `BENCH_DB` names, or the default. */
+export const dbPath = (): string => process.env["BENCH_DB"] ?? DEFAULT_DB;
+
+/** Opens a database file, making its folder first; SQLite creates the file but not the folder. */
+export function openDatabase(path: string): Database {
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+  return new Database(path, { create: true });
+}
+
 /** The schema version at which repeat counts gained their `label:` prefix. */
 const COUNTS_PREFIXED = 1;
 
 export class SqliteStore implements Store {
   readonly #db: Database;
 
-  constructor(path = process.env["BENCH_DB"] ?? "bench.sqlite") {
-    this.#db = new Database(path, { create: true });
+  constructor(path = dbPath()) {
+    this.#db = openDatabase(path);
     this.#db.exec("PRAGMA journal_mode = WAL");
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS attempts (

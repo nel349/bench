@@ -1,4 +1,7 @@
 import { expect, test, describe, beforeEach } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { arbiterKey, type Arbiter, type Award } from "./arbiter.ts";
 import { handle, type Deps } from "../http.ts";
 import { Attempts } from "../attempt.ts";
@@ -175,8 +178,12 @@ describe("winning and being paid are different things", () => {
   });
 
   test("an unpaid win survives a restart and is still sweepable", () => {
-    const path = `${import.meta.dir}/../../.tmp-arbiter-${Date.now()}.sqlite`;
-    const first = new Bounties(new SqliteBounties(path));
+    // In the system's temporary folder, and removed whole: this wrote into the repository's root and
+    // deleted the file while it was still open, so SQLite wrote it back and every run left one.
+    const dir = mkdtempSync(join(tmpdir(), "bench-arbiter-"));
+    const path = join(dir, "bounties.sqlite");
+    const firstStore = new SqliteBounties(path);
+    const first = new Bounties(firstStore);
     const p = first.post(
       { poster: "agent:acme", title: "t", statement: "s", checker: { kind: "equals", value: SECRET },
         amount: "1.00", deadline: Date.now() + 7 * 24 * 3600 * 1000 },
@@ -187,11 +194,14 @@ describe("winning and being paid are different things", () => {
     if (!p.ok) throw new Error(p.problem);
     first.solve(p.bounty.id, SECRET, SOLVER, 0);
 
-    const after = new Bounties(new SqliteBounties(path));
-    expect(after.awaitingPayout().map((b) => b.id)).toEqual([p.bounty.id]);
-    require("node:fs").rmSync(path, { force: true });
-    require("node:fs").rmSync(`${path}-wal`, { force: true });
-    require("node:fs").rmSync(`${path}-shm`, { force: true });
+    firstStore.close();
+    const afterStore = new SqliteBounties(path);
+    try {
+      expect(new Bounties(afterStore).awaitingPayout().map((b) => b.id)).toEqual([p.bounty.id]);
+    } finally {
+      afterStore.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

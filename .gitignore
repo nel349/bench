@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 
-# The runs database.
+# The runs database: data/ by default, and any other copy wherever BENCH_DB points.
+data/
 *.sqlite
 *.sqlite-*

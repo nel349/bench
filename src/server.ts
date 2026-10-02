@@ -3,7 +3,7 @@ import { Attempts } from "./attempt.ts";
 import { Bounties } from "./bounties.ts";
 import { MemoryBounties, SqliteBounties } from "./bounty-store.ts";
 import { InMemoryAllowance, type Payments } from "./payments.ts";
-import { MemoryStore, SqliteStore } from "./store.ts";
+import { dbPath, MemoryStore, SqliteStore } from "./store.ts";
 import { usdc } from "./money.ts";
 import { contractsOf, network, requireContracts } from "./arc/chain.ts";
 import { ArcPayments } from "./arc/payments.ts";
@@ -207,7 +207,7 @@ const server = Bun.serve({
   },
 });
 
-const kept = store instanceof SqliteStore ? process.env["BENCH_DB"] ?? "bench.sqlite" : "memory (nothing is kept)";
+const kept = store instanceof SqliteStore ? dbPath() : "memory (nothing is kept)";
 // The payee is printed; the key never is. Whether money is real is the first thing to know.
 const paying = payTo ? `x402 → ${payTo}` : "in-memory allowance (NOT real money)";
 const ids = identities ? "ERC-8004 checked" : "ERC-8004 off (claims stay claims)";

@@ -1,4 +1,5 @@
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
+import { dbPath, openDatabase } from "./store.ts";
 import type { Bounty } from "./bounties.ts";
 import { parseCheck } from "./checkers/parse.ts";
 import { usdc, format } from "./money.ts";
@@ -40,12 +41,12 @@ export class SqliteBounties implements BountyStore {
   /**
    * The same file the runs are in, by default.
    *
-   * This hardcoded `bench.sqlite` while `SqliteStore` read `BENCH_DB`, so a custom path put runs in
+   * This hardcoded its own file name while `SqliteStore` read `BENCH_DB`, so a custom path put runs in
    * one file and bounties in another and the two halves of one server diverged in silence. It went
    * unnoticed because the only value ever passed was `:memory:`, which the server special-cases.
    */
-  constructor(path = process.env["BENCH_DB"] ?? "bench.sqlite") {
-    this.#db = new Database(path, { create: true });
+  constructor(path = dbPath()) {
+    this.#db = openDatabase(path);
     this.#db.exec("PRAGMA journal_mode = WAL");
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS bounties (
@@ -57,6 +58,9 @@ export class SqliteBounties implements BountyStore {
       CREATE INDEX IF NOT EXISTS bounties_open ON bounties(solved_by, deadline);
     `);
   }
+
+  /** Lets go of the file, so a caller that made one can remove it. */
+  close(): void { this.#db.close(); }
 
   put(b: Bounty): void {
     this.#db.query(`
