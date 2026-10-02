@@ -10,7 +10,7 @@
  *
  *     bun run verify:addresses
  */
-import { CONTRACTS, chainOf, rpcUrl, type Network } from "../src/arc/chain.ts";
+import { CONTRACTS, chainOf, rpcUrl, type Network } from "../src/chain/chain.ts";
 
 type Check = { readonly what: string; readonly ok: boolean; readonly detail: string };
 

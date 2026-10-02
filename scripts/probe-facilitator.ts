@@ -14,13 +14,13 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { getAddress, toHex } from "viem";
 import { randomBytes } from "node:crypto";
-import { GatewayFacilitator } from "../src/arc/gateway.ts";
-import { chainOf, contractsOf, caip2 } from "../src/arc/chain.ts";
-import { ArcPayments } from "../src/arc/payments.ts";
-import { type PaymentPayload } from "../src/arc/facilitator.ts";
-import { payloadFor, type AcceptedTerms } from "../src/arc/buyer.ts";
-import { PRICE } from "../src/pricing.ts";
-import { format } from "../src/money.ts";
+import { GatewayFacilitator } from "../src/chain/gateway.ts";
+import { chainOf, contractsOf, caip2 } from "../src/chain/chain.ts";
+import { ArcPayments } from "../src/chain/payments.ts";
+import { type PaymentPayload } from "../src/chain/facilitator.ts";
+import { payloadFor, type AcceptedTerms } from "../src/chain/buyer.ts";
+import { PRICE } from "../src/shared/pricing.ts";
+import { format } from "../src/shared/money.ts";
 
 const net = "testnet" as const;
 const c = contractsOf(net);

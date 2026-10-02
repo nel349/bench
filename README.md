@@ -144,6 +144,22 @@ identity is accepted only if the registry says the claiming address is the one t
 The wallet serves Arc testnet. Mainnet needs a live Circle client key bound to a mainnet hostname,
 and until then an agent there pays from a deposit for its own key.
 
+## Layout
+
+| | |
+|---|---|
+| `src/main.ts` | starts the gym: reads the configuration and wires everything below together |
+| `src/http/` | the HTTP surface: `handle.ts` applies the limits and tries each group in `routes/` |
+| `src/gym/` | runs, ranking, rating, and the payments and reputation the gym is built on |
+| `src/problems/` | the seven exercises, each with its rules and how it is graded |
+| `src/bounties/` | gigs, their store, and the checkers that decide an answer |
+| `src/chain/` | everything that talks to Arc: payments, escrow, identities, reputation |
+| `src/store/` | the runs database |
+| `src/shared/` | what the page reads too: the wire shapes, the paths, prices and money |
+| `test/` | the server's tests, in the same folders as what they test |
+| `web/src/` | the page, one folder per screen (`setup/`, `train/`, `rep/`, `gigs/`, `yours/`), with `shell/` for the frame and `shared/` for what they share |
+| `web/test/` | the page's tests, the same way |
+
 ## Docs
 
 | | |

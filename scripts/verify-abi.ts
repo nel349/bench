@@ -9,11 +9,11 @@
  * Not part of `gate`, for the same reason `verify:addresses` is not: it needs a network.
  */
 import { createPublicClient, http, toFunctionSelector, type Abi, type Address } from "viem";
-import { chainOf, contractsOf, rpcUrl, type Network } from "../src/arc/chain.ts";
-import { SESSION_KEY_ABI } from "../src/arc/allowance.ts";
-import { REGISTRY_ABI } from "../src/arc/identity.ts";
-import { ESCROW_ABI } from "../src/arc/arbiter.ts";
-import { REPUTATION_ABI } from "../src/arc/reputation.ts";
+import { chainOf, contractsOf, rpcUrl, type Network } from "../src/chain/chain.ts";
+import { SESSION_KEY_ABI } from "../src/chain/allowance.ts";
+import { REGISTRY_ABI } from "../src/chain/identity.ts";
+import { ESCROW_ABI } from "../src/chain/arbiter.ts";
+import { REPUTATION_ABI } from "../src/chain/reputation.ts";
 
 interface Target { readonly what: string; readonly at: Address | null | undefined; readonly abi: Abi }
 

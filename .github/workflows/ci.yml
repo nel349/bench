@@ -18,7 +18,7 @@ jobs:
         run: bun run typecheck
       # No keys, no network, no chain. If this ever needs one, the lane is wrong.
       - name: test
-        run: bun test ./src
+        run: bun test ./test
 
   # The page is a real application now, and a build that fails is a page nobody
   # can open. Its own lane, because a broken component should not read as a

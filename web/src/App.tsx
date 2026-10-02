@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { getAddress } from "viem";
-import { getJson } from "./api/client.ts";
-import type { SettingsWire } from "../../src/wire.ts";
-import { PATHS } from "../../src/paths.ts";
-import { isArcChainId } from "./chain/arc.ts";
-import { Fund } from "./pages/Fund.tsx";
-import { Home } from "./pages/Home.tsx";
+import { getJson } from "./shared/api/client.ts";
+import type { SettingsWire } from "../../src/shared/wire.ts";
+import { PATHS } from "../../src/shared/paths.ts";
+import { isArcChainId } from "./shared/chain/arc.ts";
+import { SetUp } from "./setup/SetUp.tsx";
+import { Home } from "./shell/Home.tsx";
 
 /**
  * What the server is serving, asked once at startup.
@@ -53,7 +53,7 @@ export function App() {
    */
   if (window.location.pathname.startsWith(PATHS.fund)) {
     return (
-      <Fund
+      <SetUp
         chainId={settings.data.chainId}
         usdc={getAddress(settings.data.usdc)}
         gateway={getAddress(settings.data.gateway)}

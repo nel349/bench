@@ -16,8 +16,8 @@
 import { readFileSync } from "node:fs";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, createWalletClient, http, parseAbi, formatUnits, getAddress } from "viem";
-import { chainOf, contractsOf, rpcUrl } from "../src/arc/chain.ts";
-import { usdc as parseUsdc, format } from "../src/money.ts";
+import { chainOf, contractsOf, rpcUrl } from "../src/chain/chain.ts";
+import { usdc as parseUsdc, format } from "../src/shared/money.ts";
 
 const net = "testnet" as const;
 const c = contractsOf(net);

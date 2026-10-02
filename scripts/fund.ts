@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, createWalletClient, http, formatUnits, parseEther, getAddress, type Hex } from "viem";
-import { chainOf, rpcUrl, explorerUrl, type Network } from "../src/arc/chain.ts";
+import { chainOf, rpcUrl, explorerUrl, type Network } from "../src/chain/chain.ts";
 
 const net = (process.env["ARC_NETWORK"] ?? "testnet") as Network;
 const send = process.argv.includes("--send");

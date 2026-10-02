@@ -14,7 +14,7 @@ import {
   createPublicClient, createWalletClient, http, encodeAbiParameters, keccak256,
   concat, getAddress, formatUnits, type Address, type Hex,
 } from "viem";
-import { chainOf, contractsOf, rpcUrl, explorerUrl, type Network } from "../src/arc/chain.ts";
+import { chainOf, contractsOf, rpcUrl, explorerUrl, type Network } from "../src/chain/chain.ts";
 
 const net = (process.env["ARC_NETWORK"] ?? "testnet") as Network;
 const send = process.argv.includes("--send");

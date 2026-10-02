@@ -42,7 +42,7 @@ echo "  escrow $escrow holds $(held "$escrow")"
 echo "› the gym, pointed at it"
 ARC_RPC_URL="$RPC" BENCH_DB=:memory: DEV_ALLOWANCE=5 \
   BENCH_ESCROW="$escrow" BENCH_ARBITER_KEY=$ARBITER_KEY PORT="$PORT" \
-  bun run "$root/src/server.ts" >/tmp/bench-gym.log 2>&1 &
+  bun run "$root/src/main.ts" >/tmp/bench-gym.log 2>&1 &
 pids+=($!)
 for _ in $(seq 1 40); do curl -sf -o /dev/null "http://localhost:$PORT/" && break; sleep 0.25; done
 

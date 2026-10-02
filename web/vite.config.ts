@@ -1,7 +1,7 @@
 /** `vitest/config` rather than `vite`, so the test block is typed rather than ignored. */
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
-import { DEFAULT_PORT, PATHS, WEB_DEV_PORT } from "../src/paths.ts";
+import { DEFAULT_PORT, PATHS, WEB_DEV_PORT } from "../src/shared/paths.ts";
 
 /**
  * The page is a real application, built, not a string.
@@ -37,5 +37,5 @@ export default defineConfig({
         .map((path) => [path, `http://localhost:${process.env["PORT"] ?? DEFAULT_PORT}`]),
     ),
   },
-  test: { environment: "jsdom", globals: true, setupFiles: ["./src/test-setup.ts"] },
+  test: { environment: "jsdom", globals: true, include: ["test/**/*.test.{ts,tsx}"], setupFiles: ["./test/setup.ts"] },
 });

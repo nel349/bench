@@ -232,7 +232,7 @@ Circle's facilitator:
   "payload": { "authorization": { … }, "signature": "0x…" } }
 ```
 
-`src/arc/buyer.ts` builds exactly this and is the reference implementation; `bun run
+`src/chain/buyer.ts` builds exactly this and is the reference implementation; `bun run
 probe:facilitator` checks it against Circle with no key and no funds.
 
 Every answer to a paid request carries a **`PAYMENT-RESPONSE`** header: base64 JSON with `success`,

@@ -16,22 +16,22 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   createPublicClient, createWalletClient, http, parseAbi, formatUnits, getAddress, type Hex,
 } from "viem";
-import { handle, type Deps } from "../src/http.ts";
-import { Attempts } from "../src/attempt.ts";
-import { MemoryStore } from "../src/store.ts";
-import { Bounties } from "../src/bounties.ts";
-import { MemoryBounties } from "../src/bounty-store.ts";
-import { ArcPayments } from "../src/arc/payments.ts";
-import { GatewayFacilitator } from "../src/arc/gateway.ts";
-import { ArcArbiter } from "../src/arc/arbiter.ts";
-import { ArcEscrow } from "../src/arc/escrow.ts";
-import { paymentHeader, payableOn } from "../src/arc/buyer.ts";
-import { chainOf, contractsOf, rpcUrl, explorerUrl } from "../src/arc/chain.ts";
+import { handle, type Deps } from "../src/http/handle.ts";
+import { Attempts } from "../src/gym/attempt.ts";
+import { MemoryStore } from "../src/store/runs.ts";
+import { Bounties } from "../src/bounties/bounties.ts";
+import { MemoryBounties } from "../src/bounties/store.ts";
+import { ArcPayments } from "../src/chain/payments.ts";
+import { GatewayFacilitator } from "../src/chain/gateway.ts";
+import { ArcArbiter } from "../src/chain/arbiter.ts";
+import { ArcEscrow } from "../src/chain/escrow.ts";
+import { paymentHeader, payableOn } from "../src/chain/buyer.ts";
+import { chainOf, contractsOf, rpcUrl, explorerUrl } from "../src/chain/chain.ts";
 import { shortestRoute, type Walls } from "../src/problems/toll.ts";
-import { format } from "../src/money.ts";
-import { ArcRegistry, checkIdentity, parseAgentId } from "../src/arc/identity.ts";
-import { ArcReputation, COST_DECIMALS, COST_TAG, REPUTATION_ABI } from "../src/arc/reputation.ts";
-import "../src/problems/blackbox-problem.ts";
+import { format } from "../src/shared/money.ts";
+import { ArcRegistry, checkIdentity, parseAgentId } from "../src/chain/identity.ts";
+import { ArcReputation, COST_DECIMALS, COST_TAG, REPUTATION_ABI } from "../src/chain/reputation.ts";
+import "../src/problems/blackbox.ts";
 import "../src/problems/zendo.ts";
 import "../src/problems/toll.ts";
 
