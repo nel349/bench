@@ -1,3 +1,4 @@
+import { FormattedMessage } from "react-intl";
 import { useQuery } from "@tanstack/react-query";
 import { getAddress } from "viem";
 import { getJson } from "./shared/api/client.ts";
@@ -28,19 +29,19 @@ export function App() {
     refetchInterval: (query) => (query.state.status === "error" ? GYM_RETRY_MS : false),
   });
 
-  if (settings.isPending) return <div className="wrap narrow"><p className="lede">Loading…</p></div>;
+  if (settings.isPending) return <div className="wrap narrow"><p className="lede"><FormattedMessage id="app.loading" /></p></div>;
   // A gym that does not answer is not a wrong network, and was reported as one.
   if (settings.isError) {
     return (
       <div className="wrap narrow">
-        <p className="verdict bad">Bench is not answering right now. This page tries again on its own.</p>
+        <p className="verdict bad"><FormattedMessage id="app.gymDown" /></p>
       </div>
     );
   }
   if (!isArcChainId(settings.data?.chainId)) {
     return (
       <div className="wrap narrow">
-        <p className="verdict bad">This server is not on a network this page can write to.</p>
+        <p className="verdict bad"><FormattedMessage id="app.wrongNetwork" /></p>
       </div>
     );
   }

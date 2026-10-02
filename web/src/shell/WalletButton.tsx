@@ -1,3 +1,4 @@
+import { FormattedMessage } from "react-intl";
 import { short } from "../shared/lib/elapsed.ts";
 import { viewHref } from "./useView.ts";
 
@@ -17,16 +18,16 @@ export interface WalletButtonProps {
  */
 export function WalletButton({ owner, connectHref, onDisconnect, current }: WalletButtonProps) {
   if (owner === null) {
-    return connectHref === null ? null : <a className="wallet-connect" href={connectHref}>Connect wallet</a>;
+    return connectHref === null ? null : <a className="wallet-connect" href={connectHref}><FormattedMessage id="wallet.connect" /></a>;
   }
   return (
     <span className="wallet-chip">
       <a href={viewHref("yours", owner)} className={current ? "nav-item on" : "nav-item"}
          aria-current={current ? "page" : undefined}>
-        <span className="n">//</span>Your agents
+        <span className="n">//</span><FormattedMessage id="nav.yours" />
       </a>
       <span className="wallet-address" title={owner}>{short(owner)}</span>
-      <button type="button" className="wallet-disconnect" onClick={onDisconnect}>Disconnect</button>
+      <button type="button" className="wallet-disconnect" onClick={onDisconnect}><FormattedMessage id="wallet.disconnect" /></button>
     </span>
   );
 }

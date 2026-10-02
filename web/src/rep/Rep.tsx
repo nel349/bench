@@ -1,3 +1,5 @@
+import { FormattedMessage, useIntl } from "react-intl";
+import { useSay } from "../shared/lib/useSay.ts";
 import type { FeedRowWire } from "../../../src/shared/wire.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { short, since } from "../shared/lib/elapsed.ts";
@@ -9,6 +11,8 @@ import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface RepProps {
   readonly runs: readonly FeedRowWire[];
+  /** An exercise's name, from its id, as the rest of the page names it. */
+  readonly titleOf: (problem: string) => string;
   /** Who the address bar says to look up, if anyone. */
   readonly looking: string;
   readonly registry: string | null;
@@ -16,45 +20,62 @@ export interface RepProps {
 }
 
 /**
- * Rep being earned, run by run — the flatlines included.
+ * Rep being earned, run by run, the ones that ran out included.
  *
  * `paid by` sits under the agent's name rather than replacing it: the name is what an agent calls
  * itself, the address is what its money proves, and a record that showed only the name would be
  * reporting a header as though it were a fact.
  */
-export function Rep({ runs, looking, registry, explorer }: RepProps) {
+export function Rep({ runs, titleOf, looking, registry, explorer }: RepProps) {
+  const say = useSay();
+  const intl = useIntl();
+  const col = {
+    agent: intl.formatMessage({ id: "rep.colAgent" }),
+    exercise: intl.formatMessage({ id: "rep.colExercise" }),
+    result: intl.formatMessage({ id: "rep.colResult" }),
+    questions: intl.formatMessage({ id: "rep.colQuestions" }),
+    cost: intl.formatMessage({ id: "rep.colCost" }),
+    when: intl.formatMessage({ id: "rep.colWhen" }),
+  };
   return (
     <section className="board">
       <header className="board-head">
-        <p className="kicker"><span>02</span> rep</p>
-        <h2 className="board-title">Every run, on the record.</h2>
-        <p className="sub">A ranked breach adds to an agent's rep, once per ICE, and more for harder ones. A flatline is kept too. That is what makes the record worth trusting.</p>
+        <p className="kicker"><span>02</span> <FormattedMessage id="rep.kicker" /></p>
+        <h2 className="board-title"><FormattedMessage id="rep.title" /></h2>
+        <p className="sub"><FormattedMessage id="rep.sub" /></p>
       </header>
 
       <RepLookup looking={looking} registry={registry} explorer={explorer} />
 
       {runs.length === 0 ? (
-        <Empty count={0} noun="runs logged" action={{ href: PATHS.fund, label: "Load your agent" }}>
-          <p>Every run an agent makes is kept here, the flatlines as well as the breaches.</p>
-          <p>That is what makes a record worth trusting, and it is what a gig reads to decide who may enter.</p>
+        <Empty count={0} noun={<FormattedMessage id="rep.emptyNoun" />}
+               action={{ href: PATHS.fund, label: <FormattedMessage id="rep.emptyAction" /> }}>
+          <p><FormattedMessage id="rep.empty1" /></p>
+          <p><FormattedMessage id="rep.empty2" /></p>
         </Empty>
       ) : (
         <div className="ledger-scroll">
           <table className="ledger">
             <thead>
-              <tr><th>Agent</th><th>ICE</th><th>Result</th><th className="num">Probes</th><th className="num">Cost</th><th className="num">When</th></tr>
+              <tr>
+                <th>{col.agent}</th><th>{col.exercise}</th><th>{col.result}</th>
+                <th className="num">{col.questions}</th><th className="num">{col.cost}</th><th className="num">{col.when}</th>
+              </tr>
             </thead>
             <tbody>
               {runs.map((r) => {
                 const o = outcomeOf(r);
                 return (
                   <tr key={r.attempt}>
-                    <td><span className="agent">{runnerName(r)}</span>{r.payer && <span className="proof">paid by {short(r.payer)}</span>}</td>
-                    <td className="dim" data-label="ICE">{r.problem}</td>
-                    <td className={o.tone}>{o.label}</td>
-                    <td className="num" data-label="Probes">{r.probes}</td>
-                    <td className="num" data-label="Cost"><Amount value={r.spend} /></td>
-                    <td className="num dim" data-label="When">{since(r.startedAt)}</td>
+                    <td>
+                      <span className="agent">{say(runnerName(r))}</span>
+                      {r.payer && <span className="proof"><FormattedMessage id="run.paidBy" values={{ address: short(r.payer) }} /></span>}
+                    </td>
+                    <td className="dim" data-label={col.exercise}>{titleOf(r.problem)}</td>
+                    <td className={o.tone}>{say(o.label)}</td>
+                    <td className="num" data-label={col.questions}>{r.probes}</td>
+                    <td className="num" data-label={col.cost}><Amount value={r.spend} /></td>
+                    <td className="num dim" data-label={col.when}>{say(since(r.startedAt))}</td>
                   </tr>
                 );
               })}

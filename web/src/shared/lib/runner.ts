@@ -1,4 +1,5 @@
 import type { ScoreWire } from "../../../../src/shared/wire.ts";
+import { phrase, type Phrase } from "./phrase.ts";
 
 /** The label a run carries when its caller sent none, as the arc-mandate connector does. */
 const UNNAMED = "anonymous";
@@ -11,7 +12,7 @@ const UNNAMED = "anonymous";
  * means something: it is what rep is written to and what a gig checks. A label the agent chose is
  * kept where it gave one.
  */
-export function runnerName(r: Pick<ScoreWire, "agent" | "identity">): string {
-  if (r.agent !== UNNAMED) return r.agent;
-  return r.identity !== null ? `agent #${r.identity}` : UNNAMED;
+export function runnerName(r: Pick<ScoreWire, "agent" | "identity">): Phrase {
+  if (r.agent !== UNNAMED) return { text: r.agent };
+  return r.identity !== null ? phrase("run.agentNumber", { id: r.identity }) : phrase("run.unnamed");
 }

@@ -203,7 +203,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 
 .lattice .debit {
   font-family: var(--mono); font-size: 0.36px; font-weight: 600;
-  fill: var(--signal); dominant-baseline: middle;
+  fill: var(--signal); dominant-baseline: middle; text-transform: uppercase;
 }
 .lattice .debit.ice { fill: var(--ice); letter-spacing: 0.04px; }
 
@@ -237,7 +237,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 }
 .panel-title {
   display: flex; align-items: center; gap: 8px;
-  font-size: 10px; font-weight: 600; letter-spacing: 0.28em; color: var(--signal);
+  font-size: 10px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase; color: var(--signal);
   padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--lattice);
 }
 .blink { width: 6px; height: 6px; background: var(--signal); animation: blink 1.1s steps(2) infinite; }
@@ -264,6 +264,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   display: flex; flex-direction: column; gap: 4px;
   font-size: 11px; font-weight: 600; letter-spacing: 0.24em;
 }
+.telemetry .verdict { text-transform: uppercase; }
 .verdict .amount { font-size: 26px; }
 .verdict.solved { color: var(--core); }
 .verdict.solved .amount { color: var(--core); }
@@ -300,6 +301,11 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   display: grid; grid-template-columns: minmax(300px, 380px) 1fr;
   gap: clamp(28px, 4vw, 64px); align-items: center;
 }
+.home .stage { justify-content: center; }
+
+/* Train: the exercises, one chosen, the rest one tap away along the rail. */
+.train { width: 100%; height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.train > .kicker { margin: 0; }
 
 .kicker {
   margin: 0 0 18px; font-size: 11px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
@@ -313,7 +319,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .headline {
   margin: 0; font-family: var(--display); font-weight: 700;
   font-size: clamp(38px, 4.6vw, 64px); line-height: 0.98; letter-spacing: -0.01em;
-  text-transform: uppercase; color: var(--text);
+  text-transform: uppercase; color: var(--text); text-wrap: balance;
 }
 .headline em {
   font-style: normal; color: var(--void);
@@ -514,7 +520,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .gig-meta {
   display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px;
   border-top: 1px dashed var(--lattice);
-  font-size: 10px; letter-spacing: 0.18em; color: var(--text-faint);
+  font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-faint);
 }
 .gig-meta .req { color: var(--signal); }
 .gig-yours { margin: 10px 0 0; padding: 8px 10px; font-size: 12.5px; color: var(--signal); border: 1px solid var(--signal-dim); }
@@ -752,6 +758,8 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .amount-choice:hover:not(:disabled) { background: var(--signal); color: var(--void); }
 .amount-choice:disabled { opacity: 0.35; cursor: default; }
 .fine { margin: 12px 0 0; font-size: 11.5px; color: var(--text-faint); }
+.fine.check summary { cursor: pointer; color: var(--text-dim); }
+.fine.check p { margin: 6px 0 0; }
 
 .progress { margin: 14px 0 0; padding: 10px 12px; font-size: 12.5px; color: var(--text-dim);
             border: 1px solid var(--lattice); background: var(--void); }
@@ -804,5 +812,43 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
     text-transform: uppercase; color: var(--text-faint);
   }
   .ledger-scroll { overflow-x: visible; }
+}
+
+/*
+ * A phone gets one job per screen. The frame's numbers, arrows and footing are a laptop's luxury:
+ * on a phone they were two rows of tracked capitals above the page and three more below it.
+ */
+.see-all { display: none; }
+@media (max-width: 640px) {
+  .nav { column-gap: 20px; }
+  .nav-item { font-size: 12px; letter-spacing: 0.1em; }
+  .nav-item .n, .nav .arrow, .rail-no { display: none; }
+  .edge.bottom { display: none; }
+  .plate-body { padding-bottom: 36px; }
+
+  /* One button that matters; the other way in is a link under it. */
+  .ctas { flex-direction: column; align-items: stretch; gap: 16px; }
+  .ctas .btn.primary { text-align: center; }
+  .ctas .btn.secondary {
+    border: 0; clip-path: none; padding: 2px 0; text-align: center; letter-spacing: 0.14em;
+    color: var(--text-dim); text-decoration: underline; text-underline-offset: 4px;
+  }
+
+  /* The demo's readout as one line: what it asked, what it found, what it spent. */
+  .telemetry { padding: 12px 14px; }
+  .telemetry .panel-title, .telemetry .t-puzzle, .telemetry .meter { display: none; }
+  .telemetry dl { display: flex; flex-wrap: wrap; gap: 6px 20px; }
+  .telemetry dl > div { justify-content: flex-start; gap: 8px; padding: 0; border: 0; }
+  .telemetry dt { font-size: 10px; }
+  .telemetry dd, .telemetry .spent dd .amount { font-size: 13px; }
+  .telemetry .verdict { margin-top: 8px; min-height: 1.5em; flex-direction: row; flex-wrap: wrap; gap: 2px 10px; font-size: 10px; }
+  .telemetry .verdict .amount { display: none; }
+  .telemetry .verdict .rep { font-size: 10px; margin-top: 0; }
+
+  .owner-runs.short tbody tr:nth-child(n + 4) { display: none; }
+  .see-all {
+    display: block; margin: 12px 0 0; padding: 0; cursor: pointer; background: none; border: 0;
+    font: inherit; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--signal);
+  }
 }
 

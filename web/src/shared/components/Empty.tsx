@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 
 export interface EmptyProps {
   readonly count: number;
-  readonly noun: string;
+  readonly noun: ReactNode;
   readonly children: ReactNode;
-  readonly action?: { readonly href: string; readonly label: string };
+  readonly action?: { readonly href: string; readonly label: ReactNode };
 }
 
 /**

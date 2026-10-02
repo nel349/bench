@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { FormattedMessage, useIntl } from "react-intl";
+import type { MessageId } from "../strings/StringsProvider.tsx";
+import { useSay } from "../shared/lib/useSay.ts";
 import type { BountyWire, OwnerAgentWire } from "../../../src/shared/wire.ts";
 import { viewHref } from "../shell/useView.ts";
 import { Amount } from "../shared/components/Amount.tsx";
@@ -6,10 +10,12 @@ import { outcomeOf } from "../shared/lib/outcome.ts";
 
 /** How many past runs a card lists. The rest are in the record, under the agent's identity. */
 const RECENT_RUNS = 8;
+/** How many of those a phone shows before See all runs: each is a card there, not a row. */
+export const PHONE_RUNS = 3;
 
 export interface OwnerAgentProps {
   readonly agent: OwnerAgentWire;
-  /** Rep's ceiling: every problem ranked, weighted by level. */
+  /** Rep's ceiling: every exercise recorded, weighted by level. */
   readonly ceiling: number;
   readonly titleOf: (problem: string) => string;
   /** The open gigs this agent qualifies for, in full. */
@@ -20,10 +26,6 @@ export interface OwnerAgentProps {
   readonly seenAt: number | null;
 }
 
-const endsOn = (seconds: number): string =>
-  seconds === 0 ? "no end date"
-  : new Date(seconds * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-
 /**
  * One of the owner's agents: what it may spend, what it is doing now, what it earned, what it may
  * enter, and what it did. Presentational; everything comes in as props.
@@ -31,49 +33,88 @@ const endsOn = (seconds: number): string =>
 export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: OwnerAgentProps) {
   const a = agent.allowance;
   const live = agent.live;
+  const [allRuns, setAllRuns] = useState(false);
+  const recent = agent.runs.slice(0, RECENT_RUNS);
+  const intl = useIntl();
+  const say = useSay();
+  const none = (id: MessageId) => <span className="none"><FormattedMessage id={id} /></span>;
+  const endsOn = (seconds: number) => seconds === 0
+    ? intl.formatMessage({ id: "agent.noEnd" })
+    : intl.formatDate(seconds * 1000, { day: "numeric", month: "short", year: "numeric" });
+  const col = {
+    exercise: intl.formatMessage({ id: "rep.colExercise" }),
+    result: intl.formatMessage({ id: "rep.colResult" }),
+    questions: intl.formatMessage({ id: "rep.colQuestions" }),
+    cost: intl.formatMessage({ id: "rep.colCost" }),
+    when: intl.formatMessage({ id: "rep.colWhen" }),
+  };
+  const name = agent.identity !== null ? intl.formatMessage({ id: "agent.title" }, { id: agent.identity }) : short(agent.address);
   return (
-    <article className="owner-agent" aria-label={agent.identity !== null ? `Agent #${agent.identity}` : agent.address}>
+    <article className="owner-agent" aria-label={agent.identity !== null ? name : agent.address}>
       <header className="owner-agent-head">
-        <h3>{agent.identity !== null ? <>Agent #{agent.identity}</> : short(agent.address)}</h3>
-        <span className="proof">pays from {short(agent.address)}</span>
+        <h3>{name}</h3>
+        <span className="proof"><FormattedMessage id="agent.paysFrom" values={{ address: short(agent.address) }} /></span>
       </header>
 
       <dl className="ex-stats owner-stats">
-        <div><dt>Rep</dt><dd>{agent.rep === null ? <span className="none">none yet</span> : <>{agent.rep} / {ceiling}</>}</dd></div>
+        <div>
+          <dt><FormattedMessage id="agent.rep" /></dt>
+          <dd>{agent.rep === null ? none("agent.noneYet") : <FormattedMessage id="agent.repValue" values={{ rep: agent.rep, ceiling }} />}</dd>
+        </div>
         {agent.current ? (
           <>
-            <div><dt>Left to spend</dt><dd>{a === null ? <span className="none">unread</span> : <><Amount value={a.remaining} /> <span className="of">of <Amount value={a.limit} /></span></>}</dd></div>
-            <div><dt>Allowance ends</dt><dd>{a === null ? <span className="none">unread</span> : a.live ? endsOn(a.validUntil) : <span className="none">ended or used up</span>}</dd></div>
+            <div>
+              <dt><FormattedMessage id="agent.left" /></dt>
+              <dd>
+                {a === null ? none("agent.unread") : <>
+                  <Amount value={a.remaining} />{" "}
+                  <span className="of"><FormattedMessage id="agent.of" values={{ limit: <Amount value={a.limit} /> }} /></span>
+                </>}
+              </dd>
+            </div>
+            <div>
+              <dt><FormattedMessage id="agent.ends" /></dt>
+              <dd>{a === null ? none("agent.unread") : a.live ? endsOn(a.validUntil) : none("agent.endedOrUsed")}</dd>
+            </div>
           </>
         ) : (
-          <div className="owner-revoked"><dt>Allowance</dt><dd><span className="none">revoked</span></dd></div>
+          <div className="owner-revoked"><dt><FormattedMessage id="agent.allowance" /></dt><dd>{none("agent.revoked")}</dd></div>
         )}
-        <div><dt>Spent here</dt><dd><Amount value={agent.spend} /></dd></div>
+        <div><dt><FormattedMessage id="agent.spent" /></dt><dd><Amount value={agent.spend} /></dd></div>
       </dl>
 
       {!agent.current && (
-        <p className="owner-live">This wallet no longer grants it an allowance, so it cannot spend. Its record stays: grant it again in your wallet to train it more.</p>
+        <p className="owner-live"><FormattedMessage id="agent.revokedNote" /></p>
       )}
 
       {agent.current && (live !== null ? (
         <p className="owner-live on" aria-live="polite">
-          <span className="blink" />Playing {titleOf(live.problem)} now: {live.probes} {live.probes === 1 ? "question" : "questions"}, <Amount value={live.spend} /> so far
+          <span className="blink" />
+          <FormattedMessage id="agent.playing" values={{
+            exercise: titleOf(live.problem), count: live.probes, spend: <Amount value={live.spend} />,
+          }} />
         </p>
       ) : (
-        <p className="owner-live">Not playing right now. Its runs appear here as they happen.</p>
+        <p className="owner-live"><FormattedMessage id="agent.idle" /></p>
       ))}
 
       {agent.ranked.length > 0 && (
-        <p className="owner-ranked">Ranked: {agent.ranked.map(titleOf).join(", ")}</p>
+        <p className="owner-ranked">
+          <FormattedMessage id="agent.recorded" values={{ list: intl.formatList(agent.ranked.map(titleOf)) }} />
+        </p>
       )}
 
       {agent.won.length > 0 && (
         <div className="owner-gigs">
-          <p className="give-label">Won</p>
+          <p className="give-label"><FormattedMessage id="agent.won" /></p>
           <ul>
             {agent.won.map((g) => (
               <li key={g.id}>{g.title} <Amount value={g.amount} />{" "}
-                <span className="dim">{g.awardTx ? <a href={`${explorer}/tx/${g.awardTx}`}>paid on chain</a> : "paying out"}</span>
+                <span className="dim">
+                  {g.awardTx
+                    ? <a href={`${explorer}/tx/${g.awardTx}`}><FormattedMessage id="gigs.paidOnChain" /></a>
+                    : <FormattedMessage id="gigs.payingOut" />}
+                </span>
               </li>
             ))}
           </ul>
@@ -82,36 +123,48 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
 
       {gigs.length > 0 && (
         <div className="owner-gigs">
-          <p className="give-label">Qualifies for</p>
+          <p className="give-label"><FormattedMessage id="agent.qualifies" /></p>
           <ul>
             {gigs.map((g) => (
               <li key={g.id}><a href={viewHref("gigs")}>{g.title}</a> <Amount value={g.amount} /></li>
             ))}
           </ul>
-          <p className="fine">To enter one, tell your agent which gig to take on Bench. It needs nothing else: its rep is what lets it in.</p>
+          <p className="fine"><FormattedMessage id="agent.enter" /></p>
         </div>
       )}
 
       {agent.runs.length > 0 && (
-        <table className="ledger owner-runs">
+        <table className={allRuns ? "ledger owner-runs" : "ledger owner-runs short"}>
           <thead>
-            <tr><th>Exercise</th><th>Result</th><th className="num">Probes</th><th className="num">Cost</th><th className="num">When</th></tr>
+            <tr>
+              <th>{col.exercise}</th><th>{col.result}</th>
+              <th className="num">{col.questions}</th><th className="num">{col.cost}</th><th className="num">{col.when}</th>
+            </tr>
           </thead>
           <tbody>
-            {agent.runs.slice(0, RECENT_RUNS).map((r) => {
+            {recent.map((r) => {
               const o = outcomeOf(r);
               return (
                 <tr key={r.attempt}>
-                  <td>{titleOf(r.problem)}{seenAt !== null && r.startedAt > seenAt && <span className="new-tag">new</span>}</td>
-                  <td className={o.tone}>{o.label}</td>
-                  <td className="num" data-label="Probes">{r.probes}</td>
-                  <td className="num" data-label="Cost"><Amount value={r.spend} /></td>
-                  <td className="num dim" data-label="When">{since(r.startedAt)}</td>
+                  <td>
+                    {titleOf(r.problem)}
+                    {seenAt !== null && r.startedAt > seenAt && <span className="new-tag"><FormattedMessage id="agent.new" /></span>}
+                  </td>
+                  <td className={o.tone}>{say(o.label)}</td>
+                  <td className="num" data-label={col.questions}>{r.probes}</td>
+                  <td className="num" data-label={col.cost}><Amount value={r.spend} /></td>
+                  <td className="num dim" data-label={col.when}>{say(since(r.startedAt))}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+      )}
+      {/* Drawn only on a phone, where the list stops at three: see `.owner-runs.short`. */}
+      {!allRuns && recent.length > PHONE_RUNS && (
+        <button type="button" className="see-all" onClick={() => setAllRuns(true)}>
+          <FormattedMessage id="agent.seeAllRuns" values={{ count: recent.length }} />
+        </button>
       )}
     </article>
   );

@@ -9,6 +9,3 @@ export function parCost(par: number | null, probePrice: string): string | null {
   const micros = BigInt(Math.round(Number(probePrice) * 1_000_000)) * BigInt(par);
   return `${micros / 1_000_000n}.${(micros % 1_000_000n).toString().padStart(6, "0")}`;
 }
-
-/** A count of probes in words: "1 probe", "14 probes". */
-export const probes = (n: number): string => `${n} probe${n === 1 ? "" : "s"}`;

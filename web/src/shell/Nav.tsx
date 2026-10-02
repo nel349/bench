@@ -1,3 +1,5 @@
+import { FormattedMessage, useIntl } from "react-intl";
+import type { MessageId } from "../strings/StringsProvider.tsx";
 import { type View, viewHref } from "./useView.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
 import { WalletButton } from "./WalletButton.tsx";
@@ -16,21 +18,22 @@ export interface NavProps {
  * navigation is set in that order with arrows between, rather than as an unordered row of tabs.
  */
 export function Nav({ current, wallet }: NavProps) {
-  const item = (id: NavProps["current"], href: string, label: string, n: string) => (
+  const intl = useIntl();
+  const item = (id: NavProps["current"], href: string, label: MessageId, n: string) => (
     <a href={href} className={current === id ? "nav-item on" : "nav-item"}
        aria-current={current === id ? "page" : undefined}>
-      <span className="n">{n}</span>{label}
+      <span className="n">{n}</span><FormattedMessage id={label} />
     </a>
   );
   return (
-    <nav className="nav" aria-label="The loop">
-      {item("load", PATHS.fund, "Load", "00")}
+    <nav className="nav" aria-label={intl.formatMessage({ id: "nav.label" })}>
+      {item("load", PATHS.fund, "nav.setUp", "00")}
       <span className="arrow">→</span>
-      {item("rig", viewHref("rig"), "Train", "01")}
+      {item("rig", viewHref("rig"), "nav.train", "01")}
       <span className="arrow">→</span>
-      {item("ledger", viewHref("ledger"), "Rep", "02")}
+      {item("ledger", viewHref("ledger"), "nav.rep", "02")}
       <span className="arrow">→</span>
-      {item("gigs", viewHref("gigs"), "Gigs", "03")}
+      {item("gigs", viewHref("gigs"), "nav.gigs", "03")}
       {/* Apart from the loop, because it is not a step in it: it is whose agents the loop is about. */}
       <span className="nav-gap" />
       <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onDisconnect={wallet.forget}

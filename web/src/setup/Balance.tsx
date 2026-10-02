@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { asDollars } from "../shared/lib/money.ts";
 
 export interface BalanceProps {
-  readonly label: string;
+  readonly label: ReactNode;
   readonly amount: string;
   readonly tone: "ready" | "short" | "idle";
   readonly children: ReactNode;

@@ -1,6 +1,8 @@
+import { FormattedMessage, useIntl } from "react-intl";
+import { viewHref } from "../../shell/useView.ts";
 import { useEffect, useMemo, useState } from "react";
 import { planBoard, RAYS_PER_BOARD } from "./plan.ts";
-import { frameAt, lengthOf } from "./timeline.ts";
+import { frameAt, lengthOf, type Narration, type Side } from "./timeline.ts";
 import { useClock, usePrefersReducedMotion } from "./useClock.ts";
 import { BlackBoxField } from "./BlackBoxField.tsx";
 import { Readout } from "./Readout.tsx";
@@ -9,10 +11,12 @@ import { forReading } from "../../shared/lib/money.ts";
 export interface HeroProps {
   /** The price of one ray, as the wire carries it. */
   readonly probePrice: string;
+  /**
+   * Whether to give its number among the exercises. On Train it sits in the numbered menu; on the
+   * front page there is no menu, and "Exercise 01" would point at nothing.
+   */
+  readonly numbered?: boolean;
 }
-
-/** A sentence does not start with a numeral. */
-const WORDS: Readonly<Record<number, string>> = { 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six" };
 
 /** A fresh board each visit, so the front page is not the same film every time. */
 const firstSeed = () => (Math.floor(Date.now() / 1000) % 9_000) + 1;
@@ -38,7 +42,7 @@ function stillFrameRequested(): { readonly board: number | null; readonly at: nu
  * Rays are bought one at a time, each at the price the gym actually charges; the board fills with
  * the light of what was paid for; and it ends either solved for an amount or refused at one.
  */
-export function Hero({ probePrice }: HeroProps) {
+export function Hero({ probePrice, numbered = true }: HeroProps) {
   const price = Math.round(Number(probePrice) * 1_000_000);
   const reduced = usePrefersReducedMotion();
   const [still] = useState(stillFrameRequested);
@@ -57,24 +61,28 @@ export function Hero({ probePrice }: HeroProps) {
 
   const cost = `$${forReading(probePrice)}`;
   const n = frame.narration;
+  const intl = useIntl();
+  const sideOf = (side: Side) => intl.formatMessage({ id: `demo.side.${side}` });
+  /** What the last question did, in the words of the rule it showed. */
+  const what = (x: Narration) => x.exit === null
+    ? intl.formatMessage({ id: `demo.${x.kind}` as "demo.hit" | "demo.reflect" | "demo.refused" })
+    : intl.formatMessage({ id: "demo.detour" }, { side: sideOf(x.exit) });
 
   return (
-    <section className="exhibit" aria-label="A demonstration of the Black Box exercise">
+    <section className="exhibit" aria-label={intl.formatMessage({ id: "demo.label" })}>
       {/*
         * What this is, said before anything moves. Without it the animation was a tilted grid with
         * lines on it — and worse, its panel read like a real agent's live run, which it is not.
         */}
       <header className="exhibit-head">
         <div className="ex-line">
-          <span className="ex-no">Exercise 01</span>
-          <span className="demo-tag">Demo · simulated agent</span>
-          <a className="ex-switch" href="#rig/blackbox/board">See its board</a>
+          {numbered && <span className="ex-no"><FormattedMessage id="exercise.number" values={{ n: "01" }} /></span>}
+          <span className="demo-tag"><FormattedMessage id="demo.tag" /></span>
+          <a className="ex-switch" href={viewHref("rig", "blackbox", "board")}><FormattedMessage id="demo.seeLeaderboard" /></a>
         </div>
-        <h2 className="ex-name">Black Box</h2>
+        <h2 className="ex-name"><FormattedMessage id="demo.title" /></h2>
         <p className="ex-rule">
-          {WORDS[plan.board.atoms.length] ?? plan.board.atoms.length} atoms are hidden in the grid and the agent can't see them. It fires
-          probes in from the edges, <b>{cost} each</b>, and works out where the atoms are from how
-          each probe comes back.
+          <FormattedMessage id="demo.rule" values={{ count: String(plan.board.atoms.length), price: cost }} />
         </p>
       </header>
 
@@ -85,14 +93,18 @@ export function Hero({ probePrice }: HeroProps) {
       </div>
 
       <p className={`narration ${n?.tone ?? "idle"}`} aria-live="polite">
-        {n ? <><span className="probe-no">Probe {n.n}</span> from {n.from}. {n.what}</>
-           : <>Watching the agent pick its first probe…</>}
+        {n
+          ? <FormattedMessage id="demo.narrate" values={{
+              n: n.n, from: sideOf(n.side), what: what(n),
+              no: (chunks) => <span className="probe-no">{chunks}</span>,
+            }} />
+          : <FormattedMessage id="demo.waiting" />}
       </p>
 
-      <ul className="legend" aria-label="Key">
-        <li><i className="k-probe" />probe</li>
-        <li><i className="k-atom" />atom found</li>
-        <li><i className="k-ice" />out of money</li>
+      <ul className="legend" aria-label={intl.formatMessage({ id: "demo.key" })}>
+        <li><i className="k-probe" /><FormattedMessage id="demo.keyRay" /></li>
+        <li><i className="k-atom" /><FormattedMessage id="demo.keyAtom" /></li>
+        <li><i className="k-ice" /><FormattedMessage id="demo.keyOut" /></li>
       </ul>
     </section>
   );

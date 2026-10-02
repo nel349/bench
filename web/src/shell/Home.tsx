@@ -1,3 +1,4 @@
+import { FormattedMessage } from "react-intl";
 import { useBounties, useFeed, useOwner, useProblems } from "../shared/api/useGym.ts";
 import { Plate } from "./Plate.tsx";
 import { Nav } from "./Nav.tsx";
@@ -29,7 +30,7 @@ const DEMO = "blackbox";
 const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toFixed(6);
 
 /**
- * The rig.
+ * The front page, Train, Rep, Gigs and Your agents, in one frame.
  *
  * What an agent's owner wants is for it to earn. The gym is how it earns the right to: training runs
  * build a record, and enough record makes the agent eligible for gigs that pay real money. So the
@@ -50,7 +51,7 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
       remember(returned);
       window.location.replace(viewHref("yours", returned));
     } else {
-      window.location.replace(viewHref("rig"));
+      window.location.replace(PATHS.index);
     }
   }, [returned, remember]);
   const problems = useProblems();
@@ -69,53 +70,59 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   return (
     <Plate
       top={{
-        start: <span className="brand">BENCH<b>//</b></span>,
+        start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>,
         end: <Nav current={view} wallet={wallet} />,
       }}
-      left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
-      right={<>{open.length} {open.length === 1 ? "GIG" : "GIGS"} OPEN · <Amount value={onOffer} /> ON OFFER</>}
+      left={<FormattedMessage id="frame.network" values={{ testnet: String(chain.testnet === true), id: chain.id }} />}
+      right={<FormattedMessage id="frame.gigsOpen" values={{ count: open.length, amount: <Amount value={onOffer} /> }} />}
       bottom={{
-        start: <>{runs.length} RUNS LOGGED</>,
-        middle: <span className="loop-line">TRAIN&nbsp;&nbsp;→&nbsp;&nbsp;REP&nbsp;&nbsp;→&nbsp;&nbsp;GIGS&nbsp;&nbsp;→&nbsp;&nbsp;PAID</span>,
-        end: <>x402 · USDC</>,
+        start: <FormattedMessage id="frame.runsLogged" values={{ count: runs.length }} />,
+        middle: <span className="loop-line"><FormattedMessage id="frame.loop" /></span>,
+        end: <FormattedMessage id="frame.money" values={{ testnet: String(chain.testnet === true) }} />,
       }}
     >
-      {view === "rig" && (
+      {/* The front page: what Bench is, the way in, and one picture of it. The exercises are Train's. */}
+      {view === "home" && (
         <div className="home">
           <section className="intro">
-            <p className="kicker"><span>//</span> a gym for agents</p>
-            <h1 className="headline">Gigs pay.<br /><em>Rep</em> gets you in.</h1>
-            <p className="sub">
-              Your agent trains here to build a record. Enough record, and it can take bounties that pay
-              real money, posted by people who need the work done.
-            </p>
+            <p className="kicker"><span>//</span> <FormattedMessage id="home.kicker" /></p>
+            <h1 className="headline"><FormattedMessage id="home.headline1" /><br /><FormattedMessage id="home.headline2" /></h1>
+            <p className="sub"><FormattedMessage id="home.sub" /></p>
             <div className="ctas">
-              <a className="btn primary" href={PATHS.fund}>Load your agent</a>
-              <a className="btn" href={viewHref("gigs")}>See the gigs</a>
+              <a className="btn primary" href={PATHS.fund}><FormattedMessage id="home.ctaSetUp" /></a>
+              <a className="btn secondary" href={viewHref("gigs")}><FormattedMessage id="home.ctaGigs" /></a>
             </div>
             {open.length > 0 && (
               <a className="gig-teaser" href={viewHref("gigs")}>
                 <span className="gig-count">{open.length}</span>
                 <span className="gig-label">
-                  {open.length === 1 ? "gig" : "gigs"} open now<br /><Amount value={onOffer} /> on offer
+                  <FormattedMessage id="home.teaser" values={{ count: open.length }} /><br />
+                  <FormattedMessage id="home.teaserOffer" values={{ amount: <Amount value={onOffer} /> }} />
                 </span>
               </a>
             )}
           </section>
           <div className="stage">
-            {list.length > 0 && <ExerciseRail problems={list} chosen={chosen} />}
-            {showDemo
-              ? <Hero probePrice={probePrice} />
-              : <Exercise id={chosen} number={list.findIndex((p) => p.id === chosen) + 1}
-                          demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
+            <Hero probePrice={probePrice} numbered={false} />
           </div>
         </div>
+      )}
+      {view === "rig" && (
+        <section className="train">
+          <p className="kicker"><span>01</span> <FormattedMessage id="train.kicker" /></p>
+          {list.length > 0 && <ExerciseRail problems={list} chosen={chosen} />}
+          {showDemo
+            ? <Hero probePrice={probePrice} />
+            : <Exercise id={chosen} number={list.findIndex((p) => p.id === chosen) + 1}
+                        demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
+        </section>
       )}
       {view === "yours" && <Yours wallet={detail[0] ?? ""} remember={remember} connectHref={wallet.connectHref}
                                   explorer={chain.blockExplorers.default.url} />}
       {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} mine={mine.data} />}
-      {view === "ledger" && <Rep runs={runs} looking={detail[0] ?? ""} registry={registry}
-                                    explorer={chain.blockExplorers.default.url} />}
+      {view === "ledger" && <Rep runs={runs} titleOf={(id) => list.find((p) => p.id === id)?.title ?? id}
+                                 looking={detail[0] ?? ""} registry={registry}
+                                 explorer={chain.blockExplorers.default.url} />}
     </Plate>
   );
 }

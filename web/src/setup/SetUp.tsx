@@ -1,3 +1,5 @@
+import { FormattedMessage, useIntl } from "react-intl";
+import type { MessageId } from "../strings/StringsProvider.tsx";
 import { useState } from "react";
 import type { Address } from "viem";
 import { chainFor, type ArcChainId } from "../shared/chain/arc.ts";
@@ -29,11 +31,11 @@ export interface SetUpProps {
 }
 
 /**
- * Load an agent: give it something to spend.
+ * Set up an agent: give it something to spend.
  *
  * The first step of the loop. The way offered first is an allowance from the owner's wallet: a limit
  * the chain enforces, and one that can be revoked. An agent that brings its own key can be given a
- * deposit instead, which is the second way, and a link carrying `?agent=` opens on it because that
+ * balance instead, which is the second way, and a link carrying `?agent=` opens on it because that
  * link names a key.
  */
 export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initialAgent }: SetUpProps) {
@@ -44,65 +46,54 @@ export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initial
   const ownerFunds = useOwnerFunds(ownerWallet.owner);
   const progress = ownerWallet.owner === null ? null : setupProgress(ownerFunds.data, owner.data);
   const panel = useMoreBelow<HTMLElement>();
-  const tab = (id: Way, label: string) => (
+  const intl = useIntl();
+  const testnet = String(chain.testnet === true);
+  const tab = (id: Way, label: MessageId) => (
     <button type="button" aria-pressed={way === id}
             className={way === id ? "way on" : "way"} onClick={() => setWay(id)}>
-      {label}
+      <FormattedMessage id={label} />
     </button>
   );
 
   return (
     <Plate
       top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" wallet={ownerWallet} /> }}
-      left={<>ARC {chain.testnet ? "TESTNET" : "MAINNET"} · CHAIN {chain.id}</>}
-      right={way === "allowance" ? <>A LIMIT ON CHAIN · REVOKE ANY TIME</> : <>YOUR WALLET MUST BE ON ARC</>}
+      left={<FormattedMessage id="frame.network" values={{ testnet, id: chain.id }} />}
+      right={<FormattedMessage id={way === "allowance" ? "frame.allowanceEdge" : "frame.ownWalletEdge"} />}
       bottom={{
-        start: <>STEP 00 OF THE LOOP</>,
-        middle: <span className="loop-line">LOAD&nbsp;&nbsp;→&nbsp;&nbsp;TRAIN&nbsp;&nbsp;→&nbsp;&nbsp;REP&nbsp;&nbsp;→&nbsp;&nbsp;GIGS</span>,
-        end: <>x402 · USDC</>,
+        start: <FormattedMessage id="frame.setupStep" />,
+        middle: <span className="loop-line"><FormattedMessage id="frame.setupLoop" /></span>,
+        end: <FormattedMessage id="frame.money" values={{ testnet }} />,
       }}
     >
       <div className="load">
         <section className="load-intro">
-          <p className="kicker"><span>00</span> load</p>
-          {way === "allowance" ? (
-            <>
-              <h1 className="headline small">Give your agent<br />an <em>allowance</em>.</h1>
-              <p className="sub">
-                It pays {asDollars(probePrice)} for every question it asks while it trains, from your
-                wallet and inside a limit you set on your phone. The chain refuses anything past the
-                limit, and you can revoke it in one step.
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="headline small">Give your agent<br />something to <em>spend</em>.</h1>
-              <p className="sub">
-                It pays {asDollars(probePrice)} for every question it asks while it trains, from a
-                deposit made for its own key. What you deposit is the most it can spend.
-              </p>
-            </>
-          )}
-          {wallet === null && (
-            <p className="warn">
-              <b>No wallet serves this network yet.</b> Until one does, an agent here pays from its own
-              key.
-            </p>
-          )}
+          <p className="kicker"><span>00</span> <FormattedMessage id="setup.kicker" /></p>
+          <h1 className="headline small">
+            <FormattedMessage id="setup.title1" /><br />
+            <FormattedMessage id={way === "allowance" ? "setup.title2Allowance" : "setup.title2Own"} />
+          </h1>
+          <p className="sub">
+            <FormattedMessage id={way === "allowance" ? "setup.subAllowance" : "setup.subOwn"}
+                              values={{ price: asDollars(probePrice) }} />
+          </p>
+          {wallet === null && <p className="warn"><FormattedMessage id="setup.noWallet" /></p>}
         </section>
 
         <section className="load-panel" ref={panel.ref}>
           {wallet !== null && (
-            <div className="ways" role="group" aria-label="How your agent pays">
-              {tab("allowance", "With an allowance")}
-              {tab("own-key", "From its own key")}
+            <div className="ways" role="group" aria-label={intl.formatMessage({ id: "setup.ways" })}>
+              {tab("allowance", "setup.wayAllowance")}
+              {tab("own-key", "setup.wayOwn")}
             </div>
           )}
           {way === "allowance" && wallet !== null
             ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.connectHref}
                        owner={ownerWallet.owner} />
             : <DepositPanel chainId={chainId} usdc={usdc} gateway={gateway} initialAgent={initialAgent} />}
-          {panel.more && <button type="button" className="more-below" onClick={panel.showMore}>More steps below</button>}
+          {panel.more && <button type="button" className="more-below" onClick={panel.showMore}>
+            <FormattedMessage id={way === "allowance" && wallet !== null ? "setup.moreBelow" : "setup.moreBelowOwn"} />
+          </button>}
         </section>
       </div>
     </Plate>

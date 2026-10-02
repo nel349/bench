@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { render, say } from "../strings.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { BountyWire, FeedRowWire, OwnerAgentWire, OwnerWire, ProblemWire } from "../../../src/shared/wire.ts";
 import { Yours } from "../../src/yours/Yours.tsx";
@@ -61,7 +62,7 @@ describe("the owner's page", () => {
     show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByRole("heading", { name: "Agent #894767" })).toBeInTheDocument();
     expect(screen.getByText("4 / 4")).toBeInTheDocument();
-    expect(screen.getByText(/ranked: liar, toll/i)).toBeInTheDocument();
+    expect(screen.getByText(/recorded: liar and toll/i)).toBeInTheDocument();
     expect(screen.getByText(/not playing right now/i)).toBeInTheDocument();
   });
 
@@ -86,11 +87,11 @@ describe("the owner's page", () => {
     await waitFor(() => expect(remember).toHaveBeenCalledWith(WALLET));
   });
 
-  test("a wallet with no agents says so and points to Load", async () => {
+  test("a wallet with no agents says so and points to Set up", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [] }));
     show(<Yours wallet={WALLET} remember={() => {}} connectHref={CONNECT} explorer="https://arcscan.app" />);
     expect(await screen.findByText(/has not granted an allowance/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /load your agent/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /set up your agent/i })).toBeInTheDocument();
   });
 
   test("without a wallet it offers to connect one, and still takes a pasted address", () => {
@@ -118,15 +119,15 @@ describe("the owner's page", () => {
 describe("who ran it, and how it ended", () => {
   /** Every connector run read "anonymous", though each carried a proven identity. */
   test("an unnamed run is called by its identity; a name the agent chose is kept", () => {
-    expect(runnerName({ agent: "anonymous", identity: "894767" })).toBe("agent #894767");
-    expect(runnerName({ agent: "anonymous", identity: null })).toBe("anonymous");
-    expect(runnerName({ agent: "aria", identity: "894767" })).toBe("aria");
+    expect(say(runnerName({ agent: "anonymous", identity: "894767" }))).toBe("agent #894767");
+    expect(say(runnerName({ agent: "anonymous", identity: null }))).toBe("unnamed agent");
+    expect(say(runnerName({ agent: "aria", identity: "894767" }))).toBe("aria");
   });
 
-  test("an open run past the hour reads as left open, not in progress", () => {
+  test("an open run past the hour reads as left open, not playing", () => {
     const now = 10 * LIVE_FOR_MS;
-    expect(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 60_000 }, now).label).toBe("IN PROGRESS");
-    expect(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 2 * LIVE_FOR_MS }, now).label).toBe("LEFT OPEN");
+    expect(say(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 60_000 }, now).label)).toBe("Playing");
+    expect(say(outcomeOf({ endedBy: "open", ranked: false, startedAt: now - 2 * LIVE_FOR_MS }, now).label)).toBe("Left open");
   });
 });
 

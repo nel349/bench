@@ -1,3 +1,4 @@
+import { FormattedMessage } from "react-intl";
 import { useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useFunds } from "./useFunds.ts";
@@ -22,10 +23,10 @@ export interface DepositPanelProps {
 }
 
 /**
- * Paying from the agent's own key: look it up, and deposit for it from the wallet in this browser.
+ * Paying from the agent's own key: look it up, and add to its balance from the wallet in this browser.
  *
  * For an agent that brings a key of its own rather than the connector. There is no allowance on
- * this path: what is deposited is the agent's, and the most it can spend.
+ * this path: what is added is the agent's, and the most it can spend.
  */
 export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPanelProps) {
   const [typed, setTyped] = useState(initialAgent ?? "");
@@ -44,13 +45,10 @@ export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPa
 
   return (
     <>
-      <p className="warn">
-        <b>This cannot be undone.</b> A deposit belongs to the agent, with no allowance and nothing to
-        revoke. Give what you are willing to lose.
-      </p>
+      <p className="warn"><FormattedMessage id="deposit.warn" /></p>
 
       <form className="lookup" onSubmit={(e) => { e.preventDefault(); setAgent(typed.trim()); }}>
-        <label htmlFor="agent">The address your agent printed when it started</label>
+        <label htmlFor="agent"><FormattedMessage id="deposit.field" /></label>
         <div className="field-row">
           <input id="agent" value={typed} spellCheck={false} autoComplete="off" placeholder="0x…"
                  onChange={(e) => {
@@ -58,37 +56,34 @@ export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPa
                    // Clear the result rather than leave it describing an address no longer shown.
                    if (agent !== null && e.target.value.trim() !== agent) setAgent(null);
                  }} />
-          <button type="submit" className="btn" disabled={!isAddress(typed.trim())}>Check</button>
+          <button type="submit" className="btn" disabled={!isAddress(typed.trim())}><FormattedMessage id="deposit.check" /></button>
         </div>
       </form>
 
-      {agent === null && <p className="state idle">Paste an address to see what it holds.</p>}
-      {funds.isError && <p className="state bad">That is not an address on this network.</p>}
+      {agent === null && <p className="state idle"><FormattedMessage id="deposit.idle" /></p>}
+      {funds.isError && <p className="state bad"><FormattedMessage id="deposit.notAddress" /></p>}
       {standing === "ready" && funds.data && (
-        <p className="state good">
-          Loaded. It can ask {funds.data.probes} {funds.data.probes === 1 ? "question" : "questions"}.
-        </p>
+        <p className="state good"><FormattedMessage id="deposit.ready" values={{ count: funds.data.probes }} /></p>
       )}
-      {standing === "short" && <p className="state wait">Empty. It cannot ask anything yet.</p>}
+      {standing === "short" && <p className="state wait"><FormattedMessage id="deposit.empty" /></p>}
 
       {funds.data && (
         <dl className="balances">
-          <Balance label="Can spend" amount={funds.data.deposit} tone={standing === "ready" ? "ready" : "short"}>
-            What it pays for questions with.
+          <Balance label={<FormattedMessage id="deposit.balance" />} amount={funds.data.deposit}
+                   tone={standing === "ready" ? "ready" : "short"}>
+            <FormattedMessage id="deposit.balanceNote" />
           </Balance>
-          <Balance label="In its wallet" amount={funds.data.wallet} tone="idle">
-            {funds.data.wallet === "0.000000"
-              ? "Nothing needs to be here."
-              : "Sent here by mistake? This cannot pay for anything. It has to be moved across."}
+          <Balance label={<FormattedMessage id="deposit.wallet" />} amount={funds.data.wallet} tone="idle">
+            <FormattedMessage id={funds.data.wallet === "0.000000" ? "deposit.walletEmpty" : "deposit.walletStray"} />
           </Balance>
         </dl>
       )}
 
       {funds.data && confirmed && (
         <div className="give">
-          <p className="give-label">Add</p>
+          <p className="give-label"><FormattedMessage id="deposit.add" /></p>
           <AmountChoice amounts={AMOUNTS} disabled={funding.busy} onChoose={(usd) => void funding.fund(usd)} />
-          <p className="fine">Two confirmations in your wallet: one to approve, one to send.</p>
+          <p className="fine"><FormattedMessage id="deposit.confirmations" /></p>
           <FundingProgress state={funding.state} explorer={chain.blockExplorers.default.url} />
         </div>
       )}

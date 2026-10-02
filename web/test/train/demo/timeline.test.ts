@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { planBoard } from "../../../src/train/demo/plan.ts";
 import { frameAt, lengthOf, priceOpacity, schedule } from "../../../src/train/demo/timeline.ts";
+import { intl } from "../../strings.tsx";
 
 const PRICE = 20_000;
 const SEEDS = Array.from({ length: 120 }, (_, i) => i + 1);
@@ -163,8 +164,13 @@ describe("the narration", () => {
         const n = frameAt(plan, slot.start + slot.travel + 5).narration!;
         expect(n.n).toBe(i + 1);
         if (ray.refused) expect(n.tone).toBe("refused");
-        else if (ray.trace.result.kind === "hit") { expect(n.tone).toBe("found"); expect(n.what).toMatch(/atom is hiding here/i); }
-        else expect(n.tone).toBe("miss");
+        else if (ray.trace.result.kind === "hit") { expect(n.tone).toBe("found"); expect(n.kind).toBe("hit"); }
+        else {
+          expect(n.tone).toBe("miss");
+          const r = ray.trace.result;
+          expect(n.kind).toBe(r.kind);
+          expect(n.exit).toBe(r.kind === "detour" ? r.exit.side : null);
+        }
       });
     }
   });
@@ -173,8 +179,7 @@ describe("the narration", () => {
     const plan = planBoard(11, PRICE);
     const slot = schedule(plan)[0]!;
     const n = frameAt(plan, slot.start + slot.travel + 5).narration!;
-    const side = { up: "the top", down: "the bottom", left: "the left", right: "the right" }[plan.rays[0]!.port.side];
-    expect(n.from).toBe(side);
+    expect(n.side).toBe(plan.rays[0]!.port.side);
   });
 
   test("a refused probe says why, in money", () => {
@@ -182,7 +187,8 @@ describe("the narration", () => {
       const plan = planBoard(seed, PRICE);
       if (plan.solved) continue;
       const f = frameAt(plan, lengthOf(plan) - 1);
-      expect(f.narration?.what).toMatch(/out of money/i);
+      expect(f.narration?.kind).toBe("refused");
+      expect(intl.formatMessage({ id: "demo.refused" })).toMatch(/out of money/i);
       break;
     }
   });

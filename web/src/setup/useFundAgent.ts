@@ -1,3 +1,4 @@
+import { phrase, type Phrase } from "../shared/lib/phrase.ts";
 import { useCallback, useState } from "react";
 import { useAccount, useConnect, useSwitchChain, useWriteContract, useConfig } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
@@ -23,7 +24,7 @@ export type Funding =
   | { readonly step: "settling"; readonly tx: Hex }
   | { readonly step: "sent"; readonly tx: Hex }
   | { readonly step: "declined" }
-  | { readonly step: "failed"; readonly because: string };
+  | { readonly step: "failed"; readonly because: Phrase };
 
 export interface FundAgent {
   readonly contracts: { readonly usdc: Address; readonly gateway: Address };
@@ -56,7 +57,7 @@ export function useFundAgent({ contracts, chainId, agent }: FundAgent) {
         setState({ step: "connecting" });
         const injected = connectors[0];
         if (!injected) {
-          setState({ step: "failed", because: "No wallet was found in this browser." });
+          setState({ step: "failed", because: phrase("funding.noWallet") });
           return;
         }
         await connectAsync({ connector: injected });
@@ -82,7 +83,7 @@ export function useFundAgent({ contracts, chainId, agent }: FundAgent) {
       setState({ step: "settling", tx });
       const receipt = await waitForTransactionReceipt(config, { hash: tx, chainId });
       if (receipt.status !== "success") {
-        setState({ step: "failed", because: "The transfer was included and then reverted." });
+        setState({ step: "failed", because: phrase("funding.reverted") });
         return;
       }
       setState({ step: "sent", tx });
@@ -91,7 +92,8 @@ export function useFundAgent({ contracts, chainId, agent }: FundAgent) {
       if (wasDeclined(error)) { setState({ step: "declined" }); return; }
       setState({
         step: "failed",
-        because: error instanceof Error ? error.message.split("\n")[0] ?? "Unknown" : "Unknown",
+        // The wallet's own words, which are its to translate, not ours.
+        because: { text: error instanceof Error ? error.message.split("\n")[0] ?? "" : "" },
       });
     }
   }, [isConnected, connectAsync, connectors, switchChainAsync, writeContractAsync, config, contracts, chainId, agent]);

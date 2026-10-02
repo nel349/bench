@@ -1,3 +1,5 @@
+import { FormattedMessage } from "react-intl";
+import { useSay } from "../shared/lib/useSay.ts";
 import type { Funding } from "./useFundAgent.ts";
 
 export interface FundingProgressProps {
@@ -12,26 +14,29 @@ export interface FundingProgressProps {
  * one cannot be added without the compiler asking what it says.
  */
 export function FundingProgress({ state, explorer }: FundingProgressProps) {
+  const say = useSay();
   switch (state.step) {
     case "idle":
       return null;
     case "connecting":
-      return <p className="progress">Asking your wallet…</p>;
+      return <p className="progress"><FormattedMessage id="funding.connecting" /></p>;
     case "allowing":
-      return <p className="progress">Step 1 of 2. Approve the transfer in your wallet.</p>;
+      return <p className="progress"><FormattedMessage id="funding.allowing" /></p>;
     case "sending":
-      return <p className="progress">Step 2 of 2. Send it to your agent from your wallet.</p>;
+      return <p className="progress"><FormattedMessage id="funding.sending" /></p>;
     case "settling":
-      return <p className="progress">Sent. Waiting for the network…</p>;
+      return <p className="progress"><FormattedMessage id="funding.settling" /></p>;
     case "sent":
       return (
         <p className="progress good">
-          Done. <a href={`${explorer}/tx/${state.tx}`} target="_blank" rel="noreferrer">See it on the explorer</a>
+          <FormattedMessage id="funding.sent" values={{
+            link: (chunks) => <a href={`${explorer}/tx/${state.tx}`} target="_blank" rel="noreferrer">{chunks}</a>,
+          }} />
         </p>
       );
     case "declined":
-      return <p className="progress">You cancelled it. Nothing was sent.</p>;
+      return <p className="progress"><FormattedMessage id="funding.declined" /></p>;
     case "failed":
-      return <p className="progress bad">That did not go through. Nothing was lost. {state.because}</p>;
+      return <p className="progress bad"><FormattedMessage id="funding.failed" values={{ because: say(state.because) }} /></p>;
   }
 }

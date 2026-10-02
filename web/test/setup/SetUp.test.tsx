@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import { render } from "../strings.tsx";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
@@ -46,9 +47,9 @@ const page = (initialAgent: string | null, wallet: string | null = WALLET) => (
         probePrice="0.020000" wallet={wallet} gym={GYM} initialAgent={initialAgent} />
 );
 
-/** The deposit is the second way; a page opened without an agent in its link starts on the first. */
+/** Its own wallet is the second way; a page opened without an agent in its link starts on the first. */
 const toOwnKey = (user: ReturnType<typeof userEvent.setup>) =>
-  user.click(screen.getByRole("button", { name: /from its own key/i }));
+  user.click(screen.getByRole("button", { name: /its own wallet/i }));
 
 beforeEach(() => { vi.restoreAllMocks(); });
 
@@ -83,7 +84,7 @@ describe("the front door", () => {
     }));
     show(page(AGENT));
     expect(await screen.findByText(/empty\. it cannot ask anything yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/cannot pay for anything\. It has to be moved across/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot pay for anything\. It has to be moved to its balance/i)).toBeInTheDocument();
   });
 
   test("an empty wallet says nothing needs to be there", async () => {
@@ -119,7 +120,7 @@ describe("the front door", () => {
     await waitFor(() => {
       expect(screen.queryByText(/can ask 25 questions/i)).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole("group", { name: /how much to give/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /how much to add/i })).not.toBeInTheDocument();
   });
 
   test("Check is refused until the address is one", async () => {
@@ -140,7 +141,7 @@ describe("with an allowance, the way offered first", () => {
     show(page(null));
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
     expect(titles).toEqual([
-      "Get the app, and add test USDC phone",
+      "Open the wallet, and add test USDC phone",
       "Connect your agent laptop",
       "Scan to grant phone",
       "Tell your agent to play laptop",
@@ -161,14 +162,14 @@ describe("with an allowance, the way offered first", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
 
-    const sentence = `Train on Bench at ${GYM}: rank as many problems as you can, and spend as little as you can.`;
+    const sentence = `Train on Bench at ${GYM}: solve and record as many exercises as you can, and spend as little as you can.`;
     expect(screen.getByText(sentence)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /copy the sentence for your agent/i }));
     expect(writeText).toHaveBeenCalledWith(sentence);
     expect(await screen.findByRole("button", { name: /copy the sentence/i })).toHaveTextContent("Copied");
   });
 
-  test("no deposit is offered, and nothing says it cannot be undone", () => {
+  test("no balance of its own is offered, and nothing says it cannot be undone", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
     expect(screen.queryByLabelText(/the address your agent printed/i)).not.toBeInTheDocument();
@@ -176,13 +177,13 @@ describe("with an allowance, the way offered first", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/an allowance/i);
   });
 
-  /** A link carrying an agent names a key, and the key is what a deposit is for. */
+  /** A link carrying an agent names a key, and the key is what a balance of its own is for. */
   test("a link naming an agent opens on its own key", async () => {
     vi.stubGlobal("fetch", serving({ [AGENT]: funds() }));
     show(page(AGENT));
-    expect(screen.getByRole("button", { name: /from its own key/i })).toHaveAttribute("aria-pressed", "true");
-    // The headline follows the way chosen, rather than promising an allowance beside a deposit.
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/something to spend/i);
+    expect(screen.getByRole("button", { name: /its own wallet/i })).toHaveAttribute("aria-pressed", "true");
+    // The headline follows the way chosen, rather than promising an allowance beside a balance.
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/a balance of its own/i);
     expect(await screen.findByText(/can ask 25 questions/i)).toBeInTheDocument();
   });
 
@@ -192,7 +193,7 @@ describe("with an allowance, the way offered first", () => {
     show(page(null, null));
     expect(screen.queryByRole("button", { name: /with an allowance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /open the wallet/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/no wallet serves this network yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no wallet works on this network yet/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/the address your agent printed/i)).toBeInTheDocument();
   });
 });

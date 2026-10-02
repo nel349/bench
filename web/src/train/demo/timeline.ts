@@ -55,20 +55,24 @@ export function priceOpacity(life: number): number {
  */
 export interface Narration {
   readonly n: number;
-  readonly from: string;
-  readonly what: string;
+  /** The side the probe went in from. */
+  readonly side: Side;
+  /** What became of it, and where it came out when it was bent. */
+  readonly kind: "hit" | "reflect" | "detour" | "refused";
+  readonly exit: Side | null;
   readonly tone: "found" | "miss" | "refused";
 }
 
-const SIDE_WORDS = { up: "the top", down: "the bottom", left: "the left", right: "the right" } as const;
+/** A side of the board a question goes in from, or comes out of. */
+export type Side = PlannedRay["port"]["side"];
 
 function narrate(ray: PlannedRay, n: number): Narration {
-  const from = SIDE_WORDS[ray.port.side];
-  if (ray.refused) return { n, from, what: "Blocked. Out of money, so nothing comes back.", tone: "refused" };
+  const side = ray.port.side;
+  if (ray.refused) return { n, side, kind: "refused", exit: null, tone: "refused" };
   const r = ray.trace.result;
-  if (r.kind === "hit") return { n, from, what: "Absorbed. An atom is hiding here.", tone: "found" };
-  if (r.kind === "reflect") return { n, from, what: "Came straight back. An atom sits close to where it went in.", tone: "miss" };
-  return { n, from, what: `Bent by an atom, it came out at ${SIDE_WORDS[r.exit.side]}.`, tone: "miss" };
+  if (r.kind === "hit") return { n, side, kind: "hit", exit: null, tone: "found" };
+  if (r.kind === "reflect") return { n, side, kind: "reflect", exit: null, tone: "miss" };
+  return { n, side, kind: "detour", exit: r.exit.side, tone: "miss" };
 }
 
 export interface Frame {

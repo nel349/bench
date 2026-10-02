@@ -1,3 +1,4 @@
+import { FormattedMessage } from "react-intl";
 import { useEffect, useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
 import { useBounties, useOwner, useProblems } from "../shared/api/useGym.ts";
@@ -44,30 +45,32 @@ export function Yours({ wallet, remember, connectHref, explorer }: YoursProps) {
   return (
     <section className="board yours">
       <header className="board-head">
-        <p className="kicker"><span>//</span> yours</p>
-        <h2 className="board-title">Your agents, as they train.</h2>
+        <p className="kicker"><span>//</span> <FormattedMessage id="yours.kicker" /></p>
+        <h2 className="board-title"><FormattedMessage id="yours.title" /></h2>
         <p className="sub">
           {valid
-            ? <>For wallet {short(wallet)}: what each agent may spend, what it is doing now, and what it has earned.</>
-            : <>Connect the wallet you granted the allowance from, and this page shows its agents. Your agent also gives you this page's link when it starts training.</>}
+            ? <FormattedMessage id="yours.subWallet" values={{ wallet: short(wallet) }} />
+            : <FormattedMessage id="yours.subNone" />}
         </p>
       </header>
 
       {!valid && connectHref !== null && (
-        <a className="btn primary yours-connect" href={connectHref}>Connect wallet</a>
+        <a className="btn primary yours-connect" href={connectHref}><FormattedMessage id="yours.connect" /></a>
       )}
       {!valid && <WalletEntry typed={wallet} />}
-      {valid && owner.isPending && <p className="state idle">Reading the wallet's agents…</p>}
-      {valid && owner.isError && <p className="state bad">The wallet's agents could not be read just now. This page tries again on its own.</p>}
+      {valid && owner.isPending && <p className="state idle"><FormattedMessage id="yours.reading" /></p>}
+      {valid && owner.isError && <p className="state bad"><FormattedMessage id="yours.failed" /></p>}
       {valid && owner.data && owner.data.agents.length === 0 && (
-        <Empty count={0} noun="agents with an allowance" action={{ href: PATHS.fund, label: "Load your agent" }}>
-          <p>This wallet has not granted an allowance to any agent, or has revoked them all.</p>
+        <Empty count={0} noun={<FormattedMessage id="yours.emptyNoun" />}
+               action={{ href: PATHS.fund, label: <FormattedMessage id="yours.emptyAction" /> }}>
+          <p><FormattedMessage id="yours.empty" /></p>
         </Empty>
       )}
       {summary !== null && summary.runs > 0 && (
         <p className="owner-since">
-          Since you last looked: {summary.runs} {summary.runs === 1 ? "run" : "runs"}, <Amount value={summary.spend} /> spent
-          {summary.recorded > 0 && <>, {summary.recorded} recorded</>}.
+          <FormattedMessage id="yours.since" values={{
+            runs: summary.runs, spend: <Amount value={summary.spend} />, recorded: summary.recorded,
+          }} />
         </p>
       )}
       {valid && owner.data && owner.data.agents.map((agent) => (
@@ -87,11 +90,11 @@ function WalletEntry({ typed }: { readonly typed: string }) {
   };
   return (
     <form className="lookup load-panel" onSubmit={open}>
-      <label htmlFor="wallet">Or paste your wallet's address</label>
+      <label htmlFor="wallet"><FormattedMessage id="yours.field" /></label>
       <div className="field-row">
         <input id="wallet" value={draft} spellCheck={false} autoComplete="off" placeholder="0x…"
                onChange={(e) => setDraft(e.target.value)} />
-        <button type="submit" className="btn" disabled={!isWallet(draft)}>Open</button>
+        <button type="submit" className="btn" disabled={!isWallet(draft)}><FormattedMessage id="yours.open" /></button>
       </div>
     </form>
   );

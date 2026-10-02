@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
+import { render } from "./strings.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   AgentRecordWire, BountyWire, ChainRatingWire, ProblemDetailWire, ProblemWire, ScoreWire,
@@ -8,6 +9,7 @@ import { ExerciseRail } from "../src/train/ExerciseRail.tsx";
 import { RepLookup } from "../src/rep/RepLookup.tsx";
 import { Exercise } from "../src/train/Exercise.tsx";
 import { Gigs } from "../src/gigs/Gigs.tsx";
+import { Home } from "../src/shell/Home.tsx";
 
 const PRICES = { ask: "0.020000", submit: "0.050000", rank: "0.250000" };
 const problem = (id: string, level: ProblemWire["level"], par: number | null): ProblemWire =>
@@ -53,38 +55,65 @@ describe("the rack", () => {
   });
 });
 
+/** The front page said what Bench is and then listed seven exercises between its buttons and its picture. */
+describe("the front page and Train", () => {
+  const front = (hash: string) => {
+    window.location.hash = hash;
+    // jsdom has no matchMedia; a browser asked to reduce motion holds the demo on a finished board.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/bounties": [], "/feed": [], "/problems/liar": { ...problem("liar", "hard", 14), statement: "s", scoring: "c" }, "/leaderboard/liar": [] }));
+    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl={null} />);
+  };
+
+  test("the front page shows the way in and the demo, not the exercise menu", async () => {
+    front("");
+    expect(await screen.findByRole("link", { name: "Set up your agent" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /demonstration of the black box/i })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
+  });
+
+  test("Train has the exercise menu, with the chosen one open", async () => {
+    front("#rig/liar");
+    expect(await screen.findByRole("navigation", { name: "Exercises" })).toBeInTheDocument();
+    expect(await screen.findByText("Exercise 07")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Set up your agent" })).not.toBeInTheDocument();
+  });
+});
+
 describe("an exercise", () => {
   const liar: ProblemDetailWire = { ...problem("liar", "hard", 14), statement: "A hidden number.", scoring: "cost" };
 
-  test("shows the gym's statement, its level, and par in probes and in dollars", async () => {
+  test("shows the gym's statement, its level, and the fewest questions it needs, in questions and in dollars", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
     show(<Exercise id="liar" number={7} demoHref={null} />);
     expect(await screen.findByText("A hidden number.")).toBeInTheDocument();
     expect(screen.getByText("Exercise 07")).toBeInTheDocument();
     expect(screen.getByText("hard")).toBeInTheDocument();
-    expect(screen.getByText("14 probes")).toBeInTheDocument();
-    expect(screen.getByText("Par costs").nextSibling).toHaveTextContent("$0.28");
+    expect(screen.getByText("14 questions")).toBeInTheDocument();
+    expect(screen.getByText("That costs").nextSibling).toHaveTextContent("$0.28");
   });
 
-  test("says no par is proven rather than showing a number", async () => {
+  test("says no fewest is proven rather than showing a number", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/zendo": { ...problem("zendo", "medium", null), statement: "s", scoring: "c" },
                                      "/leaderboard/zendo": [] }));
     show(<Exercise id="zendo" number={2} demoHref={null} />);
-    expect(await screen.findByText("none proven")).toBeInTheDocument();
+    expect(await screen.findByText("not proven")).toBeInTheDocument();
   });
 
-  test("its board keeps the gym's order, cheapest first, and marks the ranked solves", async () => {
+  test("its leaderboard keeps the gym's order, cheapest first, and marks the recorded solves", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar,
       "/leaderboard/liar": [score("a1", "0.280000", true), score("a2", "0.400000")] }));
     show(<Exercise id="liar" number={7} demoHref={null} />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("agent-a1");
-    expect(rows[0]).toHaveTextContent("ranked");
+    expect(rows[0]).toHaveTextContent("recorded");
     expect(rows[1]).toHaveTextContent("agent-a2");
-    expect(rows[1]).not.toHaveTextContent("ranked");
+    expect(rows[1]).not.toHaveTextContent("recorded");
   });
 
-  test("an empty board says what would fill it", async () => {
+  test("an empty leaderboard says what would fill it", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
     show(<Exercise id="liar" number={7} demoHref={null} />);
     expect(await screen.findByText(/first paid solve takes first place/i)).toBeInTheDocument();
@@ -96,7 +125,7 @@ describe("looking up rep", () => {
   const lookup = (looking: string, registry: string | null = "0x8004B663056A597Dffe9eCcC1965A193B7388713") =>
     <RepLookup looking={looking} registry={registry} explorer="https://testnet.arcscan.app" />;
 
-  test("an identity shows the rep the gate reads, out of what the gym's problems allow", async () => {
+  test("an identity shows the rep the gate reads, out of what the gym's exercises allow", async () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": rating }));
     show(lookup("894767"));
     expect(await screen.findByText("3")).toBeInTheDocument();
@@ -125,13 +154,13 @@ describe("looking up rep", () => {
     show(lookup(AGENT));
     const spent = await screen.findByText("Spent solving");
     expect(spent.parentElement).toHaveTextContent("$0.23");
-    expect(screen.getByText(/look that up by its id/i)).toBeInTheDocument();
+    expect(screen.getByText(/look that up by its number/i)).toBeInTheDocument();
   });
 
   test("something that is neither is said to be neither", () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN }));
     show(lookup("agent:aria"));
-    expect(screen.getByText(/neither an ERC-8004 id nor an address/i)).toBeInTheDocument();
+    expect(screen.getByText(/neither an agent's number nor an address/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Look up" })).toBeDisabled();
   });
 });

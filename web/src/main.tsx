@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
 import { wagmiConfig } from "./shared/chain/config.ts";
 import { App } from "./App.tsx";
+import { StringsProvider } from "./strings/StringsProvider.tsx";
 import "./styles.css";
 
 /**
@@ -23,7 +24,9 @@ createRoot(root).render(
   <StrictMode>
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queries}>
-        <App />
+        <StringsProvider>
+          <App />
+        </StringsProvider>
       </QueryClientProvider>
     </WagmiProvider>
   </StrictMode>,

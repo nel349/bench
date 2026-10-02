@@ -1,3 +1,4 @@
+import { useIntl } from "react-intl";
 import type { Cell } from "../../../../src/problems/blackbox-rules.ts";
 import type { Frame } from "./timeline.ts";
 
@@ -39,12 +40,13 @@ export function BlackBoxField({ size, frame, price }: BlackBoxFieldProps) {
   const nodes: Cell[] = [];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) nodes.push({ x, y });
   const flatlined = frame.ending === "refused";
+  const intl = useIntl();
 
   return (
     <div className={`holo ${flatlined ? "flatline" : ""} ${frame.ending === "solved" ? "breached" : ""}`}
          style={{ opacity: frame.opacity, aspectRatio: `${width} / ${height}` }}>
       <svg className="lattice" viewBox={`${-MARGIN_X} ${-MARGIN_Y} ${width} ${height}`} role="img"
-           aria-label={`An ICE lattice. ${frame.bought} probes bought, ${frame.found.length} data cores breached.`}>
+           aria-label={intl.formatMessage({ id: "demo.field" }, { asked: frame.bought, found: frame.found.length })}>
         <defs>
           <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">
             <feGaussianBlur stdDeviation="0.1" result="a" />
@@ -122,7 +124,7 @@ export function BlackBoxField({ size, frame, price }: BlackBoxFieldProps) {
                   x={p.at.x + out.x * p.reach} y={p.at.y + out.y * p.reach}
                   textAnchor={out.x < 0 ? "end" : out.x > 0 ? "start" : "middle"}
                   opacity={p.opacity}>
-              {p.refused ? "NO FUNDS" : `−${price}`}
+              {p.refused ? intl.formatMessage({ id: "demo.noMoney" }) : `−${price}`}
             </text>
           );
         })}

@@ -8,8 +8,8 @@ describe("reading the hash", () => {
     expect(routeOf("#rig/blackbox/board")).toEqual({ view: "rig", detail: ["blackbox", "board"] });
     expect(routeOf("#ledger/894767")).toEqual({ view: "ledger", detail: ["894767"] });
   });
-  test("nothing, or nonsense, is the rig with nothing chosen", () => {
-    expect(routeOf("")).toEqual({ view: "rig", detail: [] });
-    expect(routeOf("#nowhere/liar")).toEqual({ view: "rig", detail: [] });
+  test("nothing, or nonsense, is the front page", () => {
+    expect(routeOf("")).toEqual({ view: "home", detail: [] });
+    expect(routeOf("#nowhere/liar")).toEqual({ view: "home", detail: [] });
   });
 });

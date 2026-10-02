@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { whoIs } from "../../src/rep/who.ts";
-import { parCost, probes } from "../../src/train/par.ts";
+import { parCost } from "../../src/train/par.ts";
+import { intl } from "../strings.tsx";
 
 describe("reading what was typed into the rep lookup", () => {
   test("digits are an ERC-8004 id", () => expect(whoIs(" 894767 ")).toEqual({ kind: "identity", id: "894767" }));
@@ -13,19 +14,20 @@ describe("reading what was typed into the rep lookup", () => {
   });
 });
 
-describe("what a par run costs", () => {
-  test("par probes at the probe price, exactly", () => {
+describe("what the fewest questions cost", () => {
+  test("the fewest questions at the question price, exactly", () => {
     expect(parCost(16, "0.020000")).toBe("0.320000");
     expect(parCost(1, "0.020000")).toBe("0.020000");
     expect(parCost(14, "0.020000")).toBe("0.280000");
   });
-  test("no proven par, no number", () => expect(parCost(null, "0.020000")).toBe(null));
+  test("no proven fewest, no number", () => expect(parCost(null, "0.020000")).toBe(null));
 });
 
-describe("a count of probes", () => {
-  test("one is singular", () => expect(probes(1)).toBe("1 probe"));
+describe("a count of questions", () => {
+  const questions = (count: number) => intl.formatMessage({ id: "count.questions" }, { count });
+  test("one is singular", () => expect(questions(1)).toBe("1 question"));
   test("more are plural, and so is none", () => {
-    expect(probes(14)).toBe("14 probes");
-    expect(probes(0)).toBe("0 probes");
+    expect(questions(14)).toBe("14 questions");
+    expect(questions(0)).toBe("0 questions");
   });
 });
