@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { writeClipboard } from "./clipboard.ts";
 
 /** How long "Copied" stays before the button reads "Copy" again. */
 const COPIED_FOR_MS = 1_600;
@@ -6,8 +7,8 @@ const COPIED_FOR_MS = 1_600;
 /**
  * Copying to the clipboard, and saying so for a moment.
  *
- * A browser can refuse, on a page not served securely or without a user's gesture. Then nothing
- * says "Copied", and the line is still there to select by hand.
+ * See `writeClipboard` for how it copies on a page that is not served securely. If the browser
+ * refuses both ways, nothing says "Copied", and the line is still there to select by hand.
  */
 export function useCopy() {
   const [copied, setCopied] = useState(false);
@@ -16,11 +17,7 @@ export function useCopy() {
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const copy = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      return;
-    }
+    if (!(await writeClipboard(text))) return;
     setCopied(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), COPIED_FOR_MS);
