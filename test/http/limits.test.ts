@@ -141,7 +141,8 @@ describe("free requests that reach the chain or Circle are capped too", () => {
   };
   const get = (d: Deps, path: string, client = "10.0.0.7") => handle(new Request(`http://bench.test${path}`), d, client);
 
-  for (const path of ["/rating/894767", "/funds/0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce", "/allowance/0x1/0x2"]) {
+  for (const path of ["/rating/894767", "/funds/0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce", "/allowance/0x1/0x2",
+                      "/owner/0x9fa928ACfE2eEcEad9698ebBad835E7129688b28"]) {
     test(`${path.split("/")[1]} is capped per client`, async () => {
       const d = deps();
       await get(d, path); await get(d, path);

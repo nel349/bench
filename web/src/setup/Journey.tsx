@@ -10,6 +10,8 @@ export interface JourneyProps {
   readonly progress: readonly boolean[] | null;
   /** Where Connect wallet goes, to offer it before the steps when nothing is connected. */
   readonly connectHref: string | null;
+  /** Called as the owner leaves for the wallet. */
+  readonly onConnect: () => void;
   /** The connected wallet, for step 5's link to its page. */
   readonly owner: string | null;
   /** The owner's wallet. Never null here: the page offers this path only where there is one. */
@@ -24,7 +26,7 @@ export interface JourneyProps {
  * The titles and sentences come from `STEPS`. What is added here is only what a page can do that a
  * list cannot: the wallet's link on step 1, the lines to copy on step 2, the sentence on step 4.
  */
-export function Journey({ wallet, gym, progress, connectHref, owner }: JourneyProps) {
+export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }: JourneyProps) {
   const intl = useIntl();
   /**
    * On a phone the laptop's steps cannot be done, so their commands give way to this page's address,
@@ -70,7 +72,7 @@ export function Journey({ wallet, gym, progress, connectHref, owner }: JourneyPr
       {progress === null && connectHref !== null && (
         <div className="journey-connect">
           <p><FormattedMessage id="setup.connectFirst" /></p>
-          <a className="btn" href={connectHref}><FormattedMessage id="wallet.connect" /></a>
+          <a className="btn" href={connectHref} onClick={onConnect}><FormattedMessage id="wallet.connect" /></a>
         </div>
       )}
     <ol className="journey">

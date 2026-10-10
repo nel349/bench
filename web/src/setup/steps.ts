@@ -1,9 +1,11 @@
 /**
  * The path an owner takes to let their agent train here, in five steps.
  *
- * The titles, in the catalog, are the ones the arc-mandate connector tells an agent and the maze prints, in the same
- * order, so a person who meets the steps in the wallet, from their agent and on this page reads one
- * path. Those are separate programs and cannot import this; if a title changes there, it changes here.
+ * The steps and their order are the ones the arc-mandate connector tells an agent and the maze
+ * prints, so a person who meets them in the wallet, from their agent and on this page reads one path.
+ * Those are separate programs and cannot import this. One title differs for now: step 1 here is
+ * "Open the wallet", which is what it is, and the connector still says "Get the app" for a web page
+ * with nothing to install. When the connector is corrected the two read the same again.
  *
  * The order is real rather than presentation: the wallet and the connected agent both come before
  * the grant, because a grant needs money behind it and an agent to grant to, and the grant comes

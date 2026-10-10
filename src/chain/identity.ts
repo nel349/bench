@@ -1,4 +1,4 @@
-import { createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
+import { BaseError, ContractFunctionRevertedError, createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
 import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
 
 /**
@@ -80,12 +80,37 @@ export class ArcRegistry implements Registry {
 
   async ownerOf(agentId: bigint): Promise<Address | null> {
     try {
+      return await this.holderOf(agentId);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Who holds an identity, or `null` for one nobody has registered, and a throw when the registry
+   * could not be asked.
+   *
+   * `ownerOf` above folds the two into `null`, which is right for a check that fails closed. It is
+   * wrong for anything that remembers the answer: one failed read, kept, said for ten minutes that
+   * nobody held an identity its owner was looking at. The registry reverts for an id that does not
+   * exist, and only a revert means that.
+   *
+   * A revert is told by what it carries. The client library also calls a node's "internal error"
+   * (-32603) a revert, with nothing in it, and a node says that when it is failing, not when the
+   * contract refused. So only a revert that brought the contract's own data back counts as an answer.
+   */
+  async holderOf(agentId: bigint): Promise<Address | null> {
+    try {
       const out = await this.#client.readContract({
         address: this.#address, abi: REGISTRY_ABI, functionName: "ownerOf", args: [agentId],
       });
       return out === ZERO ? null : (out as Address);
-    } catch {
-      return null;
+    } catch (error) {
+      const revert = error instanceof BaseError ? error.walk((e) => e instanceof ContractFunctionRevertedError) : null;
+      const refusedByContract = revert instanceof ContractFunctionRevertedError
+        && (revert.raw !== undefined || revert.signature !== undefined);
+      if (refusedByContract) return null;
+      throw error;
     }
   }
 

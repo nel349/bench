@@ -44,14 +44,17 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   const mine = useOwner(wallet.owner);
 
   // Back from the wallet's Connect: keep the address and open its page, or, cancelled, the front page.
+  // `remember` replaces a connected wallet only when Connect wallet was pressed here, so a link of
+  // this shape cannot swap one; and it is told of an empty answer too, which ends the asking.
   const returned = view === CONNECTED_VIEW ? detail[0] ?? "" : null;
   useEffect(() => {
     if (returned === null) return;
-    if (isWallet(returned)) {
-      remember(returned);
-      window.location.replace(viewHref("yours", returned));
+    const address = returned.trim();
+    remember(address);
+    if (isWallet(address)) {
+      window.location.replace(viewHref("yours", address));
     } else {
-      window.location.replace(PATHS.index);
+      window.location.replace(viewHref("home"));
     }
   }, [returned, remember]);
   const problems = useProblems();
@@ -70,7 +73,7 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   return (
     <Plate
       top={{
-        start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>,
+        start: <a className="brand" href={viewHref("home")}>BENCH<b>//</b></a>,
         end: <Nav current={view} wallet={wallet} />,
       }}
       left={<FormattedMessage id="frame.network" values={{ testnet: String(chain.testnet === true), id: chain.id }} />}
@@ -117,7 +120,8 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
                         demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
         </section>
       )}
-      {view === "yours" && <Yours wallet={detail[0] ?? ""} remember={remember} connectHref={wallet.connectHref}
+      {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={remember} onConnect={wallet.beginConnect}
+                                  connectHref={wallet.connectHref}
                                   explorer={chain.blockExplorers.default.url} />}
       {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} mine={mine.data} />}
       {view === "ledger" && <Rep runs={runs} titleOf={(id) => list.find((p) => p.id === id)?.title ?? id}

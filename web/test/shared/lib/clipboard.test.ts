@@ -35,6 +35,18 @@ describe("copying", () => {
     expect(document.querySelector("textarea")).toBeNull();
   });
 
+  /** Selecting the hidden field took focus and removing it dropped a keyboard user onto the page's body. */
+  test("the older way puts focus back where it was", async () => {
+    clipboard(undefined);
+    execCommand(true);
+    const button = document.createElement("button");
+    document.body.appendChild(button);
+    button.focus();
+    await writeClipboard("a line");
+    expect(document.activeElement).toBe(button);
+    button.remove();
+  });
+
   test("falls back when the Clipboard API refuses", async () => {
     clipboard({ writeText: vi.fn(async () => { throw new Error("denied"); }) });
     const copied = execCommand(true);

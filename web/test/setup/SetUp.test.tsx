@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { render } from "../strings.tsx";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -7,7 +7,7 @@ import { WagmiProvider } from "wagmi";
 import type { Address } from "viem";
 import { wagmiConfig } from "../../src/shared/chain/config.ts";
 import { SetUp } from "../../src/setup/SetUp.tsx";
-import type { FundsWire } from "../../../src/shared/wire.ts";
+import type { FundsWire, OwnerWire } from "../../../src/shared/wire.ts";
 
 const AGENT = "0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce";
 const OTHER = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
@@ -47,9 +47,9 @@ const page = (initialAgent: string | null, wallet: string | null = WALLET) => (
         probePrice="0.020000" wallet={wallet} gym={GYM} initialAgent={initialAgent} />
 );
 
-/** Its own wallet is the second way; a page opened without an agent in its link starts on the first. */
+/** A balance of its own is the second way; a page opened without an agent in its link starts on the first. */
 const toOwnKey = (user: ReturnType<typeof userEvent.setup>) =>
-  user.click(screen.getByRole("button", { name: /its own wallet/i }));
+  user.click(screen.getByRole("button", { name: /a balance of its own/i }));
 
 beforeEach(() => { vi.restoreAllMocks(); });
 
@@ -85,6 +85,9 @@ describe("the front door", () => {
     show(page(AGENT));
     expect(await screen.findByText(/empty\. it cannot ask anything yet/i)).toBeInTheDocument();
     expect(screen.getByText(/cannot pay for anything\. It has to be moved to its balance/i)).toBeInTheDocument();
+    // The page never calls the place to put money "its wallet": that is the name of the mistake.
+    expect(screen.getByText("At its address")).toBeInTheDocument();
+    expect(screen.queryByText(/to its own wallet/i)).not.toBeInTheDocument();
   });
 
   test("an empty wallet says nothing needs to be there", async () => {
@@ -136,7 +139,8 @@ describe("the front door", () => {
 });
 
 describe("with an allowance, the way offered first", () => {
-  test("the five steps, in order, in the words the wallet and the connector use", () => {
+  /** The connector's steps, in its order. Step 1 differs for now: see `src/setup/steps.ts`. */
+  test("the five steps, in order", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
     const titles = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
@@ -181,7 +185,7 @@ describe("with an allowance, the way offered first", () => {
   test("a link naming an agent opens on its own key", async () => {
     vi.stubGlobal("fetch", serving({ [AGENT]: funds() }));
     show(page(AGENT));
-    expect(screen.getByRole("button", { name: /its own wallet/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /a balance of its own/i })).toHaveAttribute("aria-pressed", "true");
     // The headline follows the way chosen, rather than promising an allowance beside a balance.
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/a balance of its own/i);
     expect(await screen.findByText(/can ask 25 questions/i)).toBeInTheDocument();
@@ -195,5 +199,51 @@ describe("with an allowance, the way offered first", () => {
     expect(screen.queryByRole("link", { name: /open the wallet/i })).not.toBeInTheDocument();
     expect(screen.getByText(/no wallet works on this network yet/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/the address your agent printed/i)).toBeInTheDocument();
+  });
+});
+
+/** Every test above runs with no wallet connected, so the ticks themselves were never drawn in one. */
+describe("with a wallet connected, the steps say where its owner is", () => {
+  const W = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+  const connected = (owner: OwnerWire | 500) => {
+    // This test environment has no working localStorage; a browser's is a map of strings like this one.
+    const kept = new Map([["bench.owner.wallet", W]]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => kept.get(key) ?? null,
+      setItem: (key: string, value: string) => void kept.set(key, value),
+      removeItem: (key: string) => void kept.delete(key),
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === `/owner/${W}`) return owner === 500 ? new Response("{}", { status: 500 }) : new Response(JSON.stringify(owner), { status: 200 });
+      if (url === `/funds/${W}`) return new Response(JSON.stringify(funds({ agent: W, wallet: "18.000000" })), { status: 200 });
+      return new Response("{}", { status: 404 });
+    }));
+    show(page(null));
+  };
+  const granted: OwnerWire = { wallet: W, more: 0, partial: false, agents: [{
+    address: AGENT, current: true, identity: "894767", rep: 14, repUnread: false, ranked: [], live: null, runs: [],
+    spend: "0.000000", qualifies: [], won: [],
+    // Used up: the owner whose agent spent its whole limit was shown steps 2 and 3 as still to do.
+    allowance: { limit: "5.000000", used: "5.000000", remaining: "0.000000", validUntil: 0, live: false },
+  }] };
+  const steps = () => [1, 2, 3, 4, 5].map((n) => screen.queryByLabelText(`Step ${n}, done`) !== null);
+
+  test("a wallet that granted an allowance, since used up, has done steps 1 to 3", async () => {
+    connected(granted);
+    await waitFor(() => expect(steps()).toEqual([true, true, true, false, false]));
+    expect(screen.queryByText(/these steps tick themselves off/i)).not.toBeInTheDocument();
+  });
+
+  /** Not yet known was drawn as nothing done, with step 1 marked as the one to do next. */
+  test("while its page cannot be read, the steps are shown plain: none ticked, and no prompt to connect", async () => {
+    connected(500);
+    // The tab knows the wallet at once; the steps wait on a page that does not come.
+    const tabs = screen.getByRole("navigation", { name: "The loop" });
+    await waitFor(() => expect(within(tabs).getByRole("link", { name: /your agents/i })).toHaveAttribute("href", `/#yours/${W}`));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/owner/${W}`, expect.anything()));
+    expect(steps()).toEqual([false, false, false, false, false]);
+    expect(document.querySelector(".journey li.next")).toBeNull();
+    expect(screen.queryByText(/these steps tick themselves off/i)).not.toBeInTheDocument();
   });
 });

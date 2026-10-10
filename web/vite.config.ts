@@ -37,5 +37,9 @@ export default defineConfig({
         .map((path) => [path, `http://localhost:${process.env["PORT"] ?? DEFAULT_PORT}`]),
     ),
   },
-  test: { environment: "jsdom", globals: true, include: ["test/**/*.test.{ts,tsx}"], setupFiles: ["./test/setup.ts"] },
+  // `unstubGlobals`: a browser global a test stands in for is put back after it, pass or fail.
+  test: {
+    environment: "jsdom", globals: true, include: ["test/**/*.test.{ts,tsx}"], setupFiles: ["./test/setup.ts"],
+    unstubGlobals: true,
+  },
 });

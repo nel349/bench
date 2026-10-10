@@ -13,24 +13,46 @@ export async function ratingOf(deps: Deps, agentId: bigint | null): Promise<numb
   if (agentId === null || !deps.reputation) return 0;
   return weigh(await deps.reputation.ranked(agentId));
 }
-/** The identity a paying address's runs carry, newest first: how a win or a payer is named. */
-export function identityOfPayer(all: readonly Attempt[], payer: string | null): string | null {
-  if (payer === null) return null;
-  const p = payer.toLowerCase();
-  const run = [...all].sort((x, y) => y.startedAt - x.startedAt)
-    .find((a) => a.payer?.toLowerCase() === p && a.identity !== null);
-  return run?.identity ?? null;
+/**
+ * The identity each paying address's newest run carries, by address in lower case: how a win or a
+ * payer is named. Read off the record in one pass, for a list that names many payers at once.
+ */
+export function identitiesByPayer(all: readonly Attempt[]): ReadonlyMap<string, string> {
+  const newest = new Map<string, { readonly identity: string; readonly at: number }>();
+  for (const a of all) {
+    if (a.payer === null || a.identity === null) continue;
+    const payer = a.payer.toLowerCase();
+    const known = newest.get(payer);
+    if (known === undefined || a.startedAt > known.at) newest.set(payer, { identity: a.identity, at: a.startedAt });
+  }
+  return new Map([...newest].map(([payer, { identity }]) => [payer, identity]));
 }
 /**
  * Who holds each identity, remembered for a while: an owner's page asks about every identity in the
  * record, and an identity changes hands rarely if ever.
+ *
+ * Only an answer is remembered for long. A read that failed throws: it was once kept as "nobody",
+ * and a revoked agent vanished from its owner's page for ten minutes after one hiccup. The failure
+ * itself is kept for a few seconds, as a failure, so a registry that is down is not asked again by
+ * every request for every identity while it is. Asked once however many requests want it at the same
+ * moment. Kept per `Deps`, so one gym's answers are never another's.
  */
 export const OWNER_CACHE_MS = 10 * 60 * 1000;
-export const ownerCache = new Map<string, { readonly owner: string | null; readonly at: number }>();
-export async function cachedOwnerOf(deps: Deps, identity: string): Promise<string | null> {
-  const hit = ownerCache.get(identity);
-  if (hit && Date.now() - hit.at < OWNER_CACHE_MS) return hit.owner;
-  const owner = await deps.ownerOf!(BigInt(identity)).catch(() => null);
-  ownerCache.set(identity, { owner, at: Date.now() });
-  return owner;
+/** How long a registry that would not answer is left alone before it is asked again. */
+export const OWNER_RETRY_MS = 15_000;
+/** `until` is when it stops being good, and `null` while it is still being read. */
+type Held = { readonly owner: Promise<string | null>; until: number | null };
+const holders = new WeakMap<Deps, Map<string, Held>>();
+export function cachedOwnerOf(deps: Deps, identity: string): Promise<string | null> {
+  const known = holders.get(deps) ?? new Map<string, Held>();
+  holders.set(deps, known);
+  const hit = known.get(identity);
+  if (hit && (hit.until === null || Date.now() < hit.until)) return hit.owner;
+  const held: Held = { owner: deps.ownerOf!(BigInt(identity)), until: null };
+  known.set(identity, held);
+  held.owner.then(
+    () => { held.until = Date.now() + OWNER_CACHE_MS; },
+    () => { held.until = Date.now() + OWNER_RETRY_MS; },
+  );
+  return held.owner;
 }

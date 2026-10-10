@@ -6,6 +6,8 @@ export interface WalletButtonProps {
   readonly owner: string | null;
   /** Where Connect wallet goes; `null` hides it, where no wallet serves this network. */
   readonly connectHref: string | null;
+  /** Called as the owner leaves for the wallet, so its answer is known to have been asked for. */
+  readonly onConnect: () => void;
   readonly onDisconnect: () => void;
 }
 
@@ -14,9 +16,9 @@ export interface WalletButtonProps {
  * disconnect. Its agents are a tab of their own, in `Nav`. Presentational; the connection lives in
  * `useOwnerWallet`.
  */
-export function WalletButton({ owner, connectHref, onDisconnect }: WalletButtonProps) {
+export function WalletButton({ owner, connectHref, onConnect, onDisconnect }: WalletButtonProps) {
   if (owner === null) {
-    return connectHref === null ? null : <a className="wallet-connect" href={connectHref}><FormattedMessage id="wallet.connect" /></a>;
+    return connectHref === null ? null : <a className="wallet-connect" href={connectHref} onClick={onConnect}><FormattedMessage id="wallet.connect" /></a>;
   }
   return (
     <span className="wallet-chip">

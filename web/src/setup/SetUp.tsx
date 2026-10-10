@@ -44,7 +44,8 @@ export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initial
   const ownerWallet = useOwnerWallet(wallet);
   const owner = useOwner(ownerWallet.owner);
   const ownerFunds = useOwnerFunds(ownerWallet.owner);
-  const progress = ownerWallet.owner === null ? null : setupProgress(ownerFunds.data, owner.data);
+  // Known only once the wallet's page has been read; until then the steps are shown plain.
+  const progress = ownerWallet.owner === null || owner.data === undefined ? null : setupProgress(ownerFunds.data, owner.data);
   const panel = useMoreBelow<HTMLElement>();
   const intl = useIntl();
   const testnet = String(chain.testnet === true);
@@ -88,7 +89,8 @@ export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initial
             </div>
           )}
           {way === "allowance" && wallet !== null
-            ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.connectHref}
+            ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.owner === null ? ownerWallet.connectHref : null}
+                       onConnect={ownerWallet.beginConnect}
                        owner={ownerWallet.owner} />
             : <DepositPanel chainId={chainId} usdc={usdc} gateway={gateway} initialAgent={initialAgent} />}
           {panel.more && <button type="button" className="more-below" onClick={panel.showMore}>

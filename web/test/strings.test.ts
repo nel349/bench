@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 import { createIntl } from "react-intl";
 import { LOCALE, MESSAGES, type MessageId } from "../src/strings/StringsProvider.tsx";
 import { STEPS } from "../src/setup/steps.ts";
+import { LEVEL_WEIGHT } from "../../src/problems/problem.ts";
 
 const SRC = join(__dirname, "../src");
 const IDS = Object.keys(MESSAGES) as MessageId[];
@@ -20,12 +21,13 @@ const source = (function read(dir: string): string {
 
 /**
  * Ids the page builds from a value rather than writes out: a step's title from its number, a level's
- * name from the level. Listed from the same values the page builds them from, so a new step or level
- * without its words fails here.
+ * name from the level. Steps and levels are listed from the values the page builds them from, so a
+ * new one without its words fails here; the demo's sides and outcomes are written out, and the
+ * typecheck is what holds those to the catalog.
  */
 const BUILT: readonly string[] = [
   ...STEPS.flatMap((s) => [`step${s.n}.title`, `step${s.n}.detail`, `step.where.${s.where}`]),
-  ...["easy", "medium", "hard"].map((level) => `level.${level}`),
+  ...Object.keys(LEVEL_WEIGHT).map((level) => `level.${level}`),
   ...["up", "down", "left", "right"].map((side) => `demo.side.${side}`),
   ...["hit", "reflect", "refused"].map((kind) => `demo.${kind}`),
 ];

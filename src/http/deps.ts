@@ -35,7 +35,11 @@ export interface Deps {
   readonly reputation?: Reputation;
   /** Whether an ERC-8004 id belongs to the address that paid. Absent where identities are off. */
   readonly verifyIdentity?: IdentityVerifier;
-  /** Who holds an ERC-8004 identity: the owner's wallet. Absent where there is no registry. */
+  /**
+   * Who holds an ERC-8004 identity: the owner's wallet, or `null` for an identity nobody holds. It
+   * throws when the registry could not be asked, so a failed read is never taken for an answer.
+   * Absent where there is no registry.
+   */
   readonly ownerOf?: (agentId: bigint) => Promise<string | null>;
   /** Caps on free requests and graded submissions. Absent, nothing is capped: tests and scripts. */
   readonly limits?: Limits;

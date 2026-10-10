@@ -53,15 +53,16 @@ export function priceOpacity(life: number): number {
  * it lands, in the plain terms of the rule it just demonstrated — which teaches the game by watching
  * it, rather than by a paragraph nobody reads first.
  */
-export interface Narration {
+export type Narration = {
   readonly n: number;
   /** The side the probe went in from. */
   readonly side: Side;
-  /** What became of it, and where it came out when it was bent. */
-  readonly kind: "hit" | "reflect" | "detour" | "refused";
-  readonly exit: Side | null;
   readonly tone: "found" | "miss" | "refused";
-}
+} & (
+  /** Bent by an atom: only then does it come out somewhere worth naming. */
+  | { readonly kind: "detour"; readonly exit: Side }
+  | { readonly kind: "hit" | "reflect" | "refused"; readonly exit: null }
+);
 
 /** A side of the board a question goes in from, or comes out of. */
 export type Side = PlannedRay["port"]["side"];

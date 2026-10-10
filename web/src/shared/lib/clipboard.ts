@@ -21,6 +21,9 @@ export async function writeClipboard(text: string, doc: Document = document): Pr
   field.setAttribute("readonly", "");
   // Off screen, so the page does not jump or flash while it is selected.
   Object.assign(field.style, { position: "fixed", top: "-1000px", opacity: "0" });
+  // Where the person was, to put them back: selecting the field takes focus, and removing it left a
+  // keyboard user on the page's body, their place in the steps lost.
+  const was = doc.activeElement;
   doc.body.appendChild(field);
   field.focus();
   field.select();
@@ -30,5 +33,6 @@ export async function writeClipboard(text: string, doc: Document = document): Pr
     return false;
   } finally {
     field.remove();
+    if (was instanceof (doc.defaultView?.HTMLElement ?? HTMLElement)) was.focus();
   }
 }

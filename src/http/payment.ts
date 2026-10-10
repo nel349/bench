@@ -69,7 +69,7 @@ export function quoted(error: string, q: Quote, resource: string, net: Network):
  */
 export const describes = (path: string) => ({
   url: path,
-  description: BOUGHT[path.slice(path.lastIndexOf("/") + 1)] ?? BOUGHT.ask!,
+  description: BOUGHT[path.slice(path.lastIndexOf("/") + 1)] ?? ONE_QUESTION,
   mimeType: "application/json",
 });
 
@@ -77,8 +77,9 @@ export const describes = (path: string) => ({
  * What each paid route sells, by its last segment, in the words the owner's page uses: a buyer's
  * wallet may show it beside the payment, and recording a solve used to read "One probe".
  */
+const ONE_QUESTION = "One question";
 const BOUGHT: Readonly<Record<string, string>> = {
-  ask: "One question",
+  ask: ONE_QUESTION,
   submit: "A graded answer",
   rank: "Recording a solve to the agent's ERC-8004 identity",
   solve: "An answer to a gig",

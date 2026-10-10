@@ -99,13 +99,15 @@ export interface OwnerAgentWire {
   readonly allowance: OwnerAllowanceWire | null;
   /** The ERC-8004 identity its runs carry, once a run has carried one. */
   readonly identity: string | null;
-  /** Rep from the registry for that identity, and what it ranked. `null` without an identity. */
+  /** Rep from the registry for that identity, and what it ranked. `null` without an identity, or unread. */
   readonly rep: number | null;
+  /** The registry could not be read just now. Then `rep` is `null` and means unknown, not none. */
+  readonly repUnread: boolean;
   readonly ranked: readonly string[];
   /** The run it is playing now, if any. */
   readonly live: ScoreWire | null;
   /** Its paid runs, newest first. */
-  readonly runs: readonly FeedRowWire[];
+  readonly runs: readonly OwnerRunWire[];
   /**
    * What it has spent training: every question and answer, and the fee for each solve it recorded.
    * More than its runs' costs add up to, because a run's cost is its score and leaves the record out.
@@ -118,10 +120,25 @@ export interface OwnerAgentWire {
   readonly won: readonly { readonly id: string; readonly title: string; readonly amount: Decimal; readonly awardTx: string | null }[];
 }
 
+/**
+ * A run on its owner's page: the record, and what the run cost whoever paid for it. `spend` is the
+ * score and leaves the record's fee out; `paid` is `spend` and that fee, from the moment it is charged.
+ */
+export interface OwnerRunWire extends FeedRowWire {
+  readonly paid: Decimal;
+}
+
 /** One owner's page: a wallet and its agents. */
 export interface OwnerWire {
   readonly wallet: string;
   readonly agents: readonly OwnerAgentWire[];
+  /** How many more agents the wallet has than one page carries. Zero for almost every wallet. */
+  readonly more: number;
+  /**
+   * Something the chain holds could not be read just now: an allowance, an agent's rep, or which
+   * agents the wallet used to grant to. What is here is true; it may not be all of it.
+   */
+  readonly partial: boolean;
 }
 
 /** The runs an address paid for, and what they cost. */

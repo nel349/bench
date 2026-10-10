@@ -8,7 +8,7 @@ import { PATHS } from "../../shared/paths.ts";
 import type { Deps, RouteContext } from "../deps.ts";
 import { json, fail, unavailable, agentOf, claimedIdOf, ANSWER_PARAM, fromUrl, NO_BODY, bodyOf, isRecord, freeCap, limited } from "../respond.ts";
 import { paymentRefused, paymentRequired, proofOf } from "../payment.ts";
-import { ratingOf, identityOfPayer } from "../reads.ts";
+import { ratingOf, identitiesByPayer } from "../reads.ts";
 
 /** What an unqualified agent is told to do, in one place. */
 const HOW_TO_QUALIFY =
@@ -68,8 +68,11 @@ export async function bountyRoutes({ req, deps, client, url, path, seg }: RouteC
    */
   if (seg[0] === "bounties" && !deps.bounties) return fail(404, "bounties are not enabled on this server");
   if (req.method === "GET" && path === PATHS.bounties) {
-    const all = deps.attempts.all();
-    return json(deps.bounties!.all().map((b) => ({ ...wireBounty(b), solverIdentity: identityOfPayer(all, b.solvedBy) })));
+    // Asked every few seconds by every open page: the record is read through once, not once a gig.
+    const named = identitiesByPayer(deps.attempts.all());
+    return json(deps.bounties!.all().map((b) => (
+      { ...wireBounty(b), solverIdentity: b.solvedBy === null ? null : named.get(b.solvedBy.toLowerCase()) ?? null }
+    )));
   }
   if (req.method === "POST" && path === PATHS.bounties) {
     const capped = freeCap(deps, client, "bounties posted");

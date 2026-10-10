@@ -175,7 +175,7 @@ const deps: Deps = {
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
   ...(reputation ? { reputation } : {}), ...(identities ? { verifyIdentity: identities } : {}),
-  ...(registry ? { ownerOf: (agentId: bigint) => registry.ownerOf(agentId) } : {}),
+  ...(registry ? { ownerOf: (agentId: bigint) => registry.holderOf(agentId) } : {}),
   limits: defaultLimits(),
 };
 

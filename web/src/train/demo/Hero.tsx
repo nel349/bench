@@ -64,9 +64,9 @@ export function Hero({ probePrice, numbered = true }: HeroProps) {
   const intl = useIntl();
   const sideOf = (side: Side) => intl.formatMessage({ id: `demo.side.${side}` });
   /** What the last question did, in the words of the rule it showed. */
-  const what = (x: Narration) => x.exit === null
-    ? intl.formatMessage({ id: `demo.${x.kind}` as "demo.hit" | "demo.reflect" | "demo.refused" })
-    : intl.formatMessage({ id: "demo.detour" }, { side: sideOf(x.exit) });
+  const what = (x: Narration) => x.kind === "detour"
+    ? intl.formatMessage({ id: "demo.detour" }, { side: sideOf(x.exit) })
+    : intl.formatMessage({ id: `demo.${x.kind}` });
 
   return (
     <section className="exhibit" aria-label={intl.formatMessage({ id: "demo.label" })}>

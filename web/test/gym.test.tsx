@@ -1,5 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { render } from "./strings.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
@@ -10,6 +11,7 @@ import { RepLookup } from "../src/rep/RepLookup.tsx";
 import { Exercise } from "../src/train/Exercise.tsx";
 import { Gigs } from "../src/gigs/Gigs.tsx";
 import { Home } from "../src/shell/Home.tsx";
+import { Nav } from "../src/shell/Nav.tsx";
 
 const PRICES = { ask: "0.020000", submit: "0.050000", rank: "0.250000" };
 const problem = (id: string, level: ProblemWire["level"], par: number | null): ProblemWire =>
@@ -69,16 +71,36 @@ describe("the front page and Train", () => {
 
   test("the front page shows the way in and the demo, not the exercise menu", async () => {
     front("");
+    expect(document.title).toBe("Bench: a gym for agents");
     expect(await screen.findByRole("link", { name: "Set up your agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /demonstration of the black box/i })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
   });
 
   /** The owner's page was reachable only after connecting a wallet, so a first visit never saw it. */
-  test("Your agents is a tab on every page, with or without a connected wallet", async () => {
+  test("Your agents is a tab with no wallet connected, and opens the page that asks for one", async () => {
     front("");
     const tabs = await screen.findByRole("navigation", { name: "The loop" });
     expect(within(tabs).getByRole("link", { name: /your agents/i })).toHaveAttribute("href", "/#yours");
+  });
+
+  test("with a wallet connected, the tab opens that wallet's own page", () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    show(<Nav current="home" wallet={{ owner: WALLET, connectHref: "https://wallet.test/connect", remember: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
+    const tab = screen.getByRole("link", { name: /your agents/i });
+    expect(tab).toHaveAttribute("href", `/#yours/${WALLET}`);
+    expect(tab).not.toHaveAttribute("aria-current");
+  });
+
+  test("the tab is marked as the page showing when it is", () => {
+    show(<Nav current="yours" wallet={{ owner: null, connectHref: null, remember: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
+    expect(screen.getByRole("link", { name: /your agents/i })).toHaveAttribute("aria-current", "page");
+  });
+
+  /** The brand reloaded the whole app: its link had no hash, where every other link switches the view. */
+  test("the brand leads to the front page without leaving the app", async () => {
+    front("#gigs");
+    expect(await screen.findByRole("link", { name: "BENCH//" })).toHaveAttribute("href", "/#home");
   });
 
   test("Train has the exercise menu, with the chosen one open", async () => {
@@ -86,6 +108,57 @@ describe("the front page and Train", () => {
     expect(await screen.findByRole("navigation", { name: "Exercises" })).toBeInTheDocument();
     expect(await screen.findByText("Exercise 07")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Set up your agent" })).not.toBeInTheDocument();
+  });
+});
+
+/** The rules live in a hook with its own tests; these check the page hands the right one to the right place. */
+describe("coming back from the wallet, and opening an owner's link", () => {
+  const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+  let kept: Map<string, string>;
+  const arrive = (hash: string) => {
+    // This test environment has no working localStorage; a browser's is a map of strings like this one.
+    kept = new Map();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => kept.get(key) ?? null,
+      setItem: (key: string, value: string) => void kept.set(key, value),
+      removeItem: (key: string) => void kept.delete(key),
+    });
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
+    }));
+    vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/bounties": [], "/feed": [],
+      [`/owner/${WALLET}`]: { wallet: WALLET, agents: [], more: 0, partial: false } }));
+    window.location.hash = hash;
+    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl="https://wallet.test/" />);
+  };
+
+  test("back with an address: it is connected, and its page opens", async () => {
+    arrive(`#connected/${WALLET}`);
+    await waitFor(() => expect(window.location.hash).toBe(`#yours/${WALLET}`));
+    expect(kept.get("bench.owner.wallet")).toBe(WALLET);
+    expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+  });
+
+  test("back with nothing, having cancelled: the front page, and nothing connected", async () => {
+    arrive("#connected/");
+    await waitFor(() => expect(window.location.hash).toBe("#home"));
+    expect(kept.has("bench.owner.wallet")).toBe(false);
+  });
+
+  test("an owner's link, opened with no wallet connected, connects that wallet once its page shows", async () => {
+    arrive(`#yours/${WALLET}`);
+    expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+    expect(kept.get("bench.owner.wallet")).toBe(WALLET);
+  });
+
+  test("pressing Connect wallet notes that it was pressed", async () => {
+    const user = userEvent.setup();
+    arrive("");
+    const connect = await screen.findByRole("link", { name: "Connect wallet" });
+    // Kept in the app for the click: the wallet is another site.
+    connect.addEventListener("click", (event) => event.preventDefault());
+    await user.click(connect);
+    expect(Number(kept.get("bench.owner.connecting"))).toBeGreaterThan(0);
   });
 });
 
@@ -198,8 +271,8 @@ describe("a won gig", () => {
 
   test("an open gig says which of the connected wallet's agents may enter", () => {
     const open = gig({ id: "b9", open: true, solvedBy: null, solvedAt: null, awardTx: null });
-    const mine = { wallet: "0xw", agents: [{ address: AGENT, current: true, identity: "894767", rep: 14, ranked: [], live: null,
-      runs: [], spend: "0", qualifies: ["b9"], won: [], allowance: null }] };
+    const mine = { wallet: "0xw", more: 0, partial: false, agents: [{ address: AGENT, current: true, identity: "894767", rep: 14, repUnread: false,
+      ranked: [], live: null, runs: [], spend: "0", qualifies: ["b9"], won: [], allowance: null }] };
     show(<Gigs bounties={[open]} explorer="https://testnet.arcscan.app" mine={mine} />);
     expect(screen.getByText(/your agent #894767 can enter/i)).toBeInTheDocument();
     expect(screen.queryByText(/no gig is open right now/i)).not.toBeInTheDocument();

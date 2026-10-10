@@ -10,7 +10,7 @@ import { outcomeOf } from "../shared/lib/outcome.ts";
 
 /** How many past runs a card lists. The rest are in the record, under the agent's identity. */
 const RECENT_RUNS = 8;
-/** How many of those a phone shows before See all runs: each is a card there, not a row. */
+/** How many of those a phone shows until asked for more: each is a card there, not a row. */
 export const PHONE_RUNS = 3;
 
 export interface OwnerAgentProps {
@@ -59,7 +59,11 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
       <dl className="ex-stats owner-stats">
         <div>
           <dt><FormattedMessage id="agent.rep" /></dt>
-          <dd>{agent.rep === null ? none("agent.noneYet") : <FormattedMessage id="agent.repValue" values={{ rep: agent.rep, ceiling }} />}</dd>
+          <dd>
+            {agent.repUnread ? none("agent.unread")
+              : agent.rep === null ? none("agent.noneYet")
+              : <FormattedMessage id="agent.repValue" values={{ rep: agent.rep, ceiling }} />}
+          </dd>
         </div>
         {agent.current ? (
           <>
@@ -78,13 +82,13 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
             </div>
           </>
         ) : (
-          <div className="owner-revoked"><dt><FormattedMessage id="agent.allowance" /></dt><dd>{none("agent.revoked")}</dd></div>
+          <div className="owner-revoked"><dt><FormattedMessage id="agent.allowance" /></dt><dd>{none("agent.noAllowance")}</dd></div>
         )}
         <div><dt><FormattedMessage id="agent.spent" /></dt><dd><Amount value={agent.spend} /></dd></div>
       </dl>
 
       {!agent.current && (
-        <p className="owner-live"><FormattedMessage id="agent.revokedNote" /></p>
+        <p className="owner-live"><FormattedMessage id="agent.noAllowanceNote" /></p>
       )}
 
       {agent.current && (live !== null ? (
@@ -134,7 +138,7 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
       )}
 
       {agent.runs.length > 0 && (
-        <table className={allRuns ? "ledger owner-runs" : "ledger owner-runs short"}>
+        <table className="ledger owner-runs" id={`runs-${agent.address}`}>
           <thead>
             <tr>
               <th>{col.exercise}</th><th>{col.result}</th>
@@ -142,17 +146,19 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
             </tr>
           </thead>
           <tbody>
-            {recent.map((r) => {
+            {recent.map((r, i) => {
               const o = outcomeOf(r);
               return (
-                <tr key={r.attempt}>
+                // Past the third, hidden on a phone until asked for: see `.owner-runs tr.extra`.
+                <tr key={r.attempt} className={!allRuns && i >= PHONE_RUNS ? "extra" : undefined}>
                   <td>
                     {titleOf(r.problem)}
                     {seenAt !== null && r.startedAt > seenAt && <span className="new-tag"><FormattedMessage id="agent.new" /></span>}
                   </td>
                   <td className={o.tone}>{say(o.label)}</td>
                   <td className="num" data-label={col.questions}>{r.probes}</td>
-                  <td className="num" data-label={col.cost}><Amount value={r.spend} /></td>
+                  {/* What the owner paid for it, the record's fee included, so the rows add up to the total above. */}
+                  <td className="num" data-label={col.cost}><Amount value={r.paid} /></td>
                   <td className="num dim" data-label={col.when}>{say(since(r.startedAt))}</td>
                 </tr>
               );
@@ -160,10 +166,16 @@ export function OwnerAgent({ agent, ceiling, titleOf, gigs, explorer, seenAt }: 
           </tbody>
         </table>
       )}
-      {/* Drawn only on a phone, where the list stops at three: see `.owner-runs.short`. */}
-      {!allRuns && recent.length > PHONE_RUNS && (
-        <button type="button" className="see-all" onClick={() => setAllRuns(true)}>
-          <FormattedMessage id="agent.seeAllRuns" values={{ count: recent.length }} />
+      {/*
+        * Drawn only on a phone. It stays where it is and turns into the way back, so the person who
+        * pressed it, by key or by touch, is not left with nothing under their finger.
+        */}
+      {recent.length > PHONE_RUNS && (
+        <button type="button" className="see-all" aria-expanded={allRuns} aria-controls={`runs-${agent.address}`}
+                onClick={() => setAllRuns((all) => !all)}>
+          {allRuns
+            ? <FormattedMessage id="agent.fewerRuns" />
+            : <FormattedMessage id="agent.moreRuns" values={{ count: recent.length - PHONE_RUNS }} />}
         </button>
       )}
     </article>

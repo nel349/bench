@@ -40,7 +40,8 @@ export function Nav({ current, wallet }: NavProps) {
         */}
       <span className="nav-gap" />
       {item("yours", wallet.owner === null ? viewHref("yours") : viewHref("yours", wallet.owner), "nav.yours", "//")}
-      <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onDisconnect={wallet.forget} />
+      <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onConnect={wallet.beginConnect}
+                    onDisconnect={wallet.forget} />
     </nav>
   );
 }

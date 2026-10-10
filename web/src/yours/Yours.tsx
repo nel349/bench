@@ -1,5 +1,5 @@
 import { FormattedMessage } from "react-intl";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
 import { useBounties, useOwner, useProblems } from "../shared/api/useGym.ts";
 import { OwnerAgent } from "./OwnerAgent.tsx";
@@ -14,8 +14,12 @@ import { PATHS } from "../../../src/shared/paths.ts";
 export interface YoursProps {
   /** The wallet the address bar names: the part of `#yours/…` after the view. */
   readonly wallet: string;
-  /** Called with a wallet once it is shown, so this browser offers it again. */
-  readonly remember: (wallet: string) => void;
+  /** Called once with a wallet when its page is shown, so this browser may keep it as the connected one. */
+  readonly offer: (wallet: string) => void;
+  /** Called with an address its owner typed in, which is asking for it. */
+  readonly connect: (wallet: string) => void;
+  /** Called as the owner leaves for the wallet's own Connect. */
+  readonly onConnect: () => void;
   /** Where Connect wallet goes, or `null` where no wallet serves this network. */
   readonly connectHref: string | null;
   /** Where a transaction can be looked up. */
@@ -29,15 +33,27 @@ export interface YoursProps {
  * in the URL so it can be bookmarked. Everything on it is public, so it asks for nothing but the
  * wallet's address.
  */
-export function Yours({ wallet, remember, connectHref, explorer }: YoursProps) {
+export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer }: YoursProps) {
   const valid = isWallet(wallet);
   const owner = useOwner(valid ? wallet : null);
   const problems = useProblems();
   const bounties = useBounties();
-  useEffect(() => { if (valid && owner.data) remember(wallet); }, [valid, owner.data, wallet, remember]);
+  // Once for each wallet shown, not on every refresh of its data: a wallet its owner had just
+  // disconnected was being connected again by the next poll.
+  const shown = valid && owner.data !== undefined;
+  const offered = useRef<string | null>(null);
+  // A different wallet's page, or none, starts again: the same wallet opened later is offered afresh.
+  useEffect(() => { offered.current = null; }, [wallet]);
+  useEffect(() => {
+    if (!shown || offered.current === wallet) return;
+    offered.current = wallet;
+    offer(wallet);
+  }, [shown, wallet, offer]);
 
-  const since = useLastVisit(valid ? wallet : null);
-  const summary = since !== null && owner.data ? sinceSummary(owner.data.agents.flatMap((a) => a.runs), since) : null;
+  const since = useLastVisit(valid ? wallet : null, shown);
+  // Of the agents it grants to now: what an agent it does not grant to did is not this visit's news.
+  const summary = since !== null && owner.data
+    ? sinceSummary(owner.data.agents.filter((a) => a.current).flatMap((a) => a.runs), since) : null;
   const ceiling = (problems.data ?? []).reduce((t, p) => t + LEVEL_WEIGHT[p.level], 0);
   const titleOf = (id: string) => problems.data?.find((p) => p.id === id)?.title ?? id;
   const gigsOf = (ids: readonly string[]) => (bounties.data ?? []).filter((b) => ids.includes(b.id));
@@ -55,9 +71,9 @@ export function Yours({ wallet, remember, connectHref, explorer }: YoursProps) {
       </header>
 
       {!valid && connectHref !== null && (
-        <a className="btn primary yours-connect" href={connectHref}><FormattedMessage id="yours.connect" /></a>
+        <a className="btn primary yours-connect" href={connectHref} onClick={onConnect}><FormattedMessage id="yours.connect" /></a>
       )}
-      {!valid && <WalletEntry typed={wallet} />}
+      {!valid && <WalletEntry typed={wallet} connect={connect} />}
       {valid && owner.isPending && <p className="state idle"><FormattedMessage id="yours.reading" /></p>}
       {valid && owner.isError && <p className="state bad"><FormattedMessage id="yours.failed" /></p>}
       {valid && owner.data && owner.data.agents.length === 0 && (
@@ -75,17 +91,22 @@ export function Yours({ wallet, remember, connectHref, explorer }: YoursProps) {
       )}
       {valid && owner.data && owner.data.agents.map((agent) => (
         <OwnerAgent key={agent.address} agent={agent} ceiling={ceiling} titleOf={titleOf}
-                    gigs={gigsOf(agent.qualifies)} explorer={explorer} seenAt={since} />
+                    gigs={gigsOf(agent.qualifies)} explorer={explorer} seenAt={agent.current ? since : null} />
       ))}
+      {valid && owner.data?.partial && <p className="state wait"><FormattedMessage id="yours.partial" /></p>}
+      {valid && owner.data && owner.data.more > 0 && (
+        <p className="fine"><FormattedMessage id="yours.more" values={{ count: owner.data.more }} /></p>
+      )}
     </section>
   );
 }
 
 /** Opening the page by hand, with the wallet's address. */
-function WalletEntry({ typed }: { readonly typed: string }) {
+function WalletEntry({ typed, connect }: { readonly typed: string; readonly connect: (wallet: string) => void }) {
   const [draft, setDraft] = useState(typed);
   const open = (e: FormEvent) => {
     e.preventDefault();
+    connect(draft.trim());
     window.location.assign(viewHref("yours", draft.trim()));
   };
   return (

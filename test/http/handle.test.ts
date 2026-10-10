@@ -1,5 +1,7 @@
-import { expect, test, describe, beforeEach } from "bun:test";
+import { expect, test, describe, beforeEach, afterEach, setSystemTime } from "bun:test";
 import { handle, quoteFor, type Deps } from "../../src/http/handle.ts";
+import { OWNER_AGENTS_SHOWN, OWNER_PAGE_MS, OWNER_PAGES_KEPT } from "../../src/http/routes/records.ts";
+import { OWNER_CACHE_MS, OWNER_RETRY_MS } from "../../src/http/reads.ts";
 import { LIVE_FOR_MS, playingNow } from "../../src/shared/live.ts";
 import { Attempts, recordHash } from "../../src/gym/attempt.ts";
 import { SqliteStore } from "../../src/store/runs.ts";
@@ -24,6 +26,8 @@ const AGENT = "agent:aria";
 
 let money: InMemoryAllowance;
 let deps: Deps;
+
+afterEach(() => { setSystemTime(); });
 
 beforeEach(() => {
   money = new InMemoryAllowance();
@@ -587,6 +591,10 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     const runsCost = ranked.attempts.get(id)!.spend + ranked.attempts.get(open.id)!.spend;
     expect(runsCost).toBeGreaterThan(0n);
     expect(agent.spend).toBe(formatUsdc(runsCost + PRICE.rank));
+    // And run by run: the recorded one says its record's fee too, the open one only what it has asked.
+    const paidFor = (attempt: string) => agent.runs.find((x) => x.attempt === attempt)!.paid;
+    expect(paidFor(id)).toBe(formatUsdc(ranked.attempts.get(id)!.spend + PRICE.rank));
+    expect(paidFor(open.id)).toBe(formatUsdc(ranked.attempts.get(open.id)!.spend));
 
     const nobody = await (await handle(new Request("http://bench.test/owner/0x0000000000000000000000000000000000000001"), owned)).json() as OwnerWire;
     expect(nobody.agents).toEqual([]);
@@ -612,6 +620,169 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     // Somebody else's wallet does not collect it.
     const other = await (await handle(new Request("http://bench.test/owner/0x0000000000000000000000000000000000000002"), revoked)).json() as OwnerWire;
     expect(other.agents).toEqual([]);
+  });
+
+  /**
+   * One failed read of the registry was kept for ten minutes as "nobody holds this identity", and
+   * the revoked agent above vanished from its owner's page for as long.
+   */
+  test("a registry that could not be asked is asked again, not remembered as nobody", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    await solved();
+    let failing = true;
+    let asked = 0;
+    const flaky: Deps = { ...ranked,
+      allowances: { async agentsOf() { return []; }, async of() { return null; } },
+      ownerOf: async () => { asked += 1; if (failing) throw new Error("rpc down"); return WALLET; } };
+    const read = async () => (await (await handle(new Request(`http://bench.test/owner/${WALLET}`), flaky)).json() as OwnerWire).agents.length;
+    expect(await read()).toBe(0);
+    failing = false;
+    // A registry that just failed is left alone for a moment, so one that is down is not asked by
+    // every request for every identity. The failure is kept as a failure, never as an answer.
+    expect(await read()).toBe(0);
+    expect(asked).toBe(1);
+    const start = Date.now();
+    setSystemTime(new Date(start + OWNER_RETRY_MS + 1));
+    expect(await read()).toBe(1);
+    expect(asked).toBe(2);
+    // The answer, once had, is kept: for ten minutes, and not for ever.
+    setSystemTime(new Date(start + OWNER_RETRY_MS + OWNER_PAGE_MS + 2));
+    expect(await read()).toBe(1);
+    expect(asked).toBe(2);
+    setSystemTime(new Date(start + OWNER_RETRY_MS + OWNER_CACHE_MS + 3));
+    expect(await read()).toBe(1);
+    expect(asked).toBe(3);
+  });
+
+  test("a page missing something the chain would not give says it is not whole", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    await solved();
+    const dark: Deps = { ...ranked,
+      allowances: { async agentsOf() { return []; }, async of() { return null; } },
+      ownerOf: async () => { throw new Error("rpc down"); } };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), dark)).json() as OwnerWire;
+    expect(page).toMatchObject({ agents: [], partial: true });
+    const lit: Deps = { ...dark, ownerOf: async () => WALLET };
+    expect((await (await handle(new Request(`http://bench.test/owner/${WALLET}`), lit)).json() as OwnerWire).partial).toBe(false);
+  });
+
+  /** "None yet" was said of an agent at rep 14 whenever the registry hiccuped. */
+  test("rep that could not be read is said to be unread, and a gig asking for none still admits the agent", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const free = bounties.post({ poster: "agent:poster", title: "Open to all", statement: "s", amount: "0.10",
+                                 deadline: Date.now() + 2 * 60 * 60 * 1000, minRating: 0,
+                                 checker: { kind: "equals", value: 1 } });
+    const gated = bounties.post({ poster: "agent:poster", title: "Needs rep", statement: "s", amount: "0.10",
+                                  deadline: Date.now() + 2 * 60 * 60 * 1000, minRating: 3,
+                                  checker: { kind: "equals", value: 1 } });
+    if (!free.ok || !gated.ok) throw new Error("could not post the test gigs");
+    await solved();
+    const dark: Deps = { ...ranked,
+      allowances: { async agentsOf() { return [AGENT as `0x${string}`]; }, async of() { return null; } },
+      reputation: { ...ranked.reputation!, ranked: async () => { throw new Error("registry down"); } } };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), dark)).json() as OwnerWire;
+    expect(page.agents[0]).toMatchObject({ rep: null, repUnread: true, qualifies: [free.bounty.id] });
+  });
+
+  /** Anyone may ask about any wallet, and every answer reads the chain. */
+  test("an owner's page is read once for everyone asking at the same moment, and carries a bounded number of agents", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const many = Array.from({ length: OWNER_AGENTS_SHOWN + 5 }, (_, i) => `0x${(i + 1).toString(16).padStart(40, "0")}` as `0x${string}`);
+    let listed = 0, allowancesRead = 0;
+    const busy: Deps = { ...ranked, allowances: {
+      async agentsOf() { listed += 1; return many; },
+      async of() { allowancesRead += 1; return null; },
+    } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), busy);
+    const [first, second] = await Promise.all([ask(), ask()]);
+    const page = await first.json() as OwnerWire;
+    expect(await second.json()).toEqual(page);
+    expect(listed).toBe(1);
+    expect(page.agents).toHaveLength(OWNER_AGENTS_SHOWN);
+    expect(page.more).toBe(5);
+    expect(allowancesRead).toBe(OWNER_AGENTS_SHOWN);
+  });
+
+  test("a wallet with more agents than a page carries keeps the one that played last", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    await solved();
+    // The agent that has played is last in the plugin's list, past where the page stops.
+    const idle = Array.from({ length: OWNER_AGENTS_SHOWN + 5 }, (_, i) => `0x${(i + 1).toString(16).padStart(40, "0")}` as `0x${string}`);
+    const crowded: Deps = { ...ranked, allowances: { async agentsOf() { return [...idle, AGENT as `0x${string}`]; }, async of() { return null; } } };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), crowded)).json() as OwnerWire;
+    expect(page.agents[0]!.address).toBe(AGENT);
+    expect(page.more).toBe(6);
+  });
+
+  test("a whole page is kept for a few seconds from when it was read, and then read again", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    let listed = 0;
+    const steady: Deps = { ...ranked, allowances: { async agentsOf() { listed += 1; return []; }, async of() { return null; } } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), steady);
+    const start = Date.now();
+    await ask();
+    setSystemTime(new Date(start + OWNER_PAGE_MS - 1));
+    await ask();
+    expect(listed).toBe(1);
+    setSystemTime(new Date(start + OWNER_PAGE_MS + 1));
+    await ask();
+    expect(listed).toBe(2);
+  });
+
+  /** A reading that takes longer than a page is kept was started again by whoever asked next. */
+  test("a slow reading is shared for as long as it takes", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    let listed = 0;
+    // The plugin's answer, held back until the test lets it go.
+    const plugin = Promise.withResolvers<readonly `0x${string}`[]>();
+    const slow: Deps = { ...ranked, allowances: {
+      agentsOf() { listed += 1; return plugin.promise; },
+      async of() { return null; },
+    } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), slow);
+    const first = ask();
+    setSystemTime(new Date(Date.now() + 10 * OWNER_PAGE_MS));
+    const second = ask();
+    plugin.resolve([]);
+    expect((await first).status).toBe(200);
+    expect((await second).status).toBe(200);
+    expect(listed).toBe(1);
+  });
+
+  /** Every address ever asked about was kept for good: 100,000 of them took the gym's memory past 150 MB. */
+  test("only so many wallets' pages are kept, and what is not a wallet is never kept or looked up", async () => {
+    let listed = 0;
+    const open: Deps = { ...ranked, allowances: { async agentsOf() { listed += 1; return []; }, async of() { return null; } } };
+    const walletNo = (n: number) => `0x${n.toString(16).padStart(40, "0")}`;
+    const ask = (wallet: string) => handle(new Request(`http://bench.test/owner/${wallet}`), open);
+    for (let n = 1; n <= OWNER_PAGES_KEPT + 50; n++) await ask(walletNo(n));
+    expect(listed).toBe(OWNER_PAGES_KEPT + 50);
+    // The newest is still kept; the oldest was let go, and is read again.
+    await ask(walletNo(OWNER_PAGES_KEPT + 50));
+    expect(listed).toBe(OWNER_PAGES_KEPT + 50);
+    await ask(walletNo(1));
+    expect(listed).toBe(OWNER_PAGES_KEPT + 51);
+    // Junk in the path is refused before the plugin or the store hears of it.
+    expect((await ask("x".repeat(1000))).status).toBe(400);
+    expect((await ask("0x9fa928ACfE2eEcEad9698ebBad835E7129688b28%20")).status).toBe(400);
+    expect(listed).toBe(OWNER_PAGES_KEPT + 51);
+  });
+
+  test("a page in which a read failed is not kept, so the next request reads again", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    let listed = 0, failing = true;
+    const flaky: Deps = { ...ranked, allowances: {
+      async agentsOf() { listed += 1; if (failing) throw new Error("plugin down"); return []; },
+      async of() { return null; },
+    } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), flaky);
+    expect((await ask()).status).toBe(503);
+    failing = false;
+    expect((await ask()).status).toBe(200);
+    expect(listed).toBe(2);
+    // A whole answer is kept for the next few seconds.
+    await ask();
+    expect(listed).toBe(2);
   });
 
   /** An abandoned run is never closed; three days later it read as the agent playing now. */

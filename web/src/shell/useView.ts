@@ -29,8 +29,17 @@ export interface Route {
   readonly detail: readonly string[];
 }
 
+/** A hash as text. One that is not valid percent-encoding, like `#%`, is read as it is written rather than thrown on. */
+function decoded(hash: string): string {
+  try {
+    return decodeURIComponent(hash);
+  } catch {
+    return hash;
+  }
+}
+
 export function routeOf(hash: string): Route {
-  const [first = "", ...rest] = decodeURIComponent(hash.replace(/^#/, "")).split("/");
+  const [first = "", ...rest] = decoded(hash.replace(/^#/, "")).split("/");
   const view = (VIEWS as readonly string[]).includes(first) ? (first as View) : "home";
   return { view, detail: view === first ? rest.filter((p) => p.length > 0) : [] };
 }
