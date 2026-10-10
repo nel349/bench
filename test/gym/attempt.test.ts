@@ -258,22 +258,36 @@ describe("several requests at once", () => {
   });
 
   /**
-   * The submission price is a counter shared by every run an agent has on a problem, so serialising
+   * The submission price is a counter shared by every run an address has on a problem, so serialising
    * per run is not enough — concurrent first-submissions on four different runs were all charged
    * nothing, and the doubling that punishes brute force did not happen.
+   *
+   * Each run buys a question first, which is what makes it the address's: the count that rises
+   * across runs is the payer's, and a run nobody has paid into is priced by its label instead.
    */
   test("the repeat price is not defeated by using several runs at once", async () => {
     const money = new InMemoryAllowance();
     money.grant(AGENT, usdc("50"));
     const runs = new Attempts(money);
     const ids = [0, 1, 2, 3].map(() => runs.start(AGENT, "blackbox", SEED)!.id);
+    for (const id of ids) await runs.ask(id, { side: "up", index: 0 });
+    const asked = PRICE.ask * 4n;
     await Promise.all(ids.map((id) => runs.submit(id, [{ x: 0, y: 0 }])));
 
     // Free, list, list, then the first doubling — the schedule applied in order, which is the
     // whole point. Concurrently it used to charge nothing at all.
     const expected = [0, 1, 2, 3].reduce((total, prior) => total + submissionPrice(prior), 0n);
     expect(expected).toBe(usdc("0.20"));
-    expect(money.spentBy(AGENT)).toBe(expected);
+    expect(money.spentBy(AGENT) - asked).toBe(expected);
+  });
+
+  test("nor is a label's one free submission, by opening several unpaid runs at once", async () => {
+    const money = new InMemoryAllowance();
+    money.grant(AGENT, usdc("50"));
+    const runs = new Attempts(money);
+    const ids = [0, 1, 2, 3].map(() => runs.start(AGENT, "blackbox", SEED)!.id);
+    const graded = await Promise.all(ids.map((id) => runs.submit(id, [{ x: 0, y: 0 }]))) as Graded[];
+    expect(graded.map((g) => g.paid).sort()).toEqual([0n, PRICE.submit, PRICE.submit, PRICE.submit]);
   });
 
   test("runs of different agents do not queue behind each other", async () => {

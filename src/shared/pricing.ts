@@ -9,7 +9,7 @@ import { usdc, type Usdc } from "./money.ts";
 export const PRICE = {
   /** One probe: a ray, an example, a move. */
   ask: usdc("0.02"),
-  /** A graded submission. The first on each problem is free — see `isFirstSubmission`. */
+  /** A graded submission. The first on each problem is free — see `submissionPrice`. */
   submit: usdc("0.05"),
   /** A ranked run, which writes to the agent's on-chain record. */
   rank: usdc("0.25"),
@@ -22,9 +22,10 @@ export const PRICE = {
  * price doubles each time, up to eight doublings. An agent reasoning its way to an answer submits a
  * handful of times; one brute-forcing submits hundreds, and should feel it.
  *
- * The count is **for the lifetime of the agent-and-problem pair**, not a rolling window. That is the
- * strict reading: an agent cannot wait an hour to get the cheap price back. If a window is ever
- * wanted it has to be built, because nothing here expires.
+ * The count is **for the lifetime of the paying address on that problem**, not a rolling window. That
+ * is the strict reading: an agent cannot wait an hour to get the cheap price back. If a window is
+ * ever wanted it has to be built, because nothing here expires. Whose count a run reads is decided
+ * in `attempt.ts`, at `repeatKey`.
  */
 export function submissionPrice(priorSubmissions: number): Usdc {
   if (priorSubmissions === 0) return 0n;

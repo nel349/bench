@@ -151,23 +151,37 @@ const isOver = (a: Attempt): boolean => a.outcome !== "open";
 export const ANONYMOUS = "anonymous";
 
 /**
- * Who a repeated submission is counted against: the label it arrived under, and the address that
- * pays, once one has. The price is set by whichever has submitted more; a submission counts for both.
+ * Whose count prices a run's next submission, and takes it: the address that pays, once the run has
+ * one, and until then the label it arrived under, if it gave one.
  *
- * Not the default label. Every caller that names nothing shares it, so counting under it charged a
- * stranger's first submission as a repeat of somebody else's: on 1 October a new agent paying
- * through the connector paid $0.05 for its first Toll answer. A run with neither a label nor a
- * payer has nothing to be counted against, and counts for nobody anyway.
+ * Never both. It was the label and the address together, priced by whichever had submitted more, and
+ * a label is not anyone's: two strangers who both sent `x-agent: me`, the README's own example,
+ * shared one count, so the second paid $0.05 for a first submission that should have been free.
+ * Labels are public in the feed, so it could be done to someone on purpose. An address cannot be
+ * borrowed, so where there is one it is the whole answer.
  *
- * It was the label alone, which anyone can change, so one address rotating labels took a fresh free
- * first submission, and list price, every time. The address alone would not do either: a run's
- * first submission can be free before any payment has bound an address, and counting from zero
- * again once one had would give that address a second free one.
+ * The label still prices a run nobody has paid into, because that is all such a run has. It says one
+ * thing only, whether its free submission is gone, and is read as no more than that: see
+ * `LABEL_COUNTS_TO`. So the most a label someone else has used can cost is list price, quoted before
+ * anything is paid, and asking a question first avoids it.
+ *
+ * Not the default label. Every caller that names nothing shares it: on 1 October a new agent paying
+ * through the connector paid $0.05 for its first Toll answer.
+ *
+ * The run's own submissions are counted apart from this, in `#submit`, so a run with neither a label
+ * nor a payer is still priced: it answered free without limit when this was its only count.
  */
-const repeatKeys = (a: Attempt): readonly string[] => [
-  ...(a.agent === ANONYMOUS ? [] : [`label:${a.agent}`]),
-  ...(a.payer ? [a.payer] : []),
-];
+const repeatKey = (a: Attempt): string | null =>
+  a.payer ?? (a.agent === ANONYMOUS ? null : `label:${a.agent}`);
+
+/**
+ * The most a label's count is ever read as: its one free submission, used or not.
+ *
+ * Counts kept before 10 October were added to on every submission made under a label, paid or not,
+ * and are still in the database. Read as they stand, a label one address had worn out quoted a
+ * stranger $0.80 for a first submission. Nothing is rewritten; the count is capped where it is read.
+ */
+const LABEL_COUNTS_TO = 1;
 const budgetLeft = (a: Attempt): Usdc | null => (a.budget === null ? null : a.budget - a.spend);
 
 export class Attempts {
@@ -195,9 +209,9 @@ export class Attempts {
    * which answered five concurrent probes against a two-probe budget, charged for five, and
    * recorded one. See `serialize.ts` for why it is a queue and not a lock.
    *
-   * Keyed by run for probes and submissions. The submission *price* is keyed by agent and problem
-   * instead, because that counter is shared across every run an agent has on a problem, and
-   * serialising per run left it losing updates exactly as before.
+   * Keyed by run for probes and submissions. The submission *price* is keyed as well by whose count
+   * it reads, and the problem, because that counter is shared across every run an agent has on a
+   * problem, and serialising per run left it losing updates exactly as before. See `repeatKey`.
    */
   readonly #serial = new Serial();
 
@@ -264,26 +278,43 @@ export class Attempts {
     return { ...paid, answer: answered.answer, paid: PRICE.ask, spend: a.spend };
   }
 
-  /** Submit an answer. A wrong one costs and does not end the run — buy more and try again. */
+  /**
+   * Submit an answer. A wrong one costs and does not end the run — buy more and try again.
+   *
+   * Two queues, the run's and then its count's. The run's is outside, so whose count it is gets
+   * decided from the run as it is when its turn comes: decided on the way in, a question still
+   * queued could bind an address in between, and the submission then read that address's count
+   * with nothing holding it. The cost is that a question on this run waits while its submission
+   * waits for the count, which only happens when one address submits on two runs at once.
+   */
   async submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
-    // Two keys, innermost first: the run, and the counter that prices a repeat across all runs.
-    const a = this.#open(id);
-    // Every counter the price reads, locked in a fixed order, then the run.
-    const locks = repeatKeys(a).map((k) => `price:${k}:${a.problem}`).sort();
-    const run = () => this.#serial.run(`attempt:${id}`, () => this.#submit(id, answer, proof));
-    return locks.reduceRight<() => Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable>>(
-      (inner, key) => () => this.#serial.run(key, inner), run)();
+    return this.#serial.run(`attempt:${id}`, () => {
+      const a = this.#open(id);
+      const key = repeatKey(a);
+      const graded = () => this.#submit(id, answer, proof);
+      return key === null ? graded() : this.#serial.run(`price:${key}:${a.problem}`, graded);
+    });
+  }
+
+  /** What is already counted against whoever this run's next submission is priced by. */
+  #counted(a: Attempt): number {
+    const key = repeatKey(a);
+    if (key === null) return 0;
+    const kept = this.store.priorSubmissions(key, a.problem);
+    return a.payer ? kept : Math.min(kept, LABEL_COUNTS_TO);
   }
 
   async #submit(id: AttemptId, answer: unknown, proof?: string | null): Promise<Graded | Refusal | PaymentRequired | BadPayment | Unavailable> {
     const a = this.#open(id);
-    const price = submissionPrice(Math.max(0, ...repeatKeys(a).map((k) => this.store.priorSubmissions(k, a.problem))));
+    // The run's own submissions always count, whoever else's do.
+    const price = submissionPrice(Math.max(a.submissions, this.#counted(a)));
 
     const paid = await this.#spend(a, price, "submit", proof);
     if (!isSettled(paid)) { this.store.put(a); return paid; }
 
-    // After the payment, so an address it has just bound is counted too.
-    for (const k of repeatKeys(a)) this.store.noteSubmission(k, a.problem);
+    // Read again after the payment, so a submission that bound an address is counted against it.
+    const taker = repeatKey(a);
+    if (taker !== null) this.store.noteSubmission(taker, a.problem);
     a.submissions += 1;
     const solved = this.#problem(a).check(a.seed, answer);
     if (solved) { a.outcome = "solved"; a.endedAt = Date.now(); }
@@ -401,6 +432,8 @@ export class Attempts {
     // Bound once, on the first money that actually moved. See `Attempt.payer`.
     if (charge.payer && a.payer === null) {
       a.payer = charge.payer;
+      // What the run submitted before anyone had paid is this address's now, as the run is.
+      for (let n = 0; n < a.submissions; n++) this.store.noteSubmission(a.payer, a.problem);
       await this.#proveIdentity(a);
     }
     a.spend += amount;

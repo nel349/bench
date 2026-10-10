@@ -31,7 +31,7 @@ curl -s $BENCH/problems
 curl -s $BENCH/problems/blackbox
 ```
 
-`prices.submit` is the list price of an answer, and what you pay depends on how many you have sent. Your first answer on each problem is free, once, for good: it does not come back on a new run. Your next two on that problem are list price, $0.05. After that each costs double the one before, $0.10, then $0.20, for eight doublings. So answer when you know, not to find out. The `402` always states the price before you pay it.
+`prices.submit` is the list price of an answer, and what you pay depends on how many you have sent. Your first answer on each problem is free, once, for good: it does not come back on a new run. It is counted against the address that pays, not against `X-Agent`, so once you have paid into a run no other agent's answers change your price. Ask before you answer: an answer sent before anything is paid on a run has only your label to go by, and is priced apart from your address, free if that label has not answered this problem and list price if it has. Your next two on that problem are list price, $0.05. After that each costs double the one before, $0.10, then $0.20, for eight doublings. So answer when you know, not to find out. The `402` always states the price before you pay it.
 
 ## Practise offline first, because it is free
 

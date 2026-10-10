@@ -1,5 +1,9 @@
 import { expect, test, describe } from "bun:test";
 import { ANONYMOUS, Attempts } from "../../src/gym/attempt.ts";
+import { MemoryStore, SqliteStore, type Store } from "../../src/store/runs.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Charge, Payments } from "../../src/gym/payments.ts";
 import { PRICE, submissionPrice } from "../../src/shared/pricing.ts";
 import { Limiter } from "../../src/http/limits.ts";
@@ -19,6 +23,17 @@ function fromOneAddress(payer: string): Payments & { readonly charged: bigint[] 
     spentBy: () => 0n,
   };
 }
+
+/** Payments that settle and name nobody, so a run under them is never anybody's. */
+const fromNobody: Payments = {
+  async charge(_agent, amount): Promise<Charge> { return { ok: true, paid: amount, spentSoFar: 0n }; },
+  spentBy: () => 0n,
+};
+
+const STORES: readonly (readonly [string, () => Store])[] = [
+  ["memory", () => new MemoryStore()],
+  ["sqlite", () => new SqliteStore(join(mkdtempSync(join(tmpdir(), "bench-repeats-")), "runs.sqlite"))],
+];
 
 describe("repeats are counted per paying address, not per label", () => {
   /**
@@ -59,6 +74,204 @@ describe("repeats are counted per paying address, not per label", () => {
       prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
     }
     expect(prices).toEqual([0n, 0n]);
+  });
+
+  /**
+   * A label is not anyone's. Two strangers who both sent `x-agent: me`, as the README's example
+   * does, shared one count, and the second paid for a first submission that should have been free.
+   */
+  test("two payers under one label each get their own free first submission", async () => {
+    let payer = "0xfirst";
+    const attempts = new Attempts({
+      async charge(_agent, amount): Promise<Charge> { return { ok: true, paid: amount, spentSoFar: 0n, payer }; },
+      spentBy: () => 0n,
+    });
+    const prices: bigint[] = [];
+    for (const who of ["0xfirst", "0xsecond"]) {
+      payer = who;
+      const a = attempts.start("me", "blackbox", `seed-${who}`)!;
+      await attempts.ask(a.id, { side: "up", index: 0 });
+      prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+    }
+    expect(prices).toEqual([0n, 0n]);
+  });
+
+  /**
+   * Nor can a label be run up against whoever uses it next. However many submissions were paid for
+   * under it, the most it costs a run nobody has paid into is list price, and nothing once the run
+   * has a payer of its own.
+   */
+  test("a label someone else wore out costs a newcomer list price at most, and nothing after a question", async () => {
+    let payer = "0xbusy";
+    const attempts = new Attempts({
+      async charge(_agent, amount): Promise<Charge> { return { ok: true, paid: amount, spentSoFar: 0n, payer }; },
+      spentBy: () => 0n,
+    });
+    const busy = attempts.start("me", "blackbox", "seed-busy")!;
+    for (let n = 0; n < 6; n++) await attempts.submit(busy.id, []);
+
+    payer = "0xnew";
+    const blind = attempts.start("me", "blackbox", "seed-blind")!;
+    expect((await attempts.submit(blind.id, []) as { paid: bigint }).paid).toBe(PRICE.submit);
+
+    payer = "0xnewer";
+    const asked = attempts.start("me", "blackbox", "seed-asked")!;
+    await attempts.ask(asked.id, { side: "up", index: 0 });
+    expect((await attempts.submit(asked.id, []) as { paid: bigint }).paid).toBe(0n);
+  });
+
+  /**
+   * A run with no label and no payer had nothing to be counted against, so it was never counted:
+   * six submissions on one such run each cost nothing.
+   */
+  test("a run with no label still pays for its second submission, and its sixth", async () => {
+    const money = fromOneAddress("0xpayer");
+    const attempts = new Attempts(money);
+    const a = attempts.start(ANONYMOUS, "blackbox", "seed-quiet")!;
+    const prices: bigint[] = [];
+    for (let n = 0; n < 6; n++) prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+    expect(prices).toEqual([0, 1, 2, 3, 4, 5].map(submissionPrice));
+  });
+
+  /**
+   * The free submission a run made before anyone paid belongs to whoever then pays, so the address
+   * does not start again from nothing on its next run.
+   */
+  test("what a run submitted before it was paid for counts against the address that pays", async () => {
+    const attempts = new Attempts(fromOneAddress("0xpayer"));
+    const first = attempts.start(ANONYMOUS, "blackbox", "seed-one")!;
+    expect((await attempts.submit(first.id, []) as { paid: bigint }).paid).toBe(0n);
+    await attempts.ask(first.id, { side: "up", index: 0 });      // binds the payer
+
+    const second = attempts.start(ANONYMOUS, "blackbox", "seed-two")!;
+    await attempts.ask(second.id, { side: "up", index: 0 });
+    expect((await attempts.submit(second.id, []) as { paid: bigint }).paid).toBe(submissionPrice(1));
+  });
+
+  /**
+   * The same when it is a submission that binds the address, not a question: the run's free one and
+   * the paid one are both the address's, so its next run starts at a third.
+   */
+  test("and when a paid submission is what binds the address", async () => {
+    const attempts = new Attempts(fromOneAddress("0xpayer"));
+    const first = attempts.start(ANONYMOUS, "blackbox", "seed-one")!;
+    await attempts.submit(first.id, []);                         // free, and nobody's yet
+    await attempts.submit(first.id, []);                         // paid, which binds the address
+
+    const second = attempts.start(ANONYMOUS, "blackbox", "seed-two")!;
+    await attempts.ask(second.id, { side: "up", index: 0 });
+    const prices = [];
+    for (let n = 0; n < 2; n++) prices.push((await attempts.submit(second.id, []) as { paid: bigint }).paid);
+    expect(prices).toEqual([submissionPrice(2), submissionPrice(3)]);
+  });
+
+  /**
+   * The bug of 1 October, for a caller that submits before it asks: every caller that names
+   * nothing arrives under one default label, which must count for nobody.
+   */
+  test("two unpaid runs with no label each get a free first submission", async () => {
+    const attempts = new Attempts(fromOneAddress("0xpayer"));
+    const prices: bigint[] = [];
+    for (const seed of ["seed-a", "seed-b"]) {
+      const a = attempts.start(ANONYMOUS, "blackbox", seed)!;
+      prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+    }
+    expect(prices).toEqual([0n, 0n]);
+  });
+
+  /**
+   * Counts kept before 10 October rose with every submission under a label. A label one address
+   * had worn out quoted a stranger $0.80 for a first submission, from the database as it stood.
+   */
+  for (const [kind, make] of STORES) {
+    test(`a label's count from before is read as its one free submission and no more (${kind})`, async () => {
+      const store = make();
+      for (let n = 0; n < 6; n++) store.noteSubmission("label:me", "blackbox");
+      const attempts = new Attempts(fromOneAddress("0xnew"), store);
+
+      const blind = attempts.start("me", "blackbox", "seed-blind")!;
+      expect((await attempts.submit(blind.id, []) as { paid: bigint }).paid).toBe(PRICE.submit);
+    });
+
+    test(`two payers under one label, kept in ${kind}`, async () => {
+      let payer = "0xfirst";
+      const attempts = new Attempts({
+        async charge(_agent, amount): Promise<Charge> { return { ok: true, paid: amount, spentSoFar: 0n, payer }; },
+        spentBy: () => 0n,
+      }, make());
+      const prices: bigint[] = [];
+      for (const who of ["0xfirst", "0xsecond", "0xfirst"]) {
+        payer = who;
+        const a = attempts.start("me", "blackbox", `seed-${prices.length}`)!;
+        await attempts.ask(a.id, { side: "up", index: 0 });
+        prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+      }
+      expect(prices).toEqual([0n, 0n, PRICE.submit]);
+    });
+  }
+
+  /**
+   * A run's own submissions are the least its count can be, whoever it is priced by: under a label
+   * where no payment ever names an address, and for an address whose own count is behind the run.
+   */
+  test("a labelled run that never gets a payer still climbs by its own submissions", async () => {
+    const attempts = new Attempts(fromNobody);
+    const a = attempts.start("me", "blackbox", "seed-nobody")!;
+    const prices: bigint[] = [];
+    for (let n = 0; n < 6; n++) prices.push((await attempts.submit(a.id, []) as { paid: bigint }).paid);
+    expect(prices).toEqual([0, 1, 2, 3, 4, 5].map(submissionPrice));
+  });
+
+  test("a paid run whose address has a smaller count is priced by the run's own", async () => {
+    const store = new MemoryStore();
+    const attempts = new Attempts(fromOneAddress("0xpayer"), store);
+    const a = attempts.start(ANONYMOUS, "blackbox", "seed-carried")!;
+    // A run from before the address was given what its run had submitted: three in, none counted.
+    store.put({ ...store.get(a.id)!, payer: "0xpayer", submissions: 3 });
+    expect((await attempts.submit(a.id, []) as { paid: bigint }).paid).toBe(submissionPrice(3));
+  });
+
+  /**
+   * A submission sent in the same breath as its run's first question. The question binds the
+   * address, so the submission is priced by that address's count, and has to wait its turn for it:
+   * with whose count decided on the way in, it read the count while another run's submission was
+   * still being paid for, and both were priced as the same one.
+   */
+  test("a submission behind the question that binds its run waits for that address's count", async () => {
+    const waiting: { amount: bigint; release: () => void }[] = [];
+    let held = false;
+    const attempts = new Attempts({
+      async charge(_agent, amount): Promise<Charge> {
+        if (held) await new Promise<void>((release) => waiting.push({ amount, release }));
+        return { ok: true, paid: amount, spentSoFar: 0n, payer: "0xpayer" };
+      },
+      spentBy: () => 0n,
+    });
+    const settle = () => new Promise((done) => setTimeout(done, 0));
+
+    const earlier = attempts.start(ANONYMOUS, "blackbox", "seed-earlier")!;
+    await attempts.ask(earlier.id, { side: "up", index: 0 });
+    await attempts.submit(earlier.id, []);
+    await attempts.submit(earlier.id, []);                       // the address has submitted twice
+    const bound = attempts.start(ANONYMOUS, "blackbox", "seed-bound")!;
+    await attempts.ask(bound.id, { side: "up", index: 0 });
+    const fresh = attempts.start(ANONYMOUS, "blackbox", "seed-fresh")!;
+
+    held = true;
+    const third = attempts.submit(bound.id, []) as Promise<{ paid: bigint }>;
+    const question = attempts.ask(fresh.id, { side: "up", index: 0 });
+    const fourth = attempts.submit(fresh.id, []) as Promise<{ paid: bigint }>;
+    await settle();
+    waiting.splice(waiting.findIndex((w) => w.amount === PRICE.ask), 1)[0]!.release();
+    await question;
+    await settle();
+
+    // Only the third is being paid for. The fourth has not been priced yet.
+    expect(waiting.map((w) => w.amount)).toEqual([submissionPrice(2)]);
+    held = false;
+    waiting[0]!.release();
+    expect((await third).paid).toBe(submissionPrice(2));
+    expect((await fourth).paid).toBe(submissionPrice(3));
   });
 });
 
