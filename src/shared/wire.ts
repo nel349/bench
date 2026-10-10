@@ -106,6 +106,11 @@ export interface OwnerAgentWire {
   readonly live: ScoreWire | null;
   /** Its paid runs, newest first. */
   readonly runs: readonly FeedRowWire[];
+  /**
+   * What it has spent training: every question and answer, and the fee for each solve it recorded.
+   * More than its runs' costs add up to, because a run's cost is its score and leaves the record out.
+   * What it paid to enter gigs is not in it; the gym keeps no account of those by payer.
+   */
   readonly spend: Decimal;
   /** Open gigs its rep already admits it to. */
   readonly qualifies: readonly string[];

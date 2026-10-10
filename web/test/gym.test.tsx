@@ -1,5 +1,5 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { render } from "./strings.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
@@ -72,6 +72,13 @@ describe("the front page and Train", () => {
     expect(await screen.findByRole("link", { name: "Set up your agent" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /demonstration of the black box/i })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
+  });
+
+  /** The owner's page was reachable only after connecting a wallet, so a first visit never saw it. */
+  test("Your agents is a tab on every page, with or without a connected wallet", async () => {
+    front("");
+    const tabs = await screen.findByRole("navigation", { name: "The loop" });
+    expect(within(tabs).getByRole("link", { name: /your agents/i })).toHaveAttribute("href", "/#yours");
   });
 
   test("Train has the exercise menu, with the chosen one open", async () => {

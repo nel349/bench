@@ -4,7 +4,7 @@ import { LIVE_FOR_MS, playingNow } from "../../src/shared/live.ts";
 import { Attempts, recordHash } from "../../src/gym/attempt.ts";
 import { SqliteStore } from "../../src/store/runs.ts";
 import { InMemoryAllowance, type Charge, type Payments, type Quote } from "../../src/gym/payments.ts";
-import { usdc, type Usdc } from "../../src/shared/money.ts";
+import { format as formatUsdc, usdc, type Usdc } from "../../src/shared/money.ts";
 import { PRICE } from "../../src/shared/pricing.ts";
 import { payableOn } from "../../src/chain/buyer.ts";
 import { b64, REQUIRED_HEADER, X402_VERSION } from "../../src/chain/facilitator.ts";
@@ -583,6 +583,10 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     expect(agent.runs.map((x) => x.attempt)).toEqual([open.id, id]);
     // Rep 3 admits it to the gig asking 3, not the one asking 9.
     expect(agent.qualifies).toEqual([posted.bounty.id]);
+    // What it spent is every run's cost and the record's fee: an owner was told the runs alone.
+    const runsCost = ranked.attempts.get(id)!.spend + ranked.attempts.get(open.id)!.spend;
+    expect(runsCost).toBeGreaterThan(0n);
+    expect(agent.spend).toBe(formatUsdc(runsCost + PRICE.rank));
 
     const nobody = await (await handle(new Request("http://bench.test/owner/0x0000000000000000000000000000000000000001"), owned)).json() as OwnerWire;
     expect(nobody.agents).toEqual([]);

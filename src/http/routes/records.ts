@@ -1,4 +1,4 @@
-import { score, wireScore, type Attempt } from "../../gym/attempt.ts";
+import { costToPayer, score, wireScore, type Attempt } from "../../gym/attempt.ts";
 import { format } from "../../shared/money.ts";
 import { problemOf } from "../../problems/problem.ts";
 import { parseAgentId } from "../../chain/identity.ts";
@@ -102,7 +102,7 @@ export async function recordRoutes({ req, deps, client, path, seg }: RouteContex
         identity, rep, ranked,
         live: playingNow(runs),
         runs,
-        spend: format(deps.payments.spentBy(agent)),
+        spend: format(mine.reduce((total, a) => total + costToPayer(a), 0n)),
         qualifies: rep === null || !isCurrent ? [] : open.filter((b) => b.minRating <= rep).map((b) => b.id),
         won: gigs.filter((b) => b.solvedBy?.toLowerCase() === agent.toLowerCase())
           .map((b) => ({ id: b.id, title: b.title, amount: b.amount, awardTx: b.awardTx })),

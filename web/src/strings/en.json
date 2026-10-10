@@ -216,7 +216,7 @@
   "agent.ends": "Allowance ends",
   "agent.endedOrUsed": "ended or used up",
   "agent.noEnd": "no end date",
-  "agent.spent": "Spent on Bench",
+  "agent.spent": "Spent training",
   "agent.playing": "Playing {exercise} now: {count, plural, one {# question} other {# questions}}, {spend} so far",
   "agent.idle": "Not playing right now. Its runs appear here as they happen.",
   "agent.recorded": "Recorded: {list}",

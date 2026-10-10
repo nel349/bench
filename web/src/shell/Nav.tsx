@@ -34,10 +34,13 @@ export function Nav({ current, wallet }: NavProps) {
       {item("ledger", viewHref("ledger"), "nav.rep", "02")}
       <span className="arrow">→</span>
       {item("gigs", viewHref("gigs"), "nav.gigs", "03")}
-      {/* Apart from the loop, because it is not a step in it: it is whose agents the loop is about. */}
+      {/*
+        * Not a step in the loop but whose agents it is about, and the page an owner comes back to: a
+        * tab always, connected or not. Without a wallet it asks for one.
+        */}
       <span className="nav-gap" />
-      <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onDisconnect={wallet.forget}
-                    current={current === "yours"} />
+      {item("yours", wallet.owner === null ? viewHref("yours") : viewHref("yours", wallet.owner), "nav.yours", "//")}
+      <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onDisconnect={wallet.forget} />
     </nav>
   );
 }

@@ -616,7 +616,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   /* The wallet sits in the brand's row, so the header is two rows on a phone, not three. */
   .nav .nav-gap { display: none; }
   .nav .wallet-chip, .nav .wallet-connect { position: absolute; top: 20px; right: 22px; }
-  .nav .wallet-address { display: none; }
+  .nav .wallet-chip { gap: 8px; }
 
   .home { grid-template-columns: 1fr; height: auto; gap: 44px; }
   .stage { height: auto; }
@@ -820,7 +820,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
  */
 .see-all { display: none; }
 @media (max-width: 640px) {
-  .nav { column-gap: 20px; }
+  .nav { column-gap: 16px; }
   .nav-item { font-size: 12px; letter-spacing: 0.1em; }
   .nav-item .n, .nav .arrow, .rail-no { display: none; }
   .edge.bottom { display: none; }

@@ -118,6 +118,15 @@ export type Malformed = { readonly malformed: true };
 export interface Settled { readonly payer?: string; readonly settlement?: string }
 
 export type Asked = Settled & { readonly answer: unknown; readonly paid: Usdc; readonly spend: Usdc };
+/**
+ * What a run cost whoever paid for it: its questions and answers, and the record if it was recorded.
+ *
+ * `spend` alone is the score, the cost to solve, and deliberately leaves the record's fee out so a
+ * leaderboard compares solving with solving. An owner asking what their agent spent is asking a
+ * different question, and was being told $1.89 for an agent that had paid $4.14.
+ */
+export const costToPayer = (a: Attempt): Usdc => a.spend + (a.rank ? PRICE.rank : 0n);
+
 /** Ranked: where the record was written, and what this call charged, which is nothing on a retry. */
 export type Ranked = Settled & { readonly ranked: string; readonly paid: Usdc } |
   Settled & { readonly unwritten: string; readonly paid: Usdc };

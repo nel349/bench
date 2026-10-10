@@ -139,21 +139,20 @@ describe("connecting a wallet", () => {
     expect(connectUrl(null, "http://bench.test")).toBeNull();
   });
 
-  test("the header offers Connect wallet, or the connected wallet with its agents and Disconnect", async () => {
+  test("the header offers Connect wallet, or the connected wallet and Disconnect", async () => {
     const user = userEvent.setup();
-    const { rerender } = render(<WalletButton owner={null} connectHref={CONNECT} onDisconnect={() => {}} current={false} />);
+    const { rerender } = render(<WalletButton owner={null} connectHref={CONNECT} onDisconnect={() => {}} />);
     expect(screen.getByRole("link", { name: "Connect wallet" })).toHaveAttribute("href", CONNECT);
 
     const disconnect = vi.fn();
-    rerender(<WalletButton owner={WALLET} connectHref={CONNECT} onDisconnect={disconnect} current={false} />);
-    expect(screen.getByRole("link", { name: /your agents/i })).toHaveAttribute("href", `/#yours/${WALLET}`);
+    rerender(<WalletButton owner={WALLET} connectHref={CONNECT} onDisconnect={disconnect} />);
     expect(screen.getByText("0x9fa9…8b28")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Disconnect" }));
     expect(disconnect).toHaveBeenCalled();
   });
 
   test("where no wallet serves the network, the header offers nothing to connect", () => {
-    const { container } = render(<WalletButton owner={null} connectHref={null} onDisconnect={() => {}} current={false} />);
+    const { container } = render(<WalletButton owner={null} connectHref={null} onDisconnect={() => {}} />);
     expect(container).toBeEmptyDOMElement();
   });
 });
