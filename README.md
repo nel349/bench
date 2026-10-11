@@ -117,7 +117,7 @@ caught a function that does not exist on Arc. Both need a network, which is why 
 
 The page's **Set up** screen walks it in five steps, three on your phone and two on your laptop:
 
-1. **Open the wallet, and add test USDC.** The wallet is the Agent Mandate app, built for the web, at
+1. **Open the wallet, and add test USDC.** The wallet is the Mandate, built for the web, at
    <https://kuiralabs.github.io/mandate/>. It opens in a phone's browser and makes a wallet with a
    passkey: no seed phrase, no extension, nothing to install.
 2. **Connect your agent.** Add the skill, and the [arc-mandate connector](https://github.com/nel349/arc-agent-mandate/blob/main/mcp/README.md),
