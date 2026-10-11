@@ -174,6 +174,40 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .exhibit .legend { display: none; }
 }
 
+/*
+ * The demo sits under the rail of exercises, and a laptop's browser leaves about 630 of a 768
+ * screen. Stacked, the demo did not fit: the sentence saying what
+ * the agent has just done, the part that explains the picture, was a scroll down, and shrinking the
+ * board to make room left it the size of a stamp. A short window is a wide one, so here the words go
+ * beside the picture and not above it: what the exercise is and what just happened on the left, the
+ * board and its readout on the right, all on the first screen.
+ *
+ * Only the demo. The other exercises are a card and a leaderboard under the same `.exhibit`, and
+ * side by side those were a card squeezed to a column. And only from 1024 wide: narrower than that
+ * the two columns do not fit, and the page keeps the stacked layout it has always had. A taller
+ * window is as it was.
+ */
+@media (max-height: 800px) and (min-width: 1024px) {
+  .train .demo-run {
+    display: grid; align-items: start; justify-content: center;
+    /* The narrow end of the first column is what leaves room, at 1024 wide, for a scrollbar beside it. */
+    grid-template-columns: minmax(220px, 340px) auto;
+    grid-template-areas: "head rig" "said rig";
+    grid-template-rows: auto 1fr;
+    column-gap: clamp(24px, 4vw, 56px);
+  }
+  .train .demo-run .exhibit-head { grid-area: head; max-width: none; margin: 0; }
+  /* In a narrow column the line above the title wraps whole things, never the words inside one. */
+  .train .demo-run .ex-line { flex-wrap: wrap; row-gap: 6px; }
+  .train .demo-run .ex-line > * { white-space: nowrap; }
+  .train .demo-run .rig { grid-area: rig; gap: clamp(20px, 3vw, 48px); }
+  .train .demo-run .narration { grid-area: said; margin: 16px 0 0; max-width: none; text-align: left; }
+  .train .demo-run .holo { width: min(calc((100vh - 280px) * 1.15), 30vw, 460px); }
+  .train .demo-run .telemetry { padding: 14px 20px; }
+  .train .demo-run .telemetry .panel-title { padding-bottom: 8px; }
+  .train .demo-run .telemetry dl > div { padding: 5px 0; }
+}
+
 .lattice .grid line { stroke: var(--lattice); stroke-width: 0.018; }
 .lattice .bound {
   fill: rgba(106, 64, 255, 0.05); stroke: var(--lattice-hot); stroke-width: 0.03;
@@ -279,33 +313,45 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .grain::after, .blink, .running-label::after, .holo.flatline { animation: none; }
 }
 
-/* ═══ the loop, as navigation ════════════════════════════════════════════════════════════════ */
+/* ═══ the pages, as navigation ═══════════════════════════════════════════════════════════════ */
 
-.nav { display: flex; align-items: center; gap: 12px; }
+/* A row of pages, in the order an owner needs them. No numbers and no arrows: it is not a sequence. */
+.nav { display: flex; align-items: center; gap: 22px; }
 .nav-item {
   color: var(--text-dim); text-decoration: none; font-size: 11px; letter-spacing: 0.2em;
-  display: inline-flex; gap: 6px; align-items: baseline; padding: 2px 0;
-  border-bottom: 1px solid transparent;
+  padding: 2px 0; border-bottom: 1px solid transparent;
 }
-.nav-item .n { color: var(--text-faint); font-family: var(--mono); font-size: 9px; }
 .nav-item:hover { color: var(--text); }
 .nav-item.on { color: var(--signal); border-bottom-color: var(--signal); }
-.nav-item.on .n { color: var(--signal-dim); }
-.nav .arrow { color: var(--text-faint); font-size: 10px; }
-.loop-line { color: var(--text-faint); letter-spacing: 0.3em; }
 
-/* ═══ the rig view ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══ the first screen ═══════════════════════════════════════════════════════════════════════ */
 
 .home {
   width: 100%; height: 100%;
-  display: grid; grid-template-columns: minmax(300px, 380px) 1fr;
-  gap: clamp(28px, 4vw, 64px); align-items: center;
+  display: grid; grid-template-columns: minmax(300px, 470px) minmax(320px, 520px);
+  gap: clamp(28px, 5vw, 80px); align-items: center; justify-content: center;
 }
-.home .stage { justify-content: center; }
+.home .sub { max-width: 46ch; }
+.home .intro .fine { margin-top: 18px; font-size: 12px; }
 
-/* Train: the exercises, one chosen, the rest one tap away along the rail. */
+/* What an owner does, as three numbered cards: these are steps, and they are theirs. */
+.how-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.how-steps li {
+  display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 14px; padding: 14px 16px;
+  background: var(--panel); border: 1px solid var(--lattice);
+}
+.how-steps h3 { margin: 2px 0 0; font-size: 16px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+.how-steps p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+
+/* A few facts in a row: what each is in small capitals, and the fact beside it. */
+.facts { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--lattice); }
+.facts > div { display: flex; align-items: baseline; gap: 8px; }
+.facts dt { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); }
+.facts dd { margin: 0; font-size: 13.5px; color: var(--text); }
+.facts a { color: var(--signal); }
+
+/* One exercise: the rest one tap away along the rail, and it beneath. */
 .train { width: 100%; height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
-.train > .kicker { margin: 0; }
 
 .kicker {
   margin: 0 0 18px; font-size: 11px; font-weight: 600; letter-spacing: 0.28em; text-transform: uppercase;
@@ -346,15 +392,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .btn.primary { background: var(--signal); color: var(--void); border-color: var(--signal); }
 .btn.primary:hover { background: #dbff5c; color: var(--void); }
 .btn:focus-visible { outline: 1px solid var(--signal); outline-offset: 4px; }
-
-.gig-teaser {
-  display: flex; align-items: center; gap: 14px; margin-top: 30px; text-decoration: none;
-  padding: 14px 16px; border-left: 2px solid var(--core);
-  background: linear-gradient(90deg, rgba(255,46,136,0.10), transparent);
-}
-.gig-count { font-family: var(--display); font-size: 34px; font-weight: 700; color: var(--core); line-height: 1; }
-.gig-label { font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-dim); line-height: 1.6; }
-.gig-label .amount { color: var(--core); }
+button.btn { cursor: pointer; }
 
 /* ─── the exhibit ─── */
 
@@ -362,7 +400,6 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 
 .exhibit-head { align-self: stretch; max-width: 640px; margin: 0 auto 6px; }
 .ex-line { display: flex; align-items: center; gap: 12px; }
-.ex-no { font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--text-faint); }
 
 /* Said plainly and first: this is a simulation, not somebody's live run. */
 .demo-tag {
@@ -406,10 +443,6 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 
 /* ─── the rack: every exercise, and the one chosen ─── */
 
-/* The right-hand column of the rig: the rack along the top, the chosen exercise beneath it. */
-/* The rack stays in one place whichever exercise is chosen; only what is beneath it changes. */
-.stage { display: flex; flex-direction: column; min-width: 0; height: 100%; justify-content: flex-start; gap: 14px; }
-
 /* Wraps rather than scrolls: at 1280 wide a scrolling rail hid its seventh exercise past the edge. */
 .rail {
   display: flex; flex-wrap: wrap; gap: 2px; align-self: center; max-width: 100%;
@@ -422,8 +455,9 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 }
 .rail-item:hover { color: var(--text); }
 .rail-item.on { color: var(--signal); border-bottom-color: var(--signal); }
-.rail-no { font-family: var(--mono); font-size: 9px; color: var(--text-faint); }
-.rail-item.on .rail-no { color: var(--signal-dim); }
+/* The way back to the list of them all, set apart from the exercises themselves. */
+.rail-all { color: var(--signal); margin-right: 10px; }
+.rail-all::before { content: "‹ "; }
 /* How hard, as three marks: a level is read at a glance before its name is. */
 .rail-level { display: inline-flex; gap: 2px; align-self: center; }
 .rail-level i { width: 4px; height: 7px; background: var(--lattice-hot); transform: skewX(-18deg); }
@@ -494,7 +528,9 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 /* ═══ gigs and the record ════════════════════════════════════════════════════════════════════ */
 
 .board { width: 100%; height: 100%; overflow-y: auto; padding: 8px 4px 24px; }
-.board-head { max-width: 720px; margin-bottom: 26px; }
+.board-head { max-width: 720px; margin-bottom: 22px; }
+/* A page's own introduction is read across, not down a narrow column as the first screen's is. */
+.board-head .sub { max-width: 68ch; margin-top: 14px; }
 .board-title {
   margin: 0; font-family: var(--display); font-weight: 700; text-transform: uppercase;
   font-size: clamp(30px, 3.6vw, 48px); line-height: 1; color: var(--text);
@@ -515,7 +551,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .gig.expired { opacity: 0.5; }
 .gig.taken { opacity: 0.85; }
 .gig-pay .amount { font-size: 30px; color: var(--core); font-weight: 600; }
-.gig h3 { margin: 10px 0 6px; font-family: var(--display); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
+.gig h4 { margin: 10px 0 6px; font-family: var(--display); font-size: 17px; font-weight: 600; letter-spacing: 0.02em; }
 .gig p { margin: 0; color: var(--text-dim); font-size: 13px; line-height: 1.5; }
 .gig-meta {
   display: flex; justify-content: space-between; margin-top: 18px; padding-top: 12px;
@@ -531,8 +567,6 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 
 /* ═══ yours: one owner's agents ══════════════════════════════════════════════════════════════ */
 
-.nav .nav-gap { width: 1px; height: 14px; margin: 0 4px; background: var(--lattice-hot); }
-
 /* The wallet's place in the header: Connect wallet, or the connected wallet. */
 .wallet-connect {
   font-size: 11px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; text-decoration: none;
@@ -547,23 +581,66 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   color: var(--text-dim); background: none; border: 1px solid var(--lattice-hot); padding: 3px 7px;
 }
 .wallet-disconnect:hover { color: var(--ice); border-color: var(--ice); }
-.yours-connect { margin: 0 0 18px; }
+/* Its own width: a board is a column, and a button stretched across one reads as a banner. */
+.yours-connect { margin: 0 0 18px; align-self: flex-start; }
 
 .owner-agent {
-  max-width: 900px; margin: 0 0 22px; padding: 18px 20px 20px;
+  max-width: 1120px; margin: 0 0 22px; padding: 18px 20px 20px;
   background: var(--panel); border: 1px solid var(--lattice-hot);
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
 }
-.owner-agent-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-.owner-agent-head h3 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.02em; color: var(--text); }
+.owner-agent-head { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; }
+.owner-agent-head h3 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: 0.02em; color: var(--text); }
 .owner-agent-head .proof { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
-.owner-stats dd .of { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+.owner-agent-head .btn { padding: 11px 16px; }
+
+/* The sentence that sends it training again, opened by the button above it. */
+.say-again { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--signal-dim); background: linear-gradient(90deg, rgba(198,255,26,0.07), transparent); }
+.say-again p { margin: 0; font-size: 13px; color: var(--text-dim); }
+
+/* The four answers an owner wants first, each a figure and a line under it. */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 14px 0 0; }
+.tile { background: var(--void); border: 1px solid var(--lattice); padding: 13px 15px 14px; }
+.tile.lead { border-color: var(--signal-dim); background: linear-gradient(180deg, rgba(198,255,26,0.07), transparent); }
+.tile dt { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); }
+.tile dd { margin: 8px 0 0; }
+.tile-figure { display: block; font-family: var(--display); font-size: 21px; font-weight: 600; line-height: 1.15; color: var(--text); text-decoration: none; }
+.tile-figure .amount { font-size: 23px; }
+a.tile-figure { color: var(--signal); }
+a.tile-figure:hover { text-decoration: underline; text-underline-offset: 4px; }
+.tile-figure.none { font-size: 15px; font-weight: 500; color: var(--text-dim); }
+.tile-note { display: block; margin-top: 5px; font-size: 12.5px; color: var(--text-dim); }
+.tile-note .none { font-size: inherit; }
+
+/* What it may still spend, on one line, with how much of the limit is left drawn beside it. */
+.allowance-line {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 10px 0 0; padding: 11px 15px;
+  border: 1px solid var(--lattice); background: var(--void); font-size: 13.5px;
+}
+.allowance-line dt { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-faint); }
+.allowance-line dd { margin: 0; }
+.allowance-line .none { font-size: inherit; }
+.allowance-line a { color: var(--signal); font-size: 12.5px; }
+.allowance-bar { flex: 1 1 140px; min-width: 100px; height: 6px; background: var(--lattice); overflow: hidden; }
+.allowance-bar span { display: block; height: 100%; background: var(--signal); }
+
+/* Its best on each exercise beside what it did lately. */
+.agent-cols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 26px; margin-top: 20px; }
+.agent-cols h4 { margin: 0 0 10px; font-weight: 400; }
+.agent-cols .owner-runs { margin-top: 0; }
+.best-table a { color: var(--text); text-decoration: none; }
+.best-table a:hover { color: var(--signal); }
+.best-table .mark { margin-left: 8px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--core); }
+.best-table tr.unsolved td { color: var(--text-dim); }
+.best-table .none { font-size: 12px; }
+.owner-next { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--lattice-hot); }
+.owner-next p:last-child { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-dim); }
+.owner-next a { color: var(--signal); }
 .owner-live {
   display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding: 10px 12px;
   font-size: 13px; color: var(--text-dim); border: 1px dashed var(--lattice);
 }
 .owner-live.on { color: var(--signal); border-style: solid; border-color: var(--signal-dim); }
-.owner-ranked { margin: 12px 0 0; font-size: 12.5px; color: var(--text-dim); }
 .owner-gigs { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--lattice); }
 .owner-gigs ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .owner-gigs li { font-size: 13px; color: var(--text); }
@@ -571,11 +648,15 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 .owner-runs { margin-top: 16px; }
 .owner-since { max-width: 900px; margin: 0 0 16px; padding: 10px 12px; font-size: 13px; color: var(--signal); border-left: 2px solid var(--signal); background: linear-gradient(90deg, rgba(198,255,26,0.07), transparent); }
 .new-tag { margin-left: 8px; padding: 1px 5px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--void); background: var(--signal); }
-.owner-revoked dd .none { color: var(--ice); }
+
+/* The step the others lead up to: the one sentence that is the whole of training. */
+.journey li.key { margin: 0 -10px; padding: 12px 10px; border: 1px solid var(--signal-dim); background: linear-gradient(90deg, rgba(198,255,26,0.07), transparent); }
 
 /* Set up, as a checklist once a wallet is connected. */
 .journey li.done .step-n { color: var(--void); background: var(--signal-dim); border-color: var(--signal-dim); }
 .journey li.done h3, .journey li.done > .step-body > p { opacity: 0.55; }
+/* The sentence is said again every time the agent is sent to train, so that step never fades. */
+.journey li.done.key h3, .journey li.done.key > .step-body > p { opacity: 1; }
 .journey li.next .step-n { box-shadow: 0 0 0 2px var(--signal); }
 .journey-connect { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 10px 12px; border: 1px dashed var(--lattice-hot); }
 .journey-connect p { margin: 0; font-size: 12.5px; color: var(--text-dim); }
@@ -599,7 +680,7 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 
   /*
    * On a phone the plate stops being a fixed frame and becomes a column that scrolls. The edges are
-   * no longer placed on the frame line but put in order: the brand, the loop, the content, then the
+   * no longer placed on the frame line but put in order: the brand, the pages, the content, then the
    * footing — because absolutely placed edges on a narrow screen land on top of each other.
    */
   .plate { position: relative; min-height: 100%; display: flex; flex-direction: column; overflow-x: hidden; }
@@ -614,13 +695,11 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .edge.middle    { transform: none; }
   .nav { flex-wrap: wrap; row-gap: 8px; }
   /* The wallet sits in the brand's row, so the header is two rows on a phone, not three. */
-  .nav .nav-gap { display: none; }
   .nav .wallet-chip, .nav .wallet-connect { position: absolute; top: 20px; right: 22px; }
   .nav .wallet-chip { gap: 8px; }
 
   .home { grid-template-columns: 1fr; height: auto; gap: 44px; }
   .train { height: auto; overflow: visible; }
-  .stage { height: auto; }
   /* Wrapped, not scrolled: on a phone a scrolled rack hides the exercise that is chosen. */
   .rail { align-self: stretch; flex-wrap: wrap; overflow-x: visible; }
   .rail-item { padding: 7px 9px 6px; }
@@ -638,6 +717,8 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .board { height: auto; overflow: visible; }
   .load { grid-template-columns: 1fr; height: auto; }
   .balances { grid-template-columns: 1fr; }
+  .agent-cols { grid-template-columns: 1fr; }
+  .board-head.with-action { flex-direction: column; align-items: flex-start; }
 }
 
 /* ═══ load: funding an agent ═════════════════════════════════════════════════════════════════ */
@@ -773,6 +854,81 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
   .balances { grid-template-columns: 1fr; }
 }
 
+/* ═══ exercises, as a list ═══════════════════════════════════════════════════════════════════ */
+
+.board-head.with-action { max-width: none; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px 40px; }
+.board-head.with-action > div { max-width: 720px; }
+.board-head.with-action .sub { max-width: 64ch; }
+.section-title {
+  margin: 0; font-family: var(--display); font-size: 19px; font-weight: 700; letter-spacing: 0.03em;
+  text-transform: uppercase; color: var(--text);
+}
+
+.price-line {
+  list-style: none; display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 0 0 14px; padding: 10px 16px;
+  border: 1px solid var(--lattice); font-size: 13px; color: var(--text);
+}
+.price-line .dim { color: var(--text-dim); }
+
+.ex-rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--lattice); background: var(--panel); }
+.ex-rows li + li { border-top: 1px solid var(--lattice); }
+/* The title is the link, and it covers the row, so the whole row opens the exercise. */
+.ex-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 12px 16px; color: var(--text); }
+.ex-row:hover { background: rgba(70, 58, 133, 0.22); }
+.ex-link { color: inherit; text-decoration: none; }
+.ex-link::after { content: ""; position: absolute; inset: 0; }
+.ex-link:focus-visible { outline: none; }
+.ex-link:focus-visible::after { outline: 1px solid var(--signal); outline-offset: -1px; }
+.ex-what { flex: 2.4 1 340px; min-width: 0; }
+.ex-what h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+.ex-row:hover .ex-link { color: var(--signal); }
+.ex-what p { margin: 3px 0 0; font-size: 13px; line-height: 1.45; color: var(--text-dim); }
+.ex-cell { flex: 1 1 130px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; font-size: 14px; }
+.ex-cell .cap { font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-faint); }
+.ex-cell .small { font-size: 12px; color: var(--text-dim); }
+.ex-cell .none { font-size: 13px; }
+.level-word { display: inline-block; }
+.level-word::first-letter { text-transform: uppercase; }
+.tag {
+  font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; padding: 2px 6px;
+  color: var(--text-dim); border: 1px solid var(--lattice-hot);
+}
+.tag.open { color: var(--signal); border-color: var(--signal-dim); }
+.exercises > .fine a { color: var(--signal); }
+
+/* ═══ standings ══════════════════════════════════════════════════════════════════════════════ */
+
+.standings-cols { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 22px 30px; margin-bottom: 30px; }
+.standings-main { flex: 2 1 560px; min-width: 0; }
+.standings-records { flex: 1 1 280px; min-width: 0; }
+.standings-table td { vertical-align: middle; }
+.standings-table .place { font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--text-dim); }
+.standings-table tr:first-child .place { color: var(--signal); }
+.standings-table .rep-cell { font-family: var(--display); font-size: 19px; font-weight: 700; color: var(--text); }
+.standings-table a.agent { font-family: var(--display); font-size: 15px; font-weight: 600; color: var(--text); text-decoration: none; }
+.standings-table a.agent:hover { color: var(--signal); }
+.standings-table tr.mine td { background: rgba(198, 255, 26, 0.05); }
+.standings-table tr.mine td:first-child { box-shadow: inset 3px 0 0 var(--signal); padding-left: 12px; }
+.standings-join {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px;
+  margin-top: 14px; padding: 12px 16px; border: 1px dashed var(--lattice-hot);
+}
+.standings-join p { margin: 0; font-size: 13px; color: var(--text-dim); }
+.standings-join .btn { padding: 10px 16px; }
+.standings-records ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--lattice); background: var(--panel); }
+.standings-records li + li { border-top: 1px solid var(--lattice); }
+.standings-records li a { display: flex; justify-content: space-between; gap: 12px; padding: 9px 14px; font-size: 13.5px; color: var(--text); text-decoration: none; }
+.standings-records li a:hover { background: rgba(70, 58, 133, 0.22); }
+.standings-records b { font-weight: 600; }
+.standings-records .dim { color: var(--text-faint); font-size: 12px; }
+.runs-record { margin-top: 34px; }
+.runs-record .sub { margin: 8px 0 18px; max-width: 64ch; font-size: 13.5px; }
+
+/* Gigs: what is open, and what has finished. */
+.board > .facts { margin: 0 0 6px; padding: 10px 16px; border: 1px solid var(--lattice); }
+.gig-group { margin-top: 24px; }
+.gig-group .section-title { margin-bottom: 14px; }
+
 /* ═══ nothing here yet ═══════════════════════════════════════════════════════════════════════ */
 
 .board { display: flex; flex-direction: column; }
@@ -812,20 +968,23 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
     content: attr(data-label); margin-right: 8px; font-size: 10px; letter-spacing: 0.16em;
     text-transform: uppercase; color: var(--text-faint);
   }
+  /* The place, then the agent beside it, read from the left as one line. */
+  .standings-table tr { grid-template-columns: auto 1fr; }
+  .standings-table tr.mine td:first-child { padding-left: 10px; }
   .ledger-scroll { overflow-x: visible; }
 }
 
 /*
- * A phone gets one job per screen. The frame's numbers, arrows and footing are a laptop's luxury:
- * on a phone they were two rows of tracked capitals above the page and three more below it.
+ * A phone gets one job per screen. The frame's footing is a laptop's luxury: on a phone it was
+ * three rows of tracked capitals below the page.
  */
 .see-all { display: none; }
 @media (max-width: 640px) {
-  .nav { column-gap: 16px; }
-  .nav-item { font-size: 12px; letter-spacing: 0.1em; }
-  .nav-item .n, .nav .arrow, .rail-no { display: none; }
+  /* Five pages on one row of a phone: one wrapped under the others read as an afterthought. */
+  .nav { column-gap: 13px; }
+  .nav-item { font-size: 11.5px; letter-spacing: 0.05em; }
   /* Of the footing, a phone keeps the one line a newcomer needs: whether this is real money. */
-  .edge.bottom.start, .edge.bottom.middle { display: none; }
+  .edge.bottom.start { display: none; }
   .plate-body { padding-bottom: 36px; }
 
   /* One button that matters; the other way in is a link under it. */
@@ -860,4 +1019,6 @@ a.brand:hover b { text-shadow: 0 0 10px var(--signal); }
 /* On the narrowest phones the address would run into the brand; Disconnect alone still says a wallet is connected. */
 @media (max-width: 380px) {
   .nav .wallet-address { display: none; }
+  .nav { column-gap: 10px; }
+  .nav-item { font-size: 11px; letter-spacing: 0.03em; }
 }

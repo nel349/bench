@@ -66,6 +66,7 @@ export const liar: Problem = register({
   id: "liar",
   title: "Liar",
   category: "search with a false answer",
+  summary: "Find a hidden number from yes and no answers, when one of the answers is a lie.",
   level: "hard",
   par: 14,
   statement:

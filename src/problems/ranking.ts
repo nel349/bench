@@ -52,6 +52,7 @@ export const ranking: Problem = register({
   id: "ranking",
   title: "Ranking",
   category: "costly comparison",
+  summary: "Put eight items in their hidden order by asking which of two is better.",
   level: "medium",
   par: 16,
   statement:

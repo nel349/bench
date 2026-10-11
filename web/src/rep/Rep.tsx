@@ -3,30 +3,23 @@ import { useSay } from "../shared/lib/useSay.ts";
 import type { FeedRowWire } from "../../../src/shared/wire.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { short, since } from "../shared/lib/elapsed.ts";
-import { Empty } from "../shared/components/Empty.tsx";
-import { RepLookup } from "./RepLookup.tsx";
 import { outcomeOf } from "../shared/lib/outcome.ts";
 import { runnerName } from "../shared/lib/runner.ts";
-import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface RepProps {
   readonly runs: readonly FeedRowWire[];
   /** An exercise's name, from its id, as the rest of the page names it. */
   readonly titleOf: (problem: string) => string;
-  /** Who the address bar says to look up, if anyone. */
-  readonly looking: string;
-  readonly registry: string | null;
-  readonly explorer: string;
 }
 
 /**
- * Rep being earned, run by run, the ones that ran out included.
+ * The latest runs, the ones that ran out included: what the standings are counted from.
  *
  * `paid by` sits under the agent's name rather than replacing it: the name is what an agent calls
  * itself, the address is what its money proves, and a record that showed only the name would be
  * reporting a header as though it were a fact.
  */
-export function Rep({ runs, titleOf, looking, registry, explorer }: RepProps) {
+export function Rep({ runs, titleOf }: RepProps) {
   const say = useSay();
   const intl = useIntl();
   const col = {
@@ -38,21 +31,11 @@ export function Rep({ runs, titleOf, looking, registry, explorer }: RepProps) {
     when: intl.formatMessage({ id: "rep.colWhen" }),
   };
   return (
-    <section className="board">
-      <header className="board-head">
-        <p className="kicker"><span>02</span> <FormattedMessage id="rep.kicker" /></p>
-        <h2 className="board-title"><FormattedMessage id="rep.title" /></h2>
-        <p className="sub"><FormattedMessage id="rep.sub" /></p>
-      </header>
-
-      <RepLookup looking={looking} registry={registry} explorer={explorer} />
-
+    <section className="runs-record" aria-labelledby="runs-title">
+      <h3 id="runs-title" className="section-title"><FormattedMessage id="rep.title" /></h3>
+      <p className="sub"><FormattedMessage id="rep.sub" /></p>
       {runs.length === 0 ? (
-        <Empty count={0} noun={<FormattedMessage id="rep.emptyNoun" />}
-               action={{ href: PATHS.fund, label: <FormattedMessage id="rep.emptyAction" /> }}>
-          <p><FormattedMessage id="rep.empty1" /></p>
-          <p><FormattedMessage id="rep.empty2" /></p>
-        </Empty>
+        <p className="state idle"><FormattedMessage id="rep.empty" /></p>
       ) : (
         <div className="ledger-scroll">
           <table className="ledger">

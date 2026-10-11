@@ -27,6 +27,7 @@ export const blackbox: Problem = register({
   id: "blackbox",
   title: "Black Box",
   category: "deduction",
+  summary: "Find the atoms hidden in a grid by firing rays in from its edges and seeing what becomes of each.",
   level: "hard",
   par: null,
   statement:

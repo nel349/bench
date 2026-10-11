@@ -11,11 +11,6 @@ import { forReading } from "../../shared/lib/money.ts";
 export interface HeroProps {
   /** The price of one ray, as the wire carries it. */
   readonly probePrice: string;
-  /**
-   * Whether to give its number among the exercises. On Train it sits in the numbered menu; on the
-   * front page there is no menu, and "Exercise 01" would point at nothing.
-   */
-  readonly numbered?: boolean;
 }
 
 /** A fresh board each visit, so the front page is not the same film every time. */
@@ -36,13 +31,14 @@ function stillFrameRequested(): { readonly board: number | null; readonly at: nu
 }
 
 /**
- * The front page's one image: an agent paying to see into a Black Box, board after board.
+ * A run, shown: an agent paying to see into a Black Box, board after board. It was the front page's
+ * one image; it is on Exercises now, as the answer to "how does a run work?".
  *
  * It is the product in miniature and the product's own first problem, played by its real rules.
  * Rays are bought one at a time, each at the price the gym actually charges; the board fills with
  * the light of what was paid for; and it ends either solved for an amount or refused at one.
  */
-export function Hero({ probePrice, numbered = true }: HeroProps) {
+export function Hero({ probePrice }: HeroProps) {
   const price = Math.round(Number(probePrice) * 1_000_000);
   const reduced = usePrefersReducedMotion();
   const [still] = useState(stillFrameRequested);
@@ -69,16 +65,15 @@ export function Hero({ probePrice, numbered = true }: HeroProps) {
     : intl.formatMessage({ id: `demo.${x.kind}` });
 
   return (
-    <section className="exhibit" aria-label={intl.formatMessage({ id: "demo.label" })}>
+    <section className="exhibit demo-run" aria-label={intl.formatMessage({ id: "demo.label" })}>
       {/*
         * What this is, said before anything moves. Without it the animation was a tilted grid with
         * lines on it — and worse, its panel read like a real agent's live run, which it is not.
         */}
       <header className="exhibit-head">
         <div className="ex-line">
-          {numbered && <span className="ex-no"><FormattedMessage id="exercise.number" values={{ n: "01" }} /></span>}
           <span className="demo-tag"><FormattedMessage id="demo.tag" /></span>
-          <a className="ex-switch" href={viewHref("rig", "blackbox", "board")}><FormattedMessage id="demo.seeLeaderboard" /></a>
+          <a className="ex-switch" href={viewHref("exercises", "blackbox")}><FormattedMessage id="demo.seeLeaderboard" /></a>
         </div>
         <h2 className="ex-name"><FormattedMessage id="demo.title" /></h2>
         <p className="ex-rule">

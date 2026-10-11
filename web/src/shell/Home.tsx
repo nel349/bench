@@ -1,19 +1,22 @@
 import { FormattedMessage } from "react-intl";
-import { useBounties, useFeed, useOwner, useProblems } from "../shared/api/useGym.ts";
+import { useEffect } from "react";
+import { useBounties, useFeed, useOwner, useProblems, useStandings } from "../shared/api/useGym.ts";
 import { Plate } from "./Plate.tsx";
 import { Nav } from "./Nav.tsx";
+import { FirstScreen } from "./FirstScreen.tsx";
 import { useRoute, viewHref } from "./useView.ts";
 import { Hero } from "../train/demo/Hero.tsx";
 import { Gigs } from "../gigs/Gigs.tsx";
-import { Rep } from "../rep/Rep.tsx";
+import { Standings } from "../rep/Standings.tsx";
 import { Yours } from "../yours/Yours.tsx";
 import { CONNECTED_VIEW, isWallet, useOwnerWallet } from "../shared/lib/ownerWallet.ts";
-import { useEffect } from "react";
 import { Exercise } from "../train/Exercise.tsx";
+import { ExerciseList } from "../train/ExerciseList.tsx";
 import { ExerciseRail } from "../train/ExerciseRail.tsx";
+import { byLevel } from "../train/order.ts";
 import { Amount } from "../shared/components/Amount.tsx";
+import { format, usdc } from "../../../src/shared/money.ts";
 import { chainFor, type ArcChainId } from "../shared/chain/arc.ts";
-import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface HomeProps {
   readonly chainId: ArcChainId;
@@ -24,24 +27,25 @@ export interface HomeProps {
   readonly walletUrl: string | null;
 }
 
-/** The exercise with a demo of its own. The rest show their card and board. */
+/** The exercise with a demo of its own, and the word in the address that asks for it. */
 const DEMO = "blackbox";
+const DEMO_DETAIL = "demo";
 
-const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toFixed(6);
+const sum = (xs: readonly string[]) => format(xs.reduce((t, x) => t + usdc(x), 0n));
 
 /**
- * The front page, Train, Rep, Gigs and Your agents, in one frame.
+ * The first screen, My agent, Exercises, Standings and Gigs, in one frame.
  *
- * What an agent's owner wants is for it to earn. The gym is how it earns the right to: training runs
- * build a record, and enough record makes the agent eligible for gigs that pay real money. So the
- * page leads with the payoff and shows the training as the way to it — not the other way round,
- * which is how it read when it opened on "every question costs money".
+ * The pages are set out for the person whose agent it is. Somebody new is told what the place is
+ * for and sent to Start. Somebody whose wallet is connected opens on their own agent, because how it
+ * is doing is what they came back for. The rest answer, in turn: what is it tested on, who is
+ * ahead, and what pays.
  */
 export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   const { view, detail } = useRoute();
   const wallet = useOwnerWallet(walletUrl);
-  const { returned: answered } = wallet;
-  const mine = useOwner(wallet.owner);
+  const { returned: answered, owner } = wallet;
+  const mine = useOwner(owner);
 
   // Back from the wallet's Connect: keep the address and open its page, or, cancelled, the front page.
   // The wallet hook decides what it is the answer to: it replaces a connected wallet only when
@@ -58,18 +62,37 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
       window.location.replace(viewHref("home"));
     }
   }, [returned, answered]);
+
+  /**
+   * An owner opening the gym lands on their own agent. Only at the bare address: `#home` is asked
+   * for by name, by the brand's link, so the first screen is still theirs to read.
+   */
+  const landing = view === "home" && owner !== null && window.location.hash === "";
+  useEffect(() => {
+    if (landing) window.location.replace(viewHref("yours", owner));
+  }, [landing, owner]);
+
   const problems = useProblems();
-  const list = problems.data ?? [];
+  const list = byLevel(problems.data ?? []);
   const asked = detail[0];
-  const chosen = asked !== undefined && list.some((p) => p.id === asked) ? asked : DEMO;
-  const showDemo = chosen === DEMO && detail[1] !== "board";
+  const chosen = asked !== undefined && list.some((p) => p.id === asked) ? asked : null;
+  const showDemo = chosen === DEMO && detail[1] === DEMO_DETAIL;
+  const demoHref = viewHref("exercises", DEMO, DEMO_DETAIL);
   const bounties = useBounties();
   const feed = useFeed();
+  const standings = useStandings();
   const chain = chainFor(chainId);
+  const explorer = chain.blockExplorers.default.url;
 
   const open = (bounties.data ?? []).filter((b) => b.open);
   const onOffer = sum(open.map((b) => b.amount));
   const runs = feed.data ?? [];
+  const table = standings.data;
+  const best = table?.best ?? [];
+  /** The identities the connected wallet's agents carry, so what is theirs can be marked as theirs. */
+  const myIdentities = (mine.data?.agents ?? []).flatMap((a) => (a.identity === null ? [] : [a.identity]));
+  const cheapest = best.reduce<(typeof best)[number] | null>(
+    (least, b) => (least === null || usdc(b.spend) < usdc(least.spend) ? b : least), null);
 
   return (
     <Plate
@@ -81,53 +104,41 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
       right={<FormattedMessage id="frame.gigsOpen" values={{ count: open.length, amount: <Amount value={onOffer} /> }} />}
       bottom={{
         start: <FormattedMessage id="frame.runsLogged" values={{ count: runs.length }} />,
-        middle: <span className="loop-line"><FormattedMessage id="frame.loop" /></span>,
         end: <FormattedMessage id="frame.money" values={{ testnet: String(chain.testnet === true) }} />,
       }}
     >
-      {/* The front page: what Bench is, the way in, and one picture of it. The exercises are Train's. */}
-      {view === "home" && (
-        <div className="home">
-          <section className="intro">
-            <p className="kicker"><span>//</span> <FormattedMessage id="home.kicker" /></p>
-            <h1 className="headline"><FormattedMessage id="home.headline1" /><br /><FormattedMessage id="home.headline2" /></h1>
-            <p className="sub"><FormattedMessage id="home.sub" /></p>
-            <div className="ctas">
-              <a className="btn primary" href={PATHS.fund}><FormattedMessage id="home.ctaSetUp" /></a>
-              <a className="btn secondary" href={viewHref("gigs")}><FormattedMessage id="home.ctaGigs" /></a>
-            </div>
-            {open.length > 0 && (
-              <a className="gig-teaser" href={viewHref("gigs")}>
-                <span className="gig-count">{open.length}</span>
-                <span className="gig-label">
-                  <FormattedMessage id="home.teaser" values={{ count: open.length }} /><br />
-                  <FormattedMessage id="home.teaserOffer" values={{ amount: <Amount value={onOffer} /> }} />
-                </span>
-              </a>
-            )}
-          </section>
-          <div className="stage">
-            <Hero probePrice={probePrice} numbered={false} />
-          </div>
-        </div>
+      {view === "home" && !landing && (
+        <FirstScreen
+          testnet={chain.testnet === true}
+          leader={table?.agents[0] ?? null}
+          cheapest={cheapest === null ? null
+            : { title: list.find((p) => p.id === cheapest.problem)?.title ?? cheapest.problem, spend: cheapest.spend }}
+          agents={(table?.agents.length ?? 0) + (table?.more ?? 0)}
+          runs={(table?.agents ?? []).reduce((total, a) => total + a.runs, 0)}
+          gigs={open.length === 0 ? null : { count: open.length, onOffer }}
+        />
       )}
-      {view === "rig" && (
+      {/* Not until the gym has said what its exercises are: "0 puzzles" over an empty box is a claim about the gym. */}
+      {view === "exercises" && chosen === null && (problems.data
+        ? <ExerciseList problems={list} best={best} mine={myIdentities} demoHref={demoHref} />
+        : <p className={problems.isError ? "state bad" : "state idle"}>
+            <FormattedMessage id={problems.isError ? "exercises.failed" : "exercises.reading"} />
+          </p>
+      )}
+      {/* One exercise: the rest a tap away along the rail, and under it its rules and everyone who has solved it, or its demo. */}
+      {view === "exercises" && chosen !== null && (
         <section className="train">
-          <p className="kicker"><span>01</span> <FormattedMessage id="train.kicker" /></p>
-          {list.length > 0 && <ExerciseRail problems={list} chosen={chosen} />}
+          <ExerciseRail problems={list} chosen={chosen} />
           {showDemo
             ? <Hero probePrice={probePrice} />
-            : <Exercise id={chosen} number={list.findIndex((p) => p.id === chosen) + 1}
-                        demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
+            : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} />}
         </section>
       )}
       {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={wallet.connect} onConnect={wallet.beginConnect}
-                                  connectHref={wallet.connectHref}
-                                  explorer={chain.blockExplorers.default.url} />}
-      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} mine={mine.data} />}
-      {view === "ledger" && <Rep runs={runs} titleOf={(id) => list.find((p) => p.id === id)?.title ?? id}
-                                 looking={detail[0] ?? ""} registry={registry}
-                                 explorer={chain.blockExplorers.default.url} />}
+                                  connectHref={wallet.connectHref} explorer={explorer} gym={window.location.origin} walletUrl={walletUrl} />}
+      {view === "standings" && <Standings table={table} failed={standings.isError} problems={list} mine={myIdentities}
+                                          runs={runs} looking={detail[0] ?? ""} registry={registry} explorer={explorer} />}
+      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={explorer} mine={mine.data} />}
     </Plate>
   );
 }

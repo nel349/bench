@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { render } from "./strings.tsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
-  AgentRecordWire, BountyWire, ChainRatingWire, ProblemDetailWire, ProblemWire, ScoreWire,
+  AgentRecordWire, BountyWire, ChainRatingWire, ProblemDetailWire, ProblemWire, ScoreWire, StandingsWire,
 } from "../../src/shared/wire.ts";
 import { ExerciseRail } from "../src/train/ExerciseRail.tsx";
 import { RepLookup } from "../src/rep/RepLookup.tsx";
@@ -15,7 +15,7 @@ import { Nav } from "../src/shell/Nav.tsx";
 
 const PRICES = { ask: "0.020000", submit: "0.050000", rank: "0.250000" };
 const problem = (id: string, level: ProblemWire["level"], par: number | null): ProblemWire =>
-  ({ id, title: id[0]!.toUpperCase() + id.slice(1), category: "a skill", level, par, prices: PRICES });
+  ({ id, title: id[0]!.toUpperCase() + id.slice(1), category: "a skill", level, summary: `What ${id} is.`, par, prices: PRICES });
 /** The seven, as the gym lists them. */
 const SEVEN: ProblemWire[] = [
   problem("blackbox", "hard", null), problem("zendo", "medium", null), problem("toll", "easy", 1),
@@ -32,7 +32,7 @@ const score = (attempt: string, spend: string, ranked = false): ScoreWire => ({
 /** The server, scripted: each path answers what the real one would. Nothing here reaches one. */
 function serving(routes: Record<string, unknown | 404>) {
   return vi.fn(async (input: RequestInfo | URL) => {
-    const body = routes[String(input)];
+    const body = await routes[String(input)];
     if (body === undefined || body === 404) return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
     return new Response(JSON.stringify(body), { status: 200 });
   });
@@ -46,55 +46,129 @@ function show(node: React.ReactNode) {
 beforeEach(() => { vi.restoreAllMocks(); });
 
 describe("the rack", () => {
-  test("lists every exercise the gym serves, numbered, each with its own link", () => {
+  /** They were numbered by the order the gym listed them in, which meant nothing to a reader. */
+  test("lists every exercise the gym serves, each with its own link, after the way back to them all", () => {
     show(<ExerciseRail problems={SEVEN} chosen="liar" />);
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(7);
-    expect(links[0]).toHaveTextContent("01");
-    expect(links[6]).toHaveAttribute("href", "/#rig/liar");
-    expect(links[6]).toHaveAttribute("aria-current", "true");
-    expect(links[0]).not.toHaveAttribute("aria-current");
+    expect(links).toHaveLength(8);
+    expect(links[0]).toHaveTextContent("All exercises");
+    expect(links[0]).toHaveAttribute("href", "/#exercises");
+    expect(links[1]).toHaveTextContent(/^Blackbox$/);
+    expect(links[7]).toHaveAttribute("href", "/#exercises/liar");
+    expect(links[7]).toHaveAttribute("aria-current", "true");
+    expect(links[1]).not.toHaveAttribute("aria-current");
   });
 });
 
-/** The front page said what Bench is and then listed seven exercises between its buttons and its picture. */
-describe("the front page and Train", () => {
-  const front = (hash: string) => {
+const WALLET_NONE = { owner: null, connectHref: null, connect: () => {}, returned: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} };
+const TABLE: StandingsWire = {
+  agents: [
+    { identity: "894767", rep: 14, ranked: ["toll", "liar"], holds: ["toll", "liar"], runs: 15, lastRunAt: Date.now() - 3_600_000 },
+    { identity: "896922", rep: 1, ranked: ["toll"], holds: [], runs: 2, lastRunAt: Date.now() - 86_400_000 },
+  ],
+  best: [
+    { problem: "liar", identity: "894767", spend: "0.280000", probes: 14, attempt: "a16" },
+    { problem: "toll", identity: "894767", spend: "0.020000", probes: 1, attempt: "a10" },
+  ],
+  more: 0,
+};
+
+/**
+ * The pages were set out as the gym's loop, and the first one led with gigs and rep. An owner could
+ * not say what they were looking at. These are the same pages in the order an owner needs them.
+ */
+describe("the first screen and the pages", () => {
+  const front = (hash: string, standings: StandingsWire = TABLE, over: Record<string, unknown> = {}) => {
     window.location.hash = hash;
     // jsdom has no matchMedia; a browser asked to reduce motion holds the demo on a finished board.
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
     }));
-    vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/bounties": [], "/feed": [], "/problems/liar": { ...problem("liar", "hard", 14), statement: "s", scoring: "c" }, "/leaderboard/liar": [] }));
+    vi.stubGlobal("fetch", serving({
+      "/problems": SEVEN, "/bounties": [], "/feed": [], "/standings": standings,
+      "/problems/liar": { ...problem("liar", "hard", 14), statement: "s", scoring: "c" }, "/leaderboard/liar": [],
+      "/problems/blackbox": { ...problem("blackbox", "hard", null), statement: "s", scoring: "c" }, "/leaderboard/blackbox": [],
+      ...over,
+    }));
     show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl={null} />);
   };
 
-  test("the front page shows the way in and the demo, not the exercise menu", async () => {
+  test("the first screen says what Bench is for, the way in, and what an owner does", async () => {
     front("");
     expect(document.title).toBe("Bench: a gym for agents");
-    expect(await screen.findByRole("link", { name: "Set up your agent" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /demonstration of the black box/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("See what your agent can really do.");
+    expect(screen.getByRole("link", { name: "Set up your agent" })).toHaveAttribute("href", "/fund");
+    expect(screen.getByRole("link", { name: "See the standings" })).toHaveAttribute("href", "/#standings");
+    const how = screen.getByRole("region", { name: "How it goes" });
+    expect(within(how).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "You give it an allowance", "You tell it to train", "You watch where it stands",
+    ]);
+    // The demo and the exercise menu are on Exercises, where they explain something.
+    expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
   });
 
-  /** The owner's page was reachable only after connecting a wallet, so a first visit never saw it. */
-  test("Your agents is a tab with no wallet connected, and opens the page that asks for one", async () => {
+  test("it says who leads, the cheapest record and how many are on the standings, from the gym's own count", async () => {
     front("");
-    const tabs = await screen.findByRole("navigation", { name: "The loop" });
-    expect(within(tabs).getByRole("link", { name: /your agents/i })).toHaveAttribute("href", "/#yours");
+    expect((await screen.findByText("Leading now")).nextSibling).toHaveTextContent("agent #894767, 14 rep");
+    expect(screen.getByText("Cheapest record").nextSibling).toHaveTextContent("Toll, $0.02");
+    expect(screen.getByText("On the standings").nextSibling).toHaveTextContent("2 agents, 17 runs");
   });
 
-  test("with a wallet connected, the tab opens that wallet's own page", () => {
+  test("the agents on the standings are counted whole, the ones the gym did not list included", async () => {
+    front("", { ...TABLE, more: 40 });
+    expect((await screen.findByText("On the standings")).nextSibling).toHaveTextContent("42 agents, 17 runs");
+  });
+
+  /** Paid work is the reason to earn rep. A phone has no frame edge to say some is open, so the first screen does. */
+  test("when a gig is open it says so, with what is on offer, and leads there; with none it says nothing of gigs", async () => {
+    const open = { id: "b9", poster: "0xp", title: "Open one", statement: "s", amount: "0.500000", escrowId: "9", deadline: Date.now() + 86_400_000,
+                   minRating: 3, postedAt: 0, solvedBy: null, solvedAt: null, awardTx: null, attempts: 0, open: true, awaitingPayout: false, solverIdentity: null };
+    front("", TABLE, { "/bounties": [open, { ...open, id: "b1", open: false }] });
+    const fact = (await screen.findByText("Paid work open")).nextElementSibling!;
+    expect(fact).toHaveTextContent("1 gig open · $0.50 on offer");
+    expect(within(fact as HTMLElement).getByRole("link")).toHaveAttribute("href", "/#gigs");
+  });
+
+  test("with no gig open the first screen says nothing of gigs", async () => {
+    front("");
+    await screen.findByText("Leading now");
+    expect(screen.queryByText("Paid work open")).not.toBeInTheDocument();
+  });
+
+  /** A first screen with zeroes on it reads as a place nobody uses. */
+  test("with nobody on the standings yet it says none of that", async () => {
+    front("", { agents: [], best: [], more: 0 });
+    await screen.findByRole("region", { name: "How it goes" });
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith("/standings", expect.anything()));
+    expect(screen.queryByText("Leading now")).not.toBeInTheDocument();
+    expect(screen.queryByText("On the standings")).not.toBeInTheDocument();
+  });
+
+  test("the pages are named for what an owner wants, in that order, with no numbers or arrows between", async () => {
+    front("");
+    const tabs = await screen.findByRole("navigation", { name: "Pages" });
+    expect(within(tabs).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Start", "/fund"], ["My agent", "/#yours"], ["Exercises", "/#exercises"], ["Standings", "/#standings"], ["Gigs", "/#gigs"],
+    ]);
+    expect(tabs).not.toHaveTextContent(/→|0\d/);
+  });
+
+  test("with a wallet connected, My agent opens that wallet's own page", () => {
     const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
-    show(<Nav current="home" wallet={{ owner: WALLET, connectHref: "https://wallet.test/connect", connect: () => {}, returned: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
-    const tab = screen.getByRole("link", { name: /your agents/i });
+    show(<Nav current="home" wallet={{ ...WALLET_NONE, owner: WALLET, connectHref: "https://wallet.test/connect" }} />);
+    const tab = screen.getByRole("link", { name: "My agent" });
     expect(tab).toHaveAttribute("href", `/#yours/${WALLET}`);
     expect(tab).not.toHaveAttribute("aria-current");
   });
 
-  test("the tab is marked as the page showing when it is", () => {
-    show(<Nav current="yours" wallet={{ owner: null, connectHref: null, connect: () => {}, returned: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
-    expect(screen.getByRole("link", { name: /your agents/i })).toHaveAttribute("aria-current", "page");
+  test("the page showing is marked, Start among them", () => {
+    const { rerender } = render(<Nav current="yours" wallet={WALLET_NONE} />);
+    expect(screen.getByRole("link", { name: "My agent" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Start" })).not.toHaveAttribute("aria-current");
+    rerender(<Nav current="start" wallet={WALLET_NONE} />);
+    expect(screen.getByRole("link", { name: "Start" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "My agent" })).not.toHaveAttribute("aria-current");
   });
 
   /** The brand reloaded the whole app: its link had no hash, where every other link switches the view. */
@@ -103,11 +177,80 @@ describe("the front page and Train", () => {
     expect(await screen.findByRole("link", { name: "BENCH//" })).toHaveAttribute("href", "/#home");
   });
 
-  test("Train has the exercise menu, with the chosen one open", async () => {
-    front("#rig/liar");
+  test("Exercises lists every exercise, easiest first, each a link to its own page", async () => {
+    front("#exercises");
+    const rows = await screen.findAllByRole("heading", { level: 3 });
+    expect(rows.map((h) => h.textContent)).toEqual(["Toll", "Bisect", "Zendo", "Codebreaker", "Ranking", "Blackbox", "Liar"]);
+    expect(within(rows[6]!).getByRole("link", { name: "Liar" })).toHaveAttribute("href", "/#exercises/liar");
+    expect(screen.getByRole("link", { name: "Watch a demo run" })).toHaveAttribute("href", "/#exercises/blackbox/demo");
+    // The list, not one exercise: no rail, and no demo playing.
+    expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
+  });
+
+  test("one exercise has its own page, with the others along the rail", async () => {
+    front("#exercises/liar");
     expect(await screen.findByRole("navigation", { name: "Exercises" })).toBeInTheDocument();
-    expect(await screen.findByText("Exercise 07")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Liar" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Set up your agent" })).not.toBeInTheDocument();
+  });
+
+  /** Agents gave out `#rig/…` links, and people kept them. */
+  test("a link under the page's former name still opens the exercise, and the address bar is put right", async () => {
+    front("#rig/liar");
+    expect(await screen.findByRole("heading", { level: 2, name: "Liar" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#exercises/liar");
+  });
+
+  /** "0 puzzles with a hidden answer" over an empty box is a claim about the gym, made before it had answered. */
+  test("until the gym has said what its exercises are, the page says it is reading, and claims nothing", async () => {
+    front("#exercises", TABLE, { "/problems": new Promise(() => {}) });
+    expect(await screen.findByText("Reading the exercises…")).toBeInTheDocument();
+    expect(screen.queryByText(/puzzles? with a hidden answer/)).not.toBeInTheDocument();
+  });
+
+  test("exercises that cannot be read are said to be unread, not none", async () => {
+    front("#exercises", TABLE, { "/problems": 404 });
+    expect(await screen.findByText(/the exercises could not be read just now/i)).toBeInTheDocument();
+    expect(screen.queryByText(/puzzles? with a hidden answer/)).not.toBeInTheDocument();
+  });
+
+  test("an exercise the gym does not serve opens the list, not an empty page", async () => {
+    front("#exercises/chess");
+    expect(await screen.findAllByRole("heading", { level: 3 })).toHaveLength(7);
+  });
+
+  test("the demo is asked for by name, and Black Box's own page links to it", async () => {
+    front("#exercises/blackbox");
+    expect(await screen.findByRole("link", { name: "Watch the demo" })).toHaveAttribute("href", "/#exercises/blackbox/demo");
+    expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
+  });
+
+  test("the demo plays under the rail, and leads back to the exercise's page", async () => {
+    front("#exercises/blackbox/demo");
+    const demo = await screen.findByRole("region", { name: /demonstration of the black box/i });
+    expect(within(demo).getByRole("link", { name: "See its leaderboard" })).toHaveAttribute("href", "/#exercises/blackbox");
+    expect(screen.getByRole("navigation", { name: "Exercises" })).toBeInTheDocument();
+  });
+
+  test("only Black Box has a demo: the word after another exercise is ignored", async () => {
+    front("#exercises/liar/demo");
+    expect(await screen.findByRole("heading", { level: 2, name: "Liar" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
+  });
+
+  test("Standings shows who is ahead, and under it the rep lookup and the runs", async () => {
+    front("#standings");
+    expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent("Who is ahead.");
+    expect(await screen.findByRole("link", { name: "Agent #894767" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Look up an agent's rep" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Every run, on the record." })).toBeInTheDocument();
+  });
+
+  test("a link to the old record page opens Standings with that agent looked up", async () => {
+    front("#ledger/894767");
+    expect(await screen.findByRole("heading", { level: 2 })).toHaveTextContent("Who is ahead.");
+    expect(screen.getByLabelText(/look up rep/i)).toHaveValue("894767");
   });
 });
 
@@ -171,7 +314,7 @@ describe("coming back from the wallet, and opening an owner's link", () => {
   });
 
   /** With one connected, pasting another's address and pressing Open did nothing. */
-  test("an address typed on Your agents is connected, in place of the one that was", async () => {
+  test("an address typed on My agent is connected, in place of the one that was", async () => {
     const user = userEvent.setup();
     arrive("#yours", { "bench.owner.wallet": WALLET });
     await user.type(await screen.findByLabelText(/wallet/i), OTHER);
@@ -185,6 +328,19 @@ describe("coming back from the wallet, and opening an owner's link", () => {
     await user.click(await screen.findByRole("button", { name: "Disconnect" }));
     expect(kept.has("bench.owner.wallet")).toBe(false);
     expect(await screen.findByRole("link", { name: "Connect wallet" })).toBeInTheDocument();
+  });
+
+  /** How their agent is doing is what an owner comes back for, and it was a tab away from where they landed. */
+  test("an owner whose wallet is connected, opening the gym, lands on their own agent", async () => {
+    arrive("", { "bench.owner.wallet": WALLET });
+    await waitFor(() => expect(window.location.hash).toBe(`#yours/${WALLET}`));
+    expect(screen.queryByRole("region", { name: "How it goes" })).not.toBeInTheDocument();
+  });
+
+  test("the first screen is still theirs to read when it is asked for by name, as the brand's link does", async () => {
+    arrive("#home", { "bench.owner.wallet": WALLET });
+    expect(await screen.findByRole("region", { name: "How it goes" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#home");
   });
 
   test("an owner's link, opened with no wallet connected, connects that wallet once its page shows", async () => {
@@ -209,9 +365,8 @@ describe("an exercise", () => {
 
   test("shows the gym's statement, its level, and the fewest questions it needs, in questions and in dollars", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" number={7} demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} />);
     expect(await screen.findByText("A hidden number.")).toBeInTheDocument();
-    expect(screen.getByText("Exercise 07")).toBeInTheDocument();
     expect(screen.getByText("hard")).toBeInTheDocument();
     expect(screen.getByText("14 questions")).toBeInTheDocument();
     expect(screen.getByText("That costs").nextSibling).toHaveTextContent("$0.28");
@@ -220,14 +375,14 @@ describe("an exercise", () => {
   test("says no fewest is proven rather than showing a number", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/zendo": { ...problem("zendo", "medium", null), statement: "s", scoring: "c" },
                                      "/leaderboard/zendo": [] }));
-    show(<Exercise id="zendo" number={2} demoHref={null} />);
+    show(<Exercise id="zendo" demoHref={null} />);
     expect(await screen.findByText("not proven")).toBeInTheDocument();
   });
 
   test("its leaderboard keeps the gym's order, cheapest first, and marks the recorded solves", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar,
       "/leaderboard/liar": [score("a1", "0.280000", true), score("a2", "0.400000")] }));
-    show(<Exercise id="liar" number={7} demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("agent-a1");
     expect(rows[0]).toHaveTextContent("recorded");
@@ -237,7 +392,7 @@ describe("an exercise", () => {
 
   test("an empty leaderboard says what would fill it", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" number={7} demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} />);
     expect(await screen.findByText(/first paid solve takes first place/i)).toBeInTheDocument();
   });
 });
@@ -279,6 +434,22 @@ describe("looking up rep", () => {
     expect(screen.getByText(/look that up by its number/i)).toBeInTheDocument();
   });
 
+  /**
+   * The answer is under the standings. Pressing an agent's name in the table changed something a
+   * screen below, and looked as though it had done nothing.
+   */
+  test("somebody looked up is brought into view; opening the page with nobody looked up moves nothing", () => {
+    const scrolled = vi.fn();
+    vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": rating }));
+    Element.prototype.scrollIntoView = scrolled;
+    const { rerender } = show(lookup(""));
+    expect(scrolled).not.toHaveBeenCalled();
+    const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    rerender(<QueryClientProvider client={queries}>{lookup("894767")}</QueryClientProvider>);
+    expect(scrolled).toHaveBeenCalledTimes(1);
+    expect(scrolled.mock.instances[0]).toBe(screen.getByRole("region", { name: "Look up an agent's rep" }));
+  });
+
   test("something that is neither is said to be neither", () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN }));
     show(lookup("agent:aria"));
@@ -318,6 +489,29 @@ describe("a won gig", () => {
     show(<Gigs bounties={[open]} explorer="https://testnet.arcscan.app" mine={mine} />);
     expect(screen.getByText(/your agent #894767 can enter/i)).toBeInTheDocument();
     expect(screen.queryByText(/no gig is open right now/i)).not.toBeInTheDocument();
+  });
+
+  /** It was one grid, and with nothing open it was a page of faded cards under a promise of paid work. */
+  test("what is open and what has finished are kept apart, and the sums say which is which", () => {
+    const open = gig({ id: "b9", title: "Open one", amount: "0.500000", open: true, solvedBy: null, solvedAt: null, awardTx: null });
+    const paid = gig({ id: "b1" });
+    const paying = gig({ id: "b2", title: "Still paying", awardTx: null, awaitingPayout: true });
+    const lapsed = gig({ id: "b3", title: "Ran out", solvedBy: null, solvedAt: null, awardTx: null });
+    show(<Gigs bounties={[lapsed, paying, paid, open]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    expect(screen.getByText("On offer now").nextSibling).toHaveTextContent("$0.50");
+    // Paid out is what has landed: the win still on its way, and the gig nobody won, are not in it.
+    expect(screen.getByText("Paid out so far").nextSibling).toHaveTextContent("$0.10");
+    expect(screen.getByText("Gigs posted").nextSibling).toHaveTextContent("4");
+    const titles = (name: string) => within(screen.getByRole("region", { name })).getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+    expect(titles("Open now")).toEqual(["Open one"]);
+    // The ones somebody won before the one that ran out, though the gym listed that one first.
+    expect(titles("Finished")).toEqual(["Still paying", "Hash the gym's name", "Ran out"]);
+  });
+
+  test("with nothing open, Open now says so in its place, above what has finished", () => {
+    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    expect(within(screen.getByRole("region", { name: "Open now" })).getByText(/no gig is open right now/i)).toBeInTheDocument();
+    expect(screen.getByText("On offer now").nextSibling).toHaveTextContent("$0.00");
   });
 
   test("a win whose payout has not landed says so", () => {

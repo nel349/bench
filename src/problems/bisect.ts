@@ -59,6 +59,7 @@ export const bisect: Problem = register({
   id: "bisect",
   title: "Bisect",
   category: "search with missing evidence",
+  summary: "Find the commit that broke the build, when some commits cannot be tested at all.",
   level: "easy",
   // Twelve tests always suffice when every commit builds. The broken ones cost extra, by an amount
   // that depends on where they fall, so no single number is proven for this problem as played.

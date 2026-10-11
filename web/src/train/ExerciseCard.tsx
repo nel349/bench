@@ -6,8 +6,6 @@ import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface ExerciseCardProps {
   readonly problem: ProblemDetailWire;
-  /** Its place on the rack, from 1. */
-  readonly number: number;
 }
 
 /**
@@ -18,12 +16,11 @@ export interface ExerciseCardProps {
  * the dollars are the score and the questions are how you get there. Where nobody has proven a
  * fewest, the card says so rather than showing a number that would be read as one.
  */
-export function ExerciseCard({ problem, number }: ExerciseCardProps) {
+export function ExerciseCard({ problem }: ExerciseCardProps) {
   const par = parCost(problem.par, problem.prices.ask);
   return (
     <header className="exercise">
       <div className="ex-line">
-        <span className="ex-no"><FormattedMessage id="exercise.number" values={{ n: String(number).padStart(2, "0") }} /></span>
         <span className={`level-tag ${problem.level}`}><FormattedMessage id={`level.${problem.level}`} /></span>
         <span className="ex-skill">{problem.category}</span>
       </div>

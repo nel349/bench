@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MemoryStore, SqliteStore, type Store } from "../../src/store/runs.ts";
-import { Attempts, score } from "../../src/gym/attempt.ts";
+import { Attempts, score, type Attempt } from "../../src/gym/attempt.ts";
 import { InMemoryAllowance } from "../../src/gym/payments.ts";
 import { usdc, format } from "../../src/shared/money.ts";
 import { boardFrom } from "../../src/problems/blackbox-rules.ts";
@@ -229,6 +229,58 @@ describe("a database from before the payer column", () => {
  * `label:` and the paying address, so an old database carries its counts over once, rather than
  * every agent's rising price quietly starting again from nothing.
  */
+describe("when a record was written", () => {
+  test("survives a restart, and a record not yet written has none", () => {
+    const path = scratch();
+    const before = new SqliteStore(path);
+    const run = (id: string, rank: Attempt["rank"]): Attempt => ({
+      id, agent: AGENT, payer: AGENT, claimedId: "42", identity: "42", problem: "blackbox", seed: SEED,
+      startedAt: 1_000, endedAt: 2_000, outcome: "solved", probes: [], submissions: 1, spend: usdc("0.02"),
+      budget: null, state: null, rank,
+    });
+    before.put(run("a1", { tx: "0xabc", at: 1_791_000_000_123 }));
+    before.put(run("a2", { tx: null }));
+    before.put(run("a3", null));
+    before.close();
+
+    const after = new SqliteStore(path);
+    expect(after.get("a1")!.rank).toEqual({ tx: "0xabc", at: 1_791_000_000_123 });
+    expect(after.get("a2")!.rank).toEqual({ tx: null });
+    expect(after.get("a3")!.rank).toBe(null);
+    after.close();
+  });
+
+  /** The schema as it was while a record kept only where it was written. */
+  test("a database from before it was kept opens, keeps its records, and takes the time from then on", () => {
+    const path = scratch();
+    const db = new Database(path, { create: true });
+    db.exec(`
+      CREATE TABLE attempts (
+        id TEXT PRIMARY KEY, agent TEXT NOT NULL, problem TEXT NOT NULL, seed TEXT NOT NULL,
+        payer TEXT, claimed_id TEXT, identity TEXT,
+        started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
+        probes TEXT NOT NULL, submissions INTEGER NOT NULL,
+        spend TEXT NOT NULL, budget TEXT, state TEXT, rank_paid INTEGER, rank_tx TEXT
+      );
+      CREATE TABLE submissions (
+        agent TEXT NOT NULL, problem TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (agent, problem)
+      );
+      INSERT INTO attempts VALUES
+        ('a1', 'anonymous', 'blackbox', 's', '0xaa', '42', '42', 1000, 2000, 'solved', '[]', 1, '20000', NULL, NULL, 1, '0xold');
+    `);
+    db.close();
+
+    const store = new SqliteStore(path);
+    const old = store.get("a1")!;
+    expect(old.rank).toEqual({ tx: "0xold" });
+    store.put({ ...old, rank: { tx: "0xold", at: 5_000 } });
+    expect(store.get("a1")!.rank).toEqual({ tx: "0xold", at: 5_000 });
+    store.close();
+    // Opening it again finds the column there and adds nothing.
+    new SqliteStore(path).close();
+  });
+});
+
 describe("repeat counts from before labels were prefixed", () => {
   test("are carried over once, and only once", () => {
     const path = join(mkdtempSync(join(tmpdir(), "bench-counts-")), "old.sqlite");

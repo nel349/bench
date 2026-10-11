@@ -1,7 +1,7 @@
 import { FormattedMessage, useIntl } from "react-intl";
 import { PRICE } from "../../../src/shared/pricing.ts";
 import { display } from "../../../src/shared/money.ts";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
 import { useAgentRecord, useChainRating, useProblems } from "../shared/api/useGym.ts";
 import { ApiError } from "../shared/api/client.ts";
@@ -11,7 +11,7 @@ import { Amount } from "../shared/components/Amount.tsx";
 import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
 
 export interface RepLookupProps {
-  /** Who the address bar says is being looked up: the part of `#ledger/…` after the view. */
+  /** Who the address bar says is being looked up: the part of `#standings/…` after the view. */
   readonly looking: string;
   /** The reputation registry, so a reader can check the number without us. `null` where there is none. */
   readonly registry: string | null;
@@ -29,6 +29,15 @@ export interface RepLookupProps {
 export function RepLookup({ looking, registry, explorer }: RepLookupProps) {
   const [draft, setDraft] = useState(looking);
   useEffect(() => setDraft(looking), [looking]);
+  /**
+   * Somebody looked up is shown here, and here is under the standings: pressing an agent's name in
+   * the table changed something a screen below and looked as though it had done nothing. So the
+   * answer is brought into view. Not for nobody: opening the page must not jump it down.
+   */
+  const here = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (looking !== "") here.current?.scrollIntoView?.({ block: "nearest" });
+  }, [looking]);
 
   const who = whoIs(looking);
   const problems = useProblems();
@@ -41,11 +50,11 @@ export function RepLookup({ looking, registry, explorer }: RepLookupProps) {
   const intl = useIntl();
   const look = (e: FormEvent) => {
     e.preventDefault();
-    window.location.assign(viewHref("ledger", draft.trim()));
+    window.location.assign(viewHref("standings", draft.trim()));
   };
 
   return (
-    <section className="rep-lookup load-panel" aria-label={intl.formatMessage({ id: "lookup.label" })}>
+    <section ref={here} className="rep-lookup load-panel" aria-label={intl.formatMessage({ id: "lookup.label" })}>
       <form className="lookup" onSubmit={look}>
         <label htmlFor="who"><FormattedMessage id="lookup.field" /></label>
         <div className="field-row">

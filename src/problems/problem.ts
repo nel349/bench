@@ -25,6 +25,11 @@ export interface Problem {
   readonly category: string;
   readonly level: Level;
   /**
+   * What it is, in one sentence, for an agent's owner: someone deciding what a solve here says about
+   * their agent, who will never play it and does not need the rules. The statement is for the agent.
+   */
+  readonly summary: string;
+  /**
    * The fewest probes that are always enough, where that is proven: a method exists that never
    * needs more, and no method can guarantee fewer. `null` where nobody has proven one, which is
    * said rather than filled with a guess, because this is the number a score is read against.

@@ -1,6 +1,6 @@
 import { expect, test, describe, beforeEach, afterEach, setSystemTime } from "bun:test";
 import { handle, quoteFor, type Deps } from "../../src/http/handle.ts";
-import { OWNER_AGENTS_SHOWN, OWNER_PAGE_MS, OWNER_PAGES_KEPT } from "../../src/http/routes/records.ts";
+import { OWNER_AGENTS_SHOWN, OWNER_PAGE_MS, OWNER_PAGES_KEPT, STANDINGS_SHOWN } from "../../src/http/routes/records.ts";
 import { OWNER_CACHE_MS, OWNER_RETRY_MS } from "../../src/http/reads.ts";
 import { LIVE_FOR_MS, playingNow } from "../../src/shared/live.ts";
 import { Attempts, recordHash } from "../../src/gym/attempt.ts";
@@ -18,7 +18,7 @@ import { GENERATOR } from "../../src/problems/problem.ts";
 import { MemoryReputation } from "../../src/gym/reputation.ts";
 import { describe as describeAllowance } from "../../src/chain/allowance.ts";
 import { Bounties } from "../../src/bounties/bounties.ts";
-import type { OwnerWire, ProblemWire, SettingsWire } from "../../src/shared/wire.ts";
+import type { OwnerWire, ProblemDetailWire, ProblemWire, SettingsWire, StandingsWire } from "../../src/shared/wire.ts";
 import { OWNER_WALLET } from "../../src/chain/chain.ts";
 import "../../src/problems/blackbox.ts";
 
@@ -88,6 +88,23 @@ describe("the free surface is free", () => {
     expect([...levels].sort()).toEqual(["easy", "hard", "medium"]);
     expect(body.find((p) => p.id === "ranking")!.par).toBe(16);
     expect(body.find((p) => p.id === "zendo")!.par).toBe(null);
+  });
+
+  /**
+   * The statement is written for the agent that plays. An owner reading the list of exercises needs
+   * one sentence on what each is, and the list had only a title and a two-word skill.
+   */
+  test("each problem says what it is in a sentence, in the list and on its own page", async () => {
+    const list = (await (await call("GET", "/problems")).json()) as ProblemWire[];
+    for (const p of list) {
+      // One sentence: a capital, no full stop until the last.
+      expect(p.summary).toMatch(/^[A-Z][^.]{30,160}\.$/);
+      const detail = (await (await call("GET", `/problems/${p.id}`)).json()) as ProblemDetailWire;
+      expect(detail.summary).toBe(p.summary);
+      // A sentence about it, not the rules over again.
+      expect(detail.summary.length).toBeLessThan(detail.statement.length);
+    }
+    expect(new Set(list.map((p) => p.summary)).size).toBe(list.length);
   });
 
   /**
@@ -546,6 +563,44 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     await callRanked("POST", `/attempts/${id}/submit`, { answer: boardFrom(seed).atoms }, headers);
     return id;
   };
+
+  /**
+   * Who is ahead. A problem's leaderboard said who solved it most cheaply; nothing said how the
+   * agents stand against each other, which is what an owner looks for first.
+   */
+  test("the standings list an agent once it has ranked a solve, and name the best solve on that problem", async () => {
+    const read = async () => await (await callRanked("GET", "/standings")).json() as StandingsWire;
+    const id = await solved();
+    // Solved and not ranked: on its problem's leaderboard, and not here.
+    expect(await read()).toEqual({ agents: [], best: [], more: 0 });
+
+    await callRanked("POST", `/attempts/${id}/rank`, {}, as({ "x-agent-id": ID }));
+    const table = await read();
+    expect(table.agents).toEqual([
+      { identity: ID, rep: 3, ranked: ["blackbox"], holds: ["blackbox"], runs: 1, lastRunAt: ranked.attempts.get(id)!.startedAt },
+    ]);
+    expect(table.best).toEqual([{ problem: "blackbox", identity: ID, spend: "0.020000", probes: 1, attempt: id }]);
+    expect(table.more).toBe(0);
+  });
+
+  test("the standings carry so many agents and say how many more there are, and list the bests in the gym's order", async () => {
+    const one = (identity: number, problem: string) => ({
+      id: `a${identity}${problem}`, agent: "anonymous", payer: "0x00000000000000000000000000000000000000aa",
+      claimedId: String(identity), identity: String(identity), problem, seed: "s", startedAt: identity, endedAt: identity,
+      outcome: "solved", probes: [{ question: null, answer: null }], submissions: 1, spend: usdc("0.02"),
+      budget: null, state: null, rank: { tx: "0xabc" },
+    });
+    // Zendo ranked before Black Box, which the gym lists first.
+    const all = [one(1, "zendo"), ...Array.from({ length: STANDINGS_SHOWN }, (_, i) => one(i + 2, "blackbox"))];
+    const crowded = { ...ranked, attempts: { all: () => all } } as unknown as Deps;
+    const table = await (await handle(new Request("http://bench.test/standings"), crowded)).json() as StandingsWire;
+    // The ones ahead are the ones kept: the agent with the least rep is the one left off, and is counted.
+    expect(table.agents).toHaveLength(STANDINGS_SHOWN);
+    expect(table.agents[0]!.identity).toBe("2");
+    expect(table.agents.at(-1)!.identity).toBe(String(STANDINGS_SHOWN + 1));
+    expect(table.more).toBe(1);
+    expect(table.best.map((b) => b.problem)).toEqual(["blackbox", "zendo"]);
+  });
 
   /**
    * What an owner opens after step 4: their wallet's agents, with what each did and earned. Before

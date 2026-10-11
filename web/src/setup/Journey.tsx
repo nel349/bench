@@ -77,7 +77,7 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
       )}
     <ol className="journey">
       {STEPS.map((step, i) => (
-        <li key={step.n} className={progress?.[i] ? "done" : i === next ? "next" : undefined}>
+        <li key={step.n} className={[progress?.[i] ? "done" : i === next ? "next" : "", step.key ? "key" : ""].filter(Boolean).join(" ") || undefined}>
           <span className="step-n"
                 aria-label={intl.formatMessage({ id: progress?.[i] ? "setup.stepDone" : "setup.step" }, { n: step.n })}>
             {progress?.[i] ? "✓" : step.n}

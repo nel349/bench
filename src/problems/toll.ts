@@ -136,6 +136,7 @@ export const toll: Problem = register({
   id: "toll",
   title: "Toll",
   category: "knowing what to buy",
+  summary: "Cross a maze it cannot see, where it may look at one cell at a time or buy the whole map for the price of one look.",
   level: "easy",
   par: 1,
   statement:

@@ -16,13 +16,19 @@ export interface Step {
   readonly n: 1 | 2 | 3 | 4 | 5;
   /** Which device the person is holding for this step. */
   readonly where: "phone" | "laptop";
+  /**
+   * The step the others lead up to, drawn to stand out. Training is this one sentence, said to the
+   * agent: there is no page to train on, and an owner who missed it had set everything up and did
+   * not know what came next.
+   */
+  readonly key?: true;
 }
 
 export const STEPS: readonly Step[] = [
   { n: 1, where: "phone" },
   { n: 2, where: "laptop" },
   { n: 3, where: "phone" },
-  { n: 4, where: "laptop" },
+  { n: 4, where: "laptop", key: true },
   { n: 5, where: "phone" },
 ];
 

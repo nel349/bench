@@ -136,7 +136,7 @@ export interface OwnerWallet {
  * Three ways a wallet arrives, in order of how plainly it was asked for. Typed here: it connects.
  * Back from the wallet after Connect wallet was pressed here: it connects. By a link, to a page or
  * of the shape the wallet returns: it connects only where nothing is connected and the owner has
- * not disconnected from it, so a link can never change whose agents "Your agents" means or undo a
+ * not disconnected from it, so a link can never change whose agents "My agent" means or undo a
  * Disconnect.
  */
 export function useOwnerWallet(walletUrl: string | null): OwnerWallet {

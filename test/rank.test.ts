@@ -78,6 +78,22 @@ describe("ranking a solved run", () => {
     expect(wireAttempt(attempts.get(a.id)!).ranked).toEqual({ tx: "memory:1" });
   });
 
+  /**
+   * Who holds the best solve on a problem turns on who ranked first, and a run can be ranked long
+   * after it was solved, so the moment the record was written is kept beside it.
+   */
+  test("keeps when the record was written, and asking again does not move it", async () => {
+    const a = await run();
+    const from = Date.now();
+    await attempts.rank(a.id, write);
+    const at = attempts.get(a.id)!.rank!.at!;
+    expect(at).toBeGreaterThanOrEqual(from);
+    expect(at).toBeLessThanOrEqual(Date.now());
+    await Bun.sleep(5);
+    await attempts.rank(a.id, write);
+    expect(attempts.get(a.id)!.rank!.at).toBe(at);
+  });
+
   test("the cost to solve is not changed by the fee to rank", async () => {
     const a = await run();
     const spend = a.spend;

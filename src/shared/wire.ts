@@ -43,6 +43,8 @@ export interface ProblemWire {
   readonly title: string;
   readonly category: string;
   readonly level: "easy" | "medium" | "hard";
+  /** What it is, in a sentence for someone who will never play it. See `Problem.summary`. */
+  readonly summary: string;
   /** The fewest probes that are always enough, where proven. See `Problem.par`. */
   readonly par: number | null;
   readonly prices: { readonly ask: Decimal; readonly submit: Decimal; readonly rank: Decimal };
@@ -169,6 +171,38 @@ export interface ScoreWire {
   readonly endedBy: "open" | "solved" | "refused" | "abandoned";
   /** Written to the agent's ERC-8004 identity, which is when a solve counts as rep. */
   readonly ranked: boolean;
+}
+
+/** One agent's place among the others. See `standings` in the gym. */
+export interface StandingWire {
+  /** The ERC-8004 identity its rep is written to. */
+  readonly identity: string;
+  readonly rep: number;
+  /** The problems it has ranked, in the order it first ranked them. */
+  readonly ranked: readonly string[];
+  /** The problems it holds the best ranked solve on. */
+  readonly holds: readonly string[];
+  /** Its paid runs under this identity, solved or not. */
+  readonly runs: number;
+  readonly lastRunAt: number;
+}
+
+/** The best ranked solve on one problem, and whose it is. */
+export interface BestWire {
+  readonly problem: string;
+  readonly identity: string;
+  readonly spend: Decimal;
+  readonly probes: number;
+  readonly attempt: string;
+}
+
+export interface StandingsWire {
+  /** Ahead first: by rep, then by how many bests it holds, then by who reached its rep first. */
+  readonly agents: readonly StandingWire[];
+  /** One for each problem anybody has ranked, in the order the gym lists its problems. */
+  readonly best: readonly BestWire[];
+  /** How many more agents have a ranked solve than this carries. */
+  readonly more: number;
 }
 
 export interface FeedRowWire extends ScoreWire {

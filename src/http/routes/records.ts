@@ -1,17 +1,18 @@
 import { costToPayer, score, wireScore, type Attempt } from "../../gym/attempt.ts";
 import { format } from "../../shared/money.ts";
-import { problemOf } from "../../problems/problem.ts";
+import { allProblems, problemOf } from "../../problems/problem.ts";
 import { parseAgentId } from "../../chain/identity.ts";
 import { wireBounty } from "../../bounties/bounties.ts";
 import { paidBy, rate, weigh } from "../../gym/rating.ts";
+import { standings } from "../../gym/standings.ts";
 import { PATHS, FEED_LIMIT } from "../../shared/paths.ts";
 import { playingNow } from "../../shared/live.ts";
-import type { AgentRecordWire, ChainRatingWire, OwnerAgentWire, OwnerRunWire, OwnerWire } from "../../shared/wire.ts";
+import type { AgentRecordWire, ChainRatingWire, OwnerAgentWire, OwnerRunWire, OwnerWire, StandingsWire } from "../../shared/wire.ts";
 import type { Deps, RouteContext } from "../deps.ts";
 import { json, fail, unavailable, freeCap } from "../respond.ts";
 import { cachedOwnerOf } from "../reads.ts";
 
-/** The record: an address's runs, an owner's page, the feed, a rating and a problem's leaderboard. */
+/** The record: an address's runs, an owner's page, the feed, a rating, a problem's leaderboard and the standings. */
 export async function recordRoutes({ req, deps, client, path, seg }: RouteContext): Promise<Response | null> {
   /**
    * An agent's record: the runs its money paid for, the same rule `rate` uses.
@@ -99,9 +100,24 @@ export async function recordRoutes({ req, deps, client, path, seg }: RouteContex
       x.spend === y.spend ? x.probes.length - y.probes.length : (x.spend < y.spend ? -1 : 1));
     return json(ranked.map((a) => wireScore(score(a))));
   }
+  /** Who is ahead across every problem, and who holds the best ranked solve on each. See `standings`. */
+  if (req.method === "GET" && path === PATHS.standings) {
+    const { agents, best } = standings(deps.attempts.all());
+    const order = allProblems().map((p) => p.id);
+    const table: StandingsWire = {
+      agents: agents.slice(0, STANDINGS_SHOWN),
+      best: [...best].sort((x, y) => order.indexOf(x.problem) - order.indexOf(y.problem))
+        .map((a) => ({ problem: a.problem, identity: a.identity, spend: format(a.spend), probes: a.probes.length, attempt: a.id })),
+      more: Math.max(0, agents.length - STANDINGS_SHOWN),
+    };
+    return json(table);
+  }
 
   return null;
 }
+
+/** How many agents the standings carry. Past it the table says how many more there are. */
+export const STANDINGS_SHOWN = 100;
 
 /** How many of a wallet's agents one page carries. Each costs two reads of the chain. */
 export const OWNER_AGENTS_SHOWN = 20;

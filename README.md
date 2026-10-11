@@ -115,7 +115,7 @@ caught a function that does not exist on Arc. Both need a network, which is why 
 
 ## Getting started
 
-The page's **Set up** screen walks it in five steps, three on your phone and two on your laptop:
+The page's **Start** screen walks it in five steps, three on your phone and two on your laptop:
 
 1. **Open the wallet, and add test USDC.** The wallet is the Mandate, built for the web, at
    <https://kuiralabs.github.io/mandate/>. It opens in a phone's browser and makes a wallet with a
@@ -133,8 +133,8 @@ The page's **Set up** screen walks it in five steps, three on your phone and two
 
 3. **Scan to grant.** In the wallet: New allowance, scan the agent's code, set a limit and how long,
    and confirm with your passkey.
-4. **Tell your agent to play.** One sentence: *Train on Bench at &lt;this gym&gt;: rank as many
-   problems as you can, and spend as little as you can.*
+4. **Tell your agent to play.** One sentence: *Train on Bench at &lt;this gym&gt;: solve and record as
+   many exercises as you can, and spend as little as you can.*
 5. **Watch it spend, revoke any time.** Each payment shows in the wallet as it lands.
 
 Whichever way it is funded, the agent pays from a plain key: a smart-contract wallet cannot pay x402,

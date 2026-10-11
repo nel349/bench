@@ -1,8 +1,10 @@
 import { FormattedMessage } from "react-intl";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
-import { useBounties, useOwner, useProblems } from "../shared/api/useGym.ts";
+import { useBounties, useOwner, useProblems, useStandings } from "../shared/api/useGym.ts";
 import { OwnerAgent } from "./OwnerAgent.tsx";
+import { placeOf } from "./place.ts";
+import { byLevel } from "../train/order.ts";
 import { Empty } from "../shared/components/Empty.tsx";
 import { isWallet } from "../shared/lib/ownerWallet.ts";
 import { sinceSummary, useLastVisit } from "./lastVisit.ts";
@@ -24,20 +26,26 @@ export interface YoursProps {
   readonly connectHref: string | null;
   /** Where a transaction can be looked up. */
   readonly explorer: string;
+  /** This gym's address, for the sentence that sends an agent to train. */
+  readonly gym: string;
+  /** The owner's wallet app, where an allowance is changed or revoked. `null` where none serves this network. */
+  readonly walletUrl: string | null;
 }
 
 /**
- * The owner's own page: their wallet's agents, what each is doing now, spent and earned.
+ * The owner's own page, and where a connected owner lands: their wallet's agents, what each is doing
+ * now, where it stands among the others, and what it has spent and earned.
  *
  * Reached by the link an agent gives when it starts training, or the wallet's own link, and kept
  * in the URL so it can be bookmarked. Everything on it is public, so it asks for nothing but the
  * wallet's address.
  */
-export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer }: YoursProps) {
+export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer, gym, walletUrl }: YoursProps) {
   const valid = isWallet(wallet);
   const owner = useOwner(valid ? wallet : null);
   const problems = useProblems();
   const bounties = useBounties();
+  const standings = useStandings();
   // Once for each wallet shown, not on every refresh of its data: a wallet its owner had just
   // disconnected was being connected again by the next poll.
   const shown = valid && owner.data !== undefined;
@@ -54,8 +62,8 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer
   // Of the agents it grants to now: what an agent it does not grant to did is not this visit's news.
   const summary = since !== null && owner.data
     ? sinceSummary(owner.data.agents.filter((a) => a.current).flatMap((a) => a.runs), since) : null;
-  const ceiling = (problems.data ?? []).reduce((t, p) => t + LEVEL_WEIGHT[p.level], 0);
-  const titleOf = (id: string) => problems.data?.find((p) => p.id === id)?.title ?? id;
+  const exercises = byLevel(problems.data ?? []);
+  const ceiling = exercises.reduce((t, p) => t + LEVEL_WEIGHT[p.level], 0);
   const gigsOf = (ids: readonly string[]) => (bounties.data ?? []).filter((b) => ids.includes(b.id));
 
   return (
@@ -90,8 +98,9 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer
         </p>
       )}
       {valid && owner.data && owner.data.agents.map((agent) => (
-        <OwnerAgent key={agent.address} agent={agent} ceiling={ceiling} titleOf={titleOf}
-                    gigs={gigsOf(agent.qualifies)} explorer={explorer} seenAt={agent.current ? since : null} />
+        <OwnerAgent key={agent.address} agent={agent} problems={exercises} ceiling={ceiling} place={placeOf(standings.data, agent.identity, agent.ranked.length > 0)}
+                    gigs={gigsOf(agent.qualifies)} explorer={explorer} gym={gym} walletUrl={walletUrl}
+                    seenAt={agent.current ? since : null} />
       ))}
       {valid && owner.data?.partial && <p className="state wait"><FormattedMessage id="yours.partial" /></p>}
       {valid && owner.data && owner.data.more > 0 && (

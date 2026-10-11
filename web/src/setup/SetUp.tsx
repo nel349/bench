@@ -31,9 +31,9 @@ export interface SetUpProps {
 }
 
 /**
- * Set up an agent: give it something to spend.
+ * Start: set up an agent, by giving it something to spend, and tell it to train.
  *
- * The first step of the loop. The way offered first is an allowance from the owner's wallet: a limit
+ * The first thing an owner does. The way offered first is an allowance from the owner's wallet: a limit
  * the chain enforces, and one that can be revoked. An agent that brings its own key can be given a
  * balance instead, which is the second way, and a link carrying `?agent=` opens on it because that
  * link names a key.
@@ -58,18 +58,14 @@ export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initial
 
   return (
     <Plate
-      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="load" wallet={ownerWallet} /> }}
+      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="start" wallet={ownerWallet} /> }}
       left={<FormattedMessage id="frame.network" values={{ testnet, id: chain.id }} />}
       right={<FormattedMessage id={way === "allowance" ? "frame.allowanceEdge" : "frame.ownWalletEdge"} />}
-      bottom={{
-        start: <FormattedMessage id="frame.setupStep" />,
-        middle: <span className="loop-line"><FormattedMessage id="frame.setupLoop" /></span>,
-        end: <FormattedMessage id="frame.money" values={{ testnet }} />,
-      }}
+      bottom={{ end: <FormattedMessage id="frame.money" values={{ testnet }} /> }}
     >
       <div className="load">
         <section className="load-intro">
-          <p className="kicker"><span>00</span> <FormattedMessage id="setup.kicker" /></p>
+          <p className="kicker"><span>//</span> <FormattedMessage id="setup.kicker" /></p>
           <h1 className="headline small">
             <FormattedMessage id="setup.title1" /><br />
             <FormattedMessage id={way === "allowance" ? "setup.title2Allowance" : "setup.title2Own"} />

@@ -6,40 +6,37 @@ import { WalletButton } from "./WalletButton.tsx";
 import type { OwnerWallet } from "../shared/lib/ownerWallet.ts";
 
 export interface NavProps {
-  readonly current: View | "load";
+  /** The page showing. Start is a page of its own, at its own path, and not one of the views. */
+  readonly current: View | "start";
   /** The connected wallet, and how to connect or disconnect one. */
   readonly wallet: OwnerWallet;
 }
 
 /**
- * The loop, as navigation.
+ * The pages, in the order an agent's owner needs them: set it up, see how it is doing, see what it
+ * is tested on, see who is ahead, see what pays.
  *
- * Train on the rig, which builds rep; rep unlocks gigs; gigs pay. The order is the model, so the
- * navigation is set in that order with arrows between, rather than as an unordered row of tabs.
+ * They were set out as the gym's loop, numbered and joined by arrows: set up, train, rep, gigs. That
+ * is how the gym works and not what an owner does. Training is one sentence said to an agent, so a
+ * Train tab was a page with nothing on it to do, and the page an owner comes back to sat apart at
+ * the end of the row.
  */
 export function Nav({ current, wallet }: NavProps) {
   const intl = useIntl();
-  const item = (id: NavProps["current"], href: string, label: MessageId, n: string) => (
+  const item = (id: NavProps["current"], href: string, label: MessageId) => (
     <a href={href} className={current === id ? "nav-item on" : "nav-item"}
        aria-current={current === id ? "page" : undefined}>
-      <span className="n">{n}</span><FormattedMessage id={label} />
+      <FormattedMessage id={label} />
     </a>
   );
   return (
     <nav className="nav" aria-label={intl.formatMessage({ id: "nav.label" })}>
-      {item("load", PATHS.fund, "nav.setUp", "00")}
-      <span className="arrow">→</span>
-      {item("rig", viewHref("rig"), "nav.train", "01")}
-      <span className="arrow">→</span>
-      {item("ledger", viewHref("ledger"), "nav.rep", "02")}
-      <span className="arrow">→</span>
-      {item("gigs", viewHref("gigs"), "nav.gigs", "03")}
-      {/*
-        * Not a step in the loop but whose agents it is about, and the page an owner comes back to: a
-        * tab always, connected or not. Without a wallet it asks for one.
-        */}
-      <span className="nav-gap" />
-      {item("yours", wallet.owner === null ? viewHref("yours") : viewHref("yours", wallet.owner), "nav.yours", "//")}
+      {item("start", PATHS.fund, "nav.start")}
+      {/* A tab always, connected or not. Without a wallet it asks for one. */}
+      {item("yours", wallet.owner === null ? viewHref("yours") : viewHref("yours", wallet.owner), "nav.agent")}
+      {item("exercises", viewHref("exercises"), "nav.exercises")}
+      {item("standings", viewHref("standings"), "nav.standings")}
+      {item("gigs", viewHref("gigs"), "nav.gigs")}
       <WalletButton owner={wallet.owner} connectHref={wallet.connectHref} onConnect={wallet.beginConnect}
                     onDisconnect={wallet.forget} />
     </nav>

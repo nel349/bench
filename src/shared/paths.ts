@@ -10,6 +10,8 @@ export const PATHS = {
   attempts: "/attempts",
   agents: "/agents",
   leaderboard: "/leaderboard",
+  /** The agents with a ranked solve, ahead first, and the best ranked solve on each problem. */
+  standings: "/standings",
   /** Recent runs across every problem, refusals included. What the page polls. */
   feed: "/feed",
   /** Work somebody else is paying for. Posting is free; attempting one is not. */

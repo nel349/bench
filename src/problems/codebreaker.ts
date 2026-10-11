@@ -60,6 +60,7 @@ export const codebreaker: Problem = register({
   id: "codebreaker",
   title: "Codebreaker",
   category: "hypothesis elimination",
+  summary: `Crack a hidden code of ${LENGTH} colours from how close each guess comes.`,
   level: "medium",
   par: 4,
   statement:

@@ -46,7 +46,7 @@ interface Row {
   id: string; agent: string; problem: string; seed: string | number; payer: string | null; claimed_id: string | null; identity: string | null;
   started_at: number; ended_at: number | null; outcome: string;
   probes: string; submissions: number; spend: string; budget: string | null; state: string | null;
-  rank_paid: number | null; rank_tx: string | null;
+  rank_paid: number | null; rank_tx: string | null; rank_at: number | null;
 }
 
 /**
@@ -84,7 +84,7 @@ export class SqliteStore implements Store {
         payer TEXT, claimed_id TEXT, identity TEXT,
         started_at INTEGER NOT NULL, ended_at INTEGER, outcome TEXT NOT NULL,
         probes TEXT NOT NULL, submissions INTEGER NOT NULL,
-        spend TEXT NOT NULL, budget TEXT, state TEXT, rank_paid INTEGER, rank_tx TEXT
+        spend TEXT NOT NULL, budget TEXT, state TEXT, rank_paid INTEGER, rank_tx TEXT, rank_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS attempts_agent ON attempts(agent);
       CREATE INDEX IF NOT EXISTS attempts_outcome ON attempts(outcome);
@@ -110,7 +110,9 @@ export class SqliteStore implements Store {
     for (const col of ["payer", "claimed_id", "identity", "rank_tx"]) {
       if (!has.has(col)) this.#db.exec(`ALTER TABLE attempts ADD COLUMN ${col} TEXT`);
     }
-    if (!has.has("rank_paid")) this.#db.exec("ALTER TABLE attempts ADD COLUMN rank_paid INTEGER");
+    for (const col of ["rank_paid", "rank_at"]) {
+      if (!has.has(col)) this.#db.exec(`ALTER TABLE attempts ADD COLUMN ${col} INTEGER`);
+    }
 
     /**
      * Repeat counts written before item 21 were keyed by the bare label. They are now kept under
@@ -133,19 +135,19 @@ export class SqliteStore implements Store {
 
   put(a: Attempt): void {
     this.#db.query(`
-      INSERT INTO attempts (id, agent, problem, seed, payer, claimed_id, identity, started_at, ended_at, outcome, probes, submissions, spend, budget, state, rank_paid, rank_tx)
-      VALUES ($id, $agent, $problem, $seed, $payer, $claimed, $identity, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state, $rankPaid, $rankTx)
+      INSERT INTO attempts (id, agent, problem, seed, payer, claimed_id, identity, started_at, ended_at, outcome, probes, submissions, spend, budget, state, rank_paid, rank_tx, rank_at)
+      VALUES ($id, $agent, $problem, $seed, $payer, $claimed, $identity, $started, $ended, $outcome, $probes, $subs, $spend, $budget, $state, $rankPaid, $rankTx, $rankAt)
       ON CONFLICT(id) DO UPDATE SET
         ended_at = $ended, outcome = $outcome, probes = $probes, submissions = $subs,
         spend = $spend, state = $state, payer = $payer, identity = $identity,
-        rank_paid = $rankPaid, rank_tx = $rankTx
+        rank_paid = $rankPaid, rank_tx = $rankTx, rank_at = $rankAt
     `).run({
       $id: a.id, $agent: a.agent, $problem: a.problem, $seed: a.seed, $payer: a.payer, $claimed: a.claimedId, $identity: a.identity,
       $started: a.startedAt, $ended: a.endedAt, $outcome: a.outcome,
       $probes: JSON.stringify(a.probes), $subs: a.submissions,
       $spend: a.spend.toString(), $budget: a.budget === null ? null : a.budget.toString(),
       $state: a.state === null || a.state === undefined ? null : JSON.stringify(a.state),
-      $rankPaid: a.rank ? 1 : 0, $rankTx: a.rank?.tx ?? null,
+      $rankPaid: a.rank ? 1 : 0, $rankTx: a.rank?.tx ?? null, $rankAt: a.rank?.at ?? null,
     });
   }
 
@@ -161,7 +163,7 @@ export class SqliteStore implements Store {
       submissions: r.submissions, spend: BigInt(r.spend),
       budget: r.budget === null ? null : BigInt(r.budget),
       state: r.state === null ? null : JSON.parse(r.state),
-      rank: r.rank_paid ? { tx: r.rank_tx } : null,
+      rank: r.rank_paid ? { tx: r.rank_tx, ...(r.rank_at === null ? {} : { at: r.rank_at }) } : null,
     };
   }
 

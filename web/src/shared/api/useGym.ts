@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type {
   AgentRecordWire, BountyWire, ChainRatingWire, FeedRowWire, OwnerWire, ProblemDetailWire, ProblemWire, ScoreWire,
+  StandingsWire,
 } from "../../../../src/shared/wire.ts";
 import { PATHS } from "../../../../src/shared/paths.ts";
 import { ApiError, getJson } from "./client.ts";
@@ -31,6 +32,15 @@ export function useBoard(id: string) {
   return useQuery({
     queryKey: ["board", id],
     queryFn: ({ signal }) => getJson<readonly ScoreWire[]>(`${PATHS.leaderboard}/${id}`, signal),
+    refetchInterval: FEED_REFRESH_MS,
+  });
+}
+
+/** Who is ahead, and who holds the record on each exercise. Refreshed like the feed, since a recorded solve moves it. */
+export function useStandings() {
+  return useQuery({
+    queryKey: ["standings"],
+    queryFn: ({ signal }) => getJson<StandingsWire>(PATHS.standings, signal),
     refetchInterval: FEED_REFRESH_MS,
   });
 }

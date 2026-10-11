@@ -74,7 +74,7 @@ export async function gymRoutes({ req, deps, client, url, path, seg, prices }: R
   }
   if (req.method === "GET" && path === PATHS.problems) {
     return json(allProblems().map((p): ProblemWire =>
-      ({ id: p.id, title: p.title, category: p.category, level: p.level, par: p.par, prices })));
+      ({ id: p.id, title: p.title, category: p.category, level: p.level, summary: p.summary, par: p.par, prices })));
   }
   if (req.method === "GET" && seg[0] === "problems" && seg[1]) {
     const problem = problemOf(seg[1]);
@@ -83,7 +83,7 @@ export async function gymRoutes({ req, deps, client, url, path, seg, prices }: R
     if (seg.length === 2) {
       const detail: ProblemDetailWire = {
         id: problem.id, title: problem.title, category: problem.category,
-        level: problem.level, par: problem.par,
+        level: problem.level, summary: problem.summary, par: problem.par,
         statement: problem.statement, scoring: SCORING, prices,
       };
       return json(detail);

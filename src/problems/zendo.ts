@@ -190,6 +190,7 @@ export const zendo: Problem = register({
   id: "zendo",
   title: "Zendo",
   category: "induction",
+  summary: "Work out a hidden rule about three numbers from yes and no answers alone.",
   level: "medium",
   par: null,
   statement:

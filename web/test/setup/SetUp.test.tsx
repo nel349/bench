@@ -153,6 +153,19 @@ describe("with an allowance, the way offered first", () => {
     ]);
   });
 
+  /**
+   * Training is one sentence said to the agent. There was a Train tab with nothing on it to do, and
+   * an owner who had set everything up did not know what came next: it was step 4 of five, in the
+   * same grey as the rest.
+   */
+  test("the step that is the whole of training stands out, and only that one", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    const steps = [...document.querySelectorAll(".journey li")];
+    expect(steps.map((li) => li.classList.contains("key"))).toEqual([false, false, false, true, false]);
+    expect(steps[3]).toHaveTextContent(/this is the whole of training/i);
+  });
+
   test("step 1 opens the owner's wallet", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
@@ -233,14 +246,17 @@ describe("with a wallet connected, the steps say where its owner is", () => {
     connected(granted);
     await waitFor(() => expect(steps()).toEqual([true, true, true, false, false]));
     expect(screen.queryByText(/these steps tick themselves off/i)).not.toBeInTheDocument();
+    // The step to do now is the one that stands out, and it leads to the owner's own page.
+    expect(document.querySelector(".journey li.next")).toHaveClass("key");
+    expect(screen.getByRole("link", { name: "Watch on My agent" })).toHaveAttribute("href", `/#yours/${W}`);
   });
 
   /** Not yet known was drawn as nothing done, with step 1 marked as the one to do next. */
   test("while its page cannot be read, the steps are shown plain: none ticked, and no prompt to connect", async () => {
     connected(500);
     // The tab knows the wallet at once; the steps wait on a page that does not come.
-    const tabs = screen.getByRole("navigation", { name: "The loop" });
-    await waitFor(() => expect(within(tabs).getByRole("link", { name: /your agents/i })).toHaveAttribute("href", `/#yours/${W}`));
+    const tabs = screen.getByRole("navigation", { name: "Pages" });
+    await waitFor(() => expect(within(tabs).getByRole("link", { name: "My agent" })).toHaveAttribute("href", `/#yours/${W}`));
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(`/owner/${W}`, expect.anything()));
     expect(steps()).toEqual([false, false, false, false, false]);
     expect(document.querySelector(".journey li.next")).toBeNull();

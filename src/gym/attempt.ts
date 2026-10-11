@@ -77,8 +77,12 @@ export interface Attempt {
    * Whether the run was ranked: `null` if not, `{ tx: null }` once the $0.25 is paid and the record
    * is not yet on chain, and `{ tx }` once it is. The middle state is what lets a failed write be
    * retried without charging twice.
+   *
+   * `at` is when the record was written. A run can be ranked long after it was solved, and who holds
+   * the best solve on a problem turns on who ranked first, so the moment is kept. It is absent on a
+   * record written before it was.
    */
-  rank: { readonly tx: string | null } | null;
+  rank: { readonly tx: string | null; readonly at?: number } | null;
 }
 
 export type Refusal = { readonly refused: "allowance" | "budget"; readonly wanted: Usdc; readonly remaining: Usdc };
@@ -372,7 +376,7 @@ export class Attempts {
 
     try {
       const tx = await write(a, BigInt(identity));
-      a.rank = { tx };
+      a.rank = { tx, at: Date.now() };
       this.store.put(a);
       return { ...settled, ranked: tx, paid };
     } catch (cause) {
