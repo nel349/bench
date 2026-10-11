@@ -19,6 +19,28 @@ export const GRADED_PER_HOUR = 30;
  * nothing, so a few are a mistake and many are an attack. A payment that works never counts.
  */
 export const REFUSED_PER_MINUTE = 10;
+/**
+ * How long a connection may sit with nothing sent before the server closes it, in seconds.
+ *
+ * Long enough for every request that only reads the chain to fail properly and say so: at the
+ * default of ten, a node that hung got the caller a closed socket where it was owed "try again".
+ * The slowest of those is an owner's page, four reads one after another, about thirty-three seconds
+ * if every one is waited out. A test starts the server against a node that says nothing and checks
+ * the answer still arrives.
+ *
+ * Not long enough for a write that crawls, and not meant to be. Recording a run and paying out a
+ * gig wait for a receipt, which the writers give minutes; past this the caller's connection closes
+ * while the write goes on, and both are built to be asked about again without paying twice. Making
+ * this long enough for those would hold every idle connection for as long, and the caps above count
+ * requests, not connections.
+ */
+export const IDLE_S = 60;
+/**
+ * The most steps, one after another, that a request reads the chain in: an owner's page asks which
+ * agents a wallet grants to, who holds each former agent's identity, what each agent has earned,
+ * and what each is allowed.
+ */
+export const CHAIN_STEPS = 4;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 /** Past this many keys, buckets that have refilled completely are forgotten; they hold nothing. */

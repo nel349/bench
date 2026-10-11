@@ -14,7 +14,7 @@ import { ArcArbiter, arbiterKey } from "./chain/arbiter.ts";
 import { ArcEscrow } from "./chain/escrow.ts";
 import { ArcReputation } from "./chain/reputation.ts";
 import { paidBy } from "./gym/rating.ts";
-import { defaultLimits } from "./http/limits.ts";
+import { defaultLimits, IDLE_S } from "./http/limits.ts";
 import { privateKeyFrom } from "./chain/keys.ts";
 import { ArcFunds } from "./chain/funds.ts";
 import { PRICE } from "./shared/pricing.ts";
@@ -196,6 +196,7 @@ const clientOf = (req: Request, socket: string | undefined): string => {
 
 const server = Bun.serve({
   port,
+  idleTimeout: IDLE_S,
   fetch(req, srv) {
     // Dev only: anyone who names an agent gets a budget, so the flow can be walked without a wallet.
     if (devAllowance && !payTo) {
@@ -237,7 +238,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 console.log(
-  `bench listening on :${port}  network=${net}  runs=${kept}  payments=${paying}  identity=${ids}` +
+  `bench listening on :${server.port}  network=${net}  runs=${kept}  payments=${paying}  identity=${ids}` +
   `  bounties=${paying2}  ${ranking}` +
   `${devAllowance && !payTo ? `  DEV_ALLOWANCE=$${devAllowance}` : ""}`,
 );

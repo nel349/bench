@@ -1,5 +1,6 @@
-import { createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
-import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
+import { createPublicClient, parseAbi, getAddress, type Address } from "viem";
+import { chainOf, contractsOf, type Network, readTransport } from "./chain.ts";
+import { refusedByContract } from "./reverts.ts";
 import type { Usdc } from "../shared/money.ts";
 
 /**
@@ -48,7 +49,7 @@ export class ArcEscrow implements EscrowReader {
     const at = address ?? contractsOf(net).bountyEscrow;
     if (!at) throw new Error(`no BountyEscrow deployed on ${net}, so nothing can be backed there`);
     this.#address = getAddress(at);
-    this.#client = createPublicClient({ chain: chainOf(net), transport: http(rpcUrl(net)) });
+    this.#client = createPublicClient({ chain: chainOf(net), transport: readTransport(net) });
   }
 
   get address(): Address { return this.#address; }
@@ -68,13 +69,12 @@ export class ArcEscrow implements EscrowReader {
     } catch (cause) {
       /**
        * An unknown id **reverts**, and so does an unreachable node. They mean opposite things: one
-       * is a poster naming a bounty that does not exist, the other is us being unable to check. A
-       * revert carries a reason; a transport failure does not.
+       * is a poster naming a bounty that does not exist, the other is us being unable to check.
+       * Only the contract's own refusal is the first; see `refusedByContract`. It used to be any
+       * error with "reverted" in its words, which a failing node's error has too, and a poster was
+       * told their escrow did not exist while the node was down.
        */
-      const message = cause instanceof Error ? cause.message : String(cause);
-      if (/NoSuchBounty|reverted|execution reverted/i.test(message)) {
-        return { ok: false, because: `there is no escrow ${escrowId}` };
-      }
+      if (refusedByContract(cause)) return { ok: false, because: `there is no escrow ${escrowId}` };
       return { ok: false, unavailable: true, because: "the chain could not be reached" };
     }
 

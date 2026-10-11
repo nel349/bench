@@ -86,7 +86,7 @@ The limit is read on the **ERC-20 view** of USDC rather than the native rail, be
 an allowance is granted — the native limit is deliberately left at zero, and reading it would report
 an allowance that looks revoked.
 
-`404` on a network with no session-key plugin, rather than a guess.
+`404` on a network with no session-key plugin, rather than a guess, and `404` when the account grants that key nothing: the plugin itself says so. `503` with `retry: true` when the chain could not be read. That is not "no allowance"; ask again.
 
 ## Bounties
 

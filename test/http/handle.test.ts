@@ -684,6 +684,28 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     expect(page.agents[0]).toMatchObject({ rep: null, repUnread: true, qualifies: [free.bounty.id] });
   });
 
+  /**
+   * An agent asks what it has left before it spends. "You have no allowance" for a node that was
+   * down sent it back to its owner to be paired again, for nothing.
+   */
+  test("what an agent has left: the figures, nothing when there is none, and try again when the chain was not read", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const ask = (of: () => Promise<ReturnType<typeof describeAllowance> | null>) =>
+      handle(new Request(`http://bench.test/allowance/${WALLET}/${AGENT}`), { ...ranked, allowances: { async agentsOf() { return []; }, of } });
+
+    const found = await ask(async () => describeAllowance(
+      { hasLimit: true, limit: 5_000_000n, limitUsed: 380_000n, refreshInterval: 0, lastUsedTime: 0 }, 1_900_000_000, 1_800_000_000));
+    expect(found.status).toBe(200);
+    expect(await found.json()).toMatchObject({ limit: "5.000000", used: "0.380000", remaining: "4.620000", live: true });
+
+    expect((await ask(async () => null)).status).toBe(404);
+
+    const down = await ask(async () => { throw new Error("node down"); });
+    expect(down.status).toBe(503);
+    expect(down.headers.get("retry-after")).toBe("5");
+    expect(await down.json()).toMatchObject({ retry: true });
+  });
+
   /** Anyone may ask about any wallet, and every answer reads the chain. */
   test("an owner's page is read once for everyone asking at the same moment, and carries a bounded number of agents", async () => {
     const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
@@ -701,6 +723,113 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
     expect(page.agents).toHaveLength(OWNER_AGENTS_SHOWN);
     expect(page.more).toBe(5);
     expect(allowancesRead).toBe(OWNER_AGENTS_SHOWN);
+  });
+
+  /**
+   * The allowance of an agent the wallet grants to, when the plugin could not be asked: the agent
+   * is still the wallet's and still on the page, with its allowance left unsaid, and the page says
+   * it is not whole. Read as "none", it told an owner their agent had no allowance.
+   */
+  test("an allowance that could not be read is left unsaid on a page that says it is not whole", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    await solved();
+    const dark: Deps = { ...ranked, allowances: {
+      async agentsOf() { return [AGENT as `0x${string}`]; },
+      async of() { throw new Error("node down"); },
+    } };
+    const page = await (await handle(new Request(`http://bench.test/owner/${WALLET}`), dark)).json() as OwnerWire;
+    expect(page.partial).toBe(true);
+    expect(page.agents).toHaveLength(1);
+    expect(page.agents[0]).toMatchObject({ address: AGENT.toLowerCase(), current: true, allowance: null });
+  });
+
+  /** A hiccup is given to whoever was waiting for it, and never to the next to ask. */
+  test("a page that is not whole is not kept, so the next to ask gets a fresh reading", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    await solved();
+    let failing = true;
+    let listed = 0;
+    const flaky: Deps = { ...ranked, allowances: {
+      async agentsOf() { listed += 1; return [AGENT as `0x${string}`]; },
+      async of() { if (failing) throw new Error("node down"); return null; },
+    } };
+    const ask = async () => await (await handle(new Request(`http://bench.test/owner/${WALLET}`), flaky)).json() as OwnerWire;
+    expect((await ask()).partial).toBe(true);
+    failing = false;
+    // At once, well inside the few seconds a whole page is kept for.
+    expect((await ask()).partial).toBe(false);
+    expect(listed).toBe(2);
+  });
+
+  test("a reading that failed outright is forgotten, and the next to ask is answered", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    let failing = true;
+    const flaky: Deps = { ...ranked, allowances: {
+      async agentsOf() { if (failing) throw new Error("node down"); return []; },
+      async of() { return null; },
+    } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), flaky);
+    expect((await ask()).status).toBe(503);
+    failing = false;
+    expect((await ask()).status).toBe(200);
+  });
+
+  /**
+   * A reading that throws outright, which the readers are written never to do. Kept, it would be
+   * handed to everyone who asked for that wallet from then on.
+   */
+  test("a reading that threw is forgotten too, and the next to ask gets a fresh one", async () => {
+    const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    let broken = true;
+    // The record of gigs is the page's own, not the chain's: when it throws, nothing catches it.
+    const gigs = Object.create(bounties) as Bounties;
+    gigs.all = () => { if (broken) throw new Error("the record could not be opened"); return bounties.all(); };
+    const shaky: Deps = { ...ranked, bounties: gigs,
+      allowances: { async agentsOf() { return []; }, async of() { return null; } } };
+    const ask = () => handle(new Request(`http://bench.test/owner/${WALLET}`), shaky);
+    // Whatever the router makes of a reading that threw, it is not an answer.
+    const first = await ask().then((r) => r.status, () => 500);
+    expect(first).toBeGreaterThanOrEqual(500);
+    broken = false;
+    expect((await ask()).status).toBe(200);
+  });
+
+  /** Two wallets' pages both need to know who holds the same identity. The registry is asked once. */
+  test("who holds an identity is asked once, however many pages want it at the same moment", async () => {
+    await solved();
+    let asked = 0;
+    const holder = Promise.withResolvers<string | null>();
+    const shared: Deps = { ...ranked,
+      allowances: { async agentsOf() { return []; }, async of() { return null; } },
+      ownerOf: () => { asked += 1; return holder.promise; } };
+    const first = handle(new Request("http://bench.test/owner/0x9fa928ACfE2eEcEad9698ebBad835E7129688b28"), shared);
+    const second = handle(new Request("http://bench.test/owner/0x00000000000000000000000000000000000000aa"), shared);
+    // Both pages have reached the registry before it answers either.
+    await Bun.sleep(10);
+    holder.resolve(null);
+    await Promise.all([first, second]);
+    expect(asked).toBe(1);
+  });
+
+  /**
+   * Past two hundred pages the oldest are dropped. A page still being read was among them, so
+   * whoever asked for it next started a second reading of the same page.
+   */
+  test("a page still being read is not dropped to make room", async () => {
+    const wallets = Array.from({ length: OWNER_PAGES_KEPT + 1 }, (_, i) => `0x${(i + 1).toString(16).padStart(40, "0")}`);
+    const reads = new Map<string, number>();
+    const plugin = Promise.withResolvers<readonly `0x${string}`[]>();
+    const slow: Deps = { ...ranked, allowances: {
+      agentsOf(account) { reads.set(account.toLowerCase(), (reads.get(account.toLowerCase()) ?? 0) + 1); return plugin.promise; },
+      async of() { return null; },
+    } };
+    const ask = (wallet: string) => handle(new Request(`http://bench.test/owner/${wallet}`), slow);
+    const all = wallets.map(ask);
+    // The first wallet again, while every one of them is still being read.
+    const again = ask(wallets[0]!);
+    plugin.resolve([]);
+    await Promise.all([...all, again]);
+    expect(reads.get(wallets[0]!.toLowerCase())).toBe(1);
   });
 
   test("a wallet with more agents than a page carries keeps the one that played last", async () => {

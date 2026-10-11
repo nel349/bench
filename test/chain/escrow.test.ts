@@ -1,4 +1,6 @@
-import { expect, test, describe, beforeEach } from "bun:test";
+import { afterAll, beforeAll, expect, test, describe, beforeEach } from "bun:test";
+import { toFunctionSelector } from "viem";
+import { ArcEscrow } from "../../src/chain/escrow.ts";
 import { handle, type Deps } from "../../src/http/handle.ts";
 import { Attempts } from "../../src/gym/attempt.ts";
 import { Bounties } from "../../src/bounties/bounties.ts";
@@ -149,4 +151,45 @@ describe("a poster cannot win their own bounty", () => {
     expect(r.status).toBe(200);
     expect((await r.json() as { solved: boolean }).solved).toBe(true);
   });
+});
+
+/**
+ * The reader itself, against a node that is stood in for, as in `registry.test.ts`. It used to take
+ * any error with "reverted" in its words as "no such escrow", and a failing node's error has those
+ * words too.
+ */
+describe("an escrow read from the chain, and when it could not be read", () => {
+  type Answer = { readonly result: string } | { readonly error: object };
+  let answer: Answer = { result: "0x" };
+  let node: ReturnType<typeof Bun.serve>;
+  const before = process.env["ARC_RPC_URL"];
+  const AT = "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB";
+
+  beforeAll(() => {
+    node = Bun.serve({ port: 0, async fetch(req) {
+      const call = await req.json() as { id: number };
+      return Response.json({ jsonrpc: "2.0", id: call.id, ...answer });
+    } });
+    process.env["ARC_RPC_URL"] = `http://127.0.0.1:${node.port}`;
+  });
+  afterAll(() => {
+    void node.stop(true);
+    if (before === undefined) delete process.env["ARC_RPC_URL"]; else process.env["ARC_RPC_URL"] = before;
+  });
+
+  test("the contract refusing the id is an escrow that does not exist", async () => {
+    answer = { error: { code: 3, message: "execution reverted", data: toFunctionSelector("NoSuchBounty()") } };
+    expect(await new ArcEscrow("testnet", AT).read("7")).toEqual({ ok: false, because: "there is no escrow 7" });
+  });
+
+  test("a node that is failing is the chain not being reached, whatever its error says", async () => {
+    for (const error of [
+      { code: -32603, message: "Internal error" },
+      { code: -32603, message: "execution reverted", data: "upstream request timeout" },
+      { code: -32000, message: "execution reverted" },
+    ]) {
+      answer = { error };
+      expect(await new ArcEscrow("testnet", AT).read("7")).toMatchObject({ ok: false, unavailable: true });
+    }
+  }, 60_000);
 });

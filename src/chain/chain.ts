@@ -1,4 +1,4 @@
-import { defineChain, type Address } from "viem";
+import { defineChain, http, type Address } from "viem";
 import { arcTestnet } from "viem/chains";
 
 /**
@@ -158,6 +158,37 @@ export function contractsOf(n: Network): ArcContracts {
 export function rpcUrl(n: Network): string {
   return process.env["ARC_RPC_URL"] ?? chainOf(n).rpcUrls.default.http[0];
 }
+
+/**
+ * How long one read of the chain may take, and how many more times it is tried.
+ *
+ * Left to the client library a read waits ten seconds and is tried four times, so a node that
+ * accepts a connection and then says nothing held a request for forty seconds; the server had
+ * closed the socket long before, and the caller got a dropped connection where it was owed "try
+ * again". Four seconds, twice, is more than a healthy node ever needs and little enough that a
+ * request reading the chain in three steps still answers.
+ */
+export const READ_TIMEOUT_MS = 4_000;
+export const READ_RETRIES = 1;
+/** How long the one retry waits before it is made. */
+export const READ_RETRY_AFTER_MS = 150;
+/**
+ * The longest one read takes when the node says nothing at all: every try timing out, and the wait
+ * between them. The client doubles that wait with each retry, so this sum is right for one retry
+ * and would need redoing for more.
+ *
+ * Not a bound on every failure. A node that answers "too many requests" and names a wait is waited
+ * for, once, for as long as it names; that is the node asking, and asking again sooner would be
+ * refused again.
+ */
+export const SLOWEST_READ_MS = READ_TIMEOUT_MS * (READ_RETRIES + 1) + READ_RETRY_AFTER_MS * READ_RETRIES;
+
+/**
+ * The transport for a client that only reads. Anything that sends a transaction, or waits for one,
+ * keeps the library's own patience: a receipt takes as long as a block takes.
+ */
+export const readTransport = (n: Network) =>
+  http(rpcUrl(n), { timeout: READ_TIMEOUT_MS, retryCount: READ_RETRIES, retryDelay: READ_RETRY_AFTER_MS });
 
 export function explorerUrl(n: Network): string {
   return chainOf(n).blockExplorers.default.url;

@@ -1,6 +1,6 @@
 import { createPublicClient, createWalletClient, getAddress, http, parseAbi, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
+import { chainOf, contractsOf, rpcUrl, type Network, readTransport } from "./chain.ts";
 import { describeFailure } from "./arbiter.ts";
 import type { Entry, Reputation } from "../gym/reputation.ts";
 
@@ -36,7 +36,10 @@ export const problemTag = (problem: string): string => `${PROBLEM_TAG_PREFIX}${p
 
 export class ArcReputation implements Reputation {
   readonly #wallet: ReturnType<typeof createWalletClient>;
+  /** For the write: simulating it and waiting for its receipt, which takes as long as a block takes. */
   readonly #public: ReturnType<typeof createPublicClient>;
+  /** For reading an identity's record, which a page is waiting on and which gives up sooner. */
+  readonly #reader: ReturnType<typeof createPublicClient>;
   readonly #registry: Address;
   readonly scribe: Address;
 
@@ -52,7 +55,11 @@ export class ArcReputation implements Reputation {
     const chain = chainOf(net);
     const transport = http(rpcUrl(net));
     this.#wallet = createWalletClient({ account, chain, transport });
+    // The write's own client keeps the library's patience. Given the reader's, it stopped waiting
+    // for a receipt after eight seconds and reported a record that had been sent as unwritten; the
+    // retry then sent it a second time.
     this.#public = createPublicClient({ chain, transport });
+    this.#reader = createPublicClient({ chain, transport: readTransport(net) });
   }
 
   /**
@@ -83,7 +90,7 @@ export class ArcReputation implements Reputation {
    * Entries with a problem tag this gym does not recognise are the caller's to ignore.
    */
   async ranked(agentId: bigint): Promise<readonly string[]> {
-    const [, , , , tag1s] = await this.#public.readContract({
+    const [, , , , tag1s] = await this.#reader.readContract({
       address: this.#registry, abi: REPUTATION_ABI, functionName: "readAllFeedback",
       args: [agentId, [this.scribe], "", COST_TAG, false],
     });

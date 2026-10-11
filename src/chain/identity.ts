@@ -1,5 +1,6 @@
-import { BaseError, ContractFunctionRevertedError, createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
-import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
+import { createPublicClient, parseAbi, getAddress, type Address } from "viem";
+import { chainOf, contractsOf, type Network, readTransport } from "./chain.ts";
+import { refusedByContract } from "./reverts.ts";
 
 /**
  * The agent's ERC-8004 identity, checked rather than searched for.
@@ -60,7 +61,7 @@ export class ArcRegistry implements Registry {
       );
     }
     this.#address = configured as Address;
-    this.#client = createPublicClient({ chain: chainOf(net), transport: http(rpcUrl(net)) });
+    this.#client = createPublicClient({ chain: chainOf(net), transport: readTransport(net) });
   }
 
   get address(): Address { return this.#address; }
@@ -106,10 +107,7 @@ export class ArcRegistry implements Registry {
       });
       return out === ZERO ? null : (out as Address);
     } catch (error) {
-      const revert = error instanceof BaseError ? error.walk((e) => e instanceof ContractFunctionRevertedError) : null;
-      const refusedByContract = revert instanceof ContractFunctionRevertedError
-        && (revert.raw !== undefined || revert.signature !== undefined);
-      if (refusedByContract) return null;
+      if (refusedByContract(error)) return null;
       throw error;
     }
   }

@@ -1,5 +1,7 @@
-import { expect, test, describe as suite } from "bun:test";
-import { describe, type Allowance } from "../../src/chain/allowance.ts";
+import { afterAll, beforeAll, expect, test, describe as suite } from "bun:test";
+import { encodeAbiParameters, encodeFunctionResult, toFunctionSelector } from "viem";
+import { ArcAllowances, SESSION_KEY_ABI, describe, type Allowance } from "../../src/chain/allowance.ts";
+
 import { usdc, format } from "../../src/shared/money.ts";
 
 const NOW = 1_700_000_000;
@@ -72,4 +74,90 @@ suite("what it reports", () => {
     expect(typeof a.remaining).toBe("bigint");
     expect(format(a.remaining)).toBe("0.200000");
   });
+});
+
+/**
+ * A node, stood in for, as in `registry.test.ts`: it answers each call the way a real one would in
+ * the case under test, and the reading of those answers is the real code over real HTTP.
+ *
+ * The plugin's refusal is copied from Arc testnet, where it was asked on 10 October about a key an
+ * account never granted: error `0xd3d0f659` carrying the key.
+ */
+suite("an allowance read from the plugin, and when it could not be read", () => {
+  type Answer = { readonly result: string } | { readonly error: object } | { readonly status: number };
+  let answer: (data: string) => Answer = () => ({ result: "0x" });
+  let node: ReturnType<typeof Bun.serve>;
+  const before = process.env["ARC_RPC_URL"];
+
+  beforeAll(() => {
+    node = Bun.serve({ port: 0, async fetch(req) {
+      const call = await req.json() as { id: number; params: [{ data: string }] };
+      const said = answer(call.params[0].data);
+      if ("status" in said) return new Response("unavailable", { status: said.status });
+      return Response.json({ jsonrpc: "2.0", id: call.id, ...said });
+    } });
+    process.env["ARC_RPC_URL"] = `http://127.0.0.1:${node.port}`;
+  });
+  afterAll(() => {
+    void node.stop(true);
+    if (before === undefined) delete process.env["ARC_RPC_URL"]; else process.env["ARC_RPC_URL"] = before;
+  });
+
+  const OWNER = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+  const AGENT = "0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce";
+  const LIMIT_INFO = toFunctionSelector("getERC20SpendLimitInfo(address,address,address)");
+  const NO_SUCH_KEY = `0xd3d0f659${encodeAbiParameters([{ type: "address" }], [AGENT]).slice(2)}`;
+  const granted = (data: string): Answer => ({
+    result: data.startsWith(LIMIT_INFO)
+      ? encodeFunctionResult({
+          abi: SESSION_KEY_ABI, functionName: "getERC20SpendLimitInfo",
+          result: { hasLimit: true, limit: usdc("5"), limitUsed: usdc("0.38"), refreshInterval: 0, lastUsedTime: 0 },
+        })
+      : encodeFunctionResult({ abi: SESSION_KEY_ABI, functionName: "getKeyTimeRange", result: [0, 4_000_000_000] }),
+  });
+
+  test("what is left, when the plugin answers", async () => {
+    answer = granted;
+    const found = await new ArcAllowances("testnet").of(OWNER, AGENT);
+    expect(found).not.toBeNull();
+    expect(format(found!.remaining)).toBe(format(usdc("4.62")));
+    expect(found!.live).toBe(true);
+  });
+
+  test("none, when the plugin itself refuses the key and says so", async () => {
+    answer = () => ({ error: { code: 3, message: "execution reverted", data: NO_SUCH_KEY } });
+    expect(await new ArcAllowances("testnet").of(OWNER, AGENT)).toBeNull();
+  });
+
+  test("none, for something that is not an address, without asking the chain", async () => {
+    answer = () => { throw new Error("the chain was asked"); };
+    expect(await new ArcAllowances("testnet").of("not-an-address", AGENT)).toBeNull();
+  });
+
+  /**
+   * Read as "no allowance", a failing node told an owner their agent had none, and told an agent
+   * asking what it had left that it had never been granted anything.
+   */
+  test("a node that is failing is a failure, not an agent with no allowance", async () => {
+    answer = () => ({ error: { code: -32603, message: "Internal error" } });
+    await expect(new ArcAllowances("testnet").of(OWNER, AGENT)).rejects.toThrow();
+    answer = () => ({ status: 503 });
+    await expect(new ArcAllowances("testnet").of(OWNER, AGENT)).rejects.toThrow();
+  }, 30_000);
+
+  /**
+   * A node's own error can carry data too: a sentence, or nothing at all. It was read as the
+   * contract's refusal because it was there, and an outage became "no allowance" again.
+   */
+  test("a node's error that carries words or an empty answer is still a failure", async () => {
+    for (const data of ["upstream request timeout", "0x", "0x1234"]) {
+      answer = () => ({ error: { code: -32603, message: "Internal error", data } });
+      await expect(new ArcAllowances("testnet").of(OWNER, AGENT)).rejects.toThrow();
+    }
+  }, 60_000);
+
+  test("one of the two reads failing is a failure too", async () => {
+    answer = (data) => (data.startsWith(LIMIT_INFO) ? granted(data) : { error: { code: -32603, message: "Internal error" } });
+    await expect(new ArcAllowances("testnet").of(OWNER, AGENT)).rejects.toThrow();
+  }, 30_000);
 });

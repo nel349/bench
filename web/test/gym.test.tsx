@@ -86,14 +86,14 @@ describe("the front page and Train", () => {
 
   test("with a wallet connected, the tab opens that wallet's own page", () => {
     const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
-    show(<Nav current="home" wallet={{ owner: WALLET, connectHref: "https://wallet.test/connect", remember: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
+    show(<Nav current="home" wallet={{ owner: WALLET, connectHref: "https://wallet.test/connect", connect: () => {}, returned: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
     const tab = screen.getByRole("link", { name: /your agents/i });
     expect(tab).toHaveAttribute("href", `/#yours/${WALLET}`);
     expect(tab).not.toHaveAttribute("aria-current");
   });
 
   test("the tab is marked as the page showing when it is", () => {
-    show(<Nav current="yours" wallet={{ owner: null, connectHref: null, remember: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
+    show(<Nav current="yours" wallet={{ owner: null, connectHref: null, connect: () => {}, returned: () => {}, offer: () => {}, forget: () => {}, beginConnect: () => {} }} />);
     expect(screen.getByRole("link", { name: /your agents/i })).toHaveAttribute("aria-current", "page");
   });
 
@@ -115,9 +115,11 @@ describe("the front page and Train", () => {
 describe("coming back from the wallet, and opening an owner's link", () => {
   const WALLET = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
   let kept: Map<string, string>;
-  const arrive = (hash: string) => {
+  const OTHER = "0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce";
+  /** What the browser already holds when the page opens: a connected wallet, an asking, or nothing. */
+  const arrive = (hash: string, holding: Record<string, string> = {}) => {
     // This test environment has no working localStorage; a browser's is a map of strings like this one.
-    kept = new Map();
+    kept = new Map(Object.entries(holding));
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => kept.get(key) ?? null,
       setItem: (key: string, value: string) => void kept.set(key, value),
@@ -127,7 +129,8 @@ describe("coming back from the wallet, and opening an owner's link", () => {
       matches: query.includes("reduce"), media: query, addEventListener: () => {}, removeEventListener: () => {},
     }));
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/bounties": [], "/feed": [],
-      [`/owner/${WALLET}`]: { wallet: WALLET, agents: [], more: 0, partial: false } }));
+      [`/owner/${WALLET}`]: { wallet: WALLET, agents: [], more: 0, partial: false },
+      [`/owner/${OTHER}`]: { wallet: OTHER, agents: [], more: 0, partial: false } }));
     window.location.hash = hash;
     show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl="https://wallet.test/" />);
   };
@@ -139,10 +142,49 @@ describe("coming back from the wallet, and opening an owner's link", () => {
     expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
   });
 
-  test("back with nothing, having cancelled: the front page, and nothing connected", async () => {
-    arrive("#connected/");
+  test("back with nothing, having cancelled: the front page, nothing connected, and the asking over", async () => {
+    arrive("#connected/", { "bench.owner.connecting": String(Date.now()) });
     await waitFor(() => expect(window.location.hash).toBe("#home"));
     expect(kept.has("bench.owner.wallet")).toBe(false);
+    // The hook is told of the empty answer too. Left standing, the asking let the next link of this shape in.
+    expect(kept.has("bench.owner.connecting")).toBe(false);
+  });
+
+  /** The answer's shape is a link anyone can make. Unasked, it must not change whose agents these are. */
+  test("a link shaped like the wallet's answer, opened unasked, does not replace the connected wallet", async () => {
+    arrive(`#connected/${OTHER}`, { "bench.owner.wallet": WALLET });
+    await waitFor(() => expect(window.location.hash).toBe(`#yours/${OTHER}`));
+    expect(kept.get("bench.owner.wallet")).toBe(WALLET);
+  });
+
+  test("the answer to a Connect wallet pressed here does replace it", async () => {
+    arrive(`#connected/${OTHER}`, { "bench.owner.wallet": WALLET, "bench.owner.connecting": String(Date.now()) });
+    await waitFor(() => expect(kept.get("bench.owner.wallet")).toBe(OTHER));
+  });
+
+  test("another wallet's page, opened while one is connected, leaves it connected", async () => {
+    arrive(`#yours/${OTHER}`, { "bench.owner.wallet": WALLET });
+    expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+    // Its page has been read and shown, which is when a page offers its wallet.
+    await screen.findByText(/has not granted an allowance to any agent/);
+    expect(kept.get("bench.owner.wallet")).toBe(WALLET);
+  });
+
+  /** With one connected, pasting another's address and pressing Open did nothing. */
+  test("an address typed on Your agents is connected, in place of the one that was", async () => {
+    const user = userEvent.setup();
+    arrive("#yours", { "bench.owner.wallet": WALLET });
+    await user.type(await screen.findByLabelText(/wallet/i), OTHER);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(kept.get("bench.owner.wallet")).toBe(OTHER);
+  });
+
+  test("Disconnect disconnects: nothing is kept, and Connect wallet is offered again", async () => {
+    const user = userEvent.setup();
+    arrive("", { "bench.owner.wallet": WALLET });
+    await user.click(await screen.findByRole("button", { name: "Disconnect" }));
+    expect(kept.has("bench.owner.wallet")).toBe(false);
+    expect(await screen.findByRole("link", { name: "Connect wallet" })).toBeInTheDocument();
   });
 
   test("an owner's link, opened with no wallet connected, connects that wallet once its page shows", async () => {

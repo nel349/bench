@@ -40,23 +40,24 @@ const sum = (xs: readonly string[]) => xs.reduce((t, x) => t + Number(x), 0).toF
 export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   const { view, detail } = useRoute();
   const wallet = useOwnerWallet(walletUrl);
-  const { remember } = wallet;
+  const { returned: answered } = wallet;
   const mine = useOwner(wallet.owner);
 
   // Back from the wallet's Connect: keep the address and open its page, or, cancelled, the front page.
-  // `remember` replaces a connected wallet only when Connect wallet was pressed here, so a link of
-  // this shape cannot swap one; and it is told of an empty answer too, which ends the asking.
+  // The wallet hook decides what it is the answer to: it replaces a connected wallet only when
+  // Connect wallet was pressed here, so a link of this shape cannot swap one or undo a Disconnect;
+  // and it is told of an empty answer too, which ends the asking.
   const returned = view === CONNECTED_VIEW ? detail[0] ?? "" : null;
   useEffect(() => {
     if (returned === null) return;
     const address = returned.trim();
-    remember(address);
+    answered(address);
     if (isWallet(address)) {
       window.location.replace(viewHref("yours", address));
     } else {
       window.location.replace(viewHref("home"));
     }
-  }, [returned, remember]);
+  }, [returned, answered]);
   const problems = useProblems();
   const list = problems.data ?? [];
   const asked = detail[0];
@@ -120,7 +121,7 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
                         demoHref={chosen === DEMO ? viewHref("rig", DEMO) : null} />}
         </section>
       )}
-      {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={remember} onConnect={wallet.beginConnect}
+      {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={wallet.connect} onConnect={wallet.beginConnect}
                                   connectHref={wallet.connectHref}
                                   explorer={chain.blockExplorers.default.url} />}
       {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={chain.blockExplorers.default.url} mine={mine.data} />}

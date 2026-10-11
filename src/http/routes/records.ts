@@ -146,10 +146,15 @@ function ownerPage(deps: Deps, wallet: string): Promise<OwnerPage> {
   const forget = () => { if (known.get(key) === kept) known.delete(key); };
   reading.then((r) => { if (r.whole) kept.doneAt = Date.now(); else forget(); }, forget);
 
-  // Stale ones first, then the oldest, which a Map keeps in the order they were put in.
+  // Stale ones first, then the oldest that has finished, which a Map keeps in the order they were
+  // put in. One still being read is never dropped: whoever asks next would start a second reading of
+  // the same page. Those are few, since each is a request in flight, and each goes when it is done.
   if (known.size > OWNER_PAGES_KEPT) {
     for (const [k, v] of known) if (v.doneAt !== null && Date.now() - v.doneAt >= OWNER_PAGE_MS) known.delete(k);
-    for (const k of known.keys()) { if (known.size <= OWNER_PAGES_KEPT) break; known.delete(k); }
+    for (const [k, v] of known) {
+      if (known.size <= OWNER_PAGES_KEPT) break;
+      if (v.doneAt !== null) known.delete(k);
+    }
   }
   return kept.page;
 }

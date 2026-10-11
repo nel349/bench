@@ -1,5 +1,6 @@
-import { createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
-import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
+import { createPublicClient, parseAbi, getAddress, type Address } from "viem";
+import { chainOf, contractsOf, type Network, readTransport } from "./chain.ts";
+import { refusedByContract } from "./reverts.ts";
 import type { Usdc } from "../shared/money.ts";
 
 /**
@@ -39,6 +40,11 @@ export interface Allowance {
 }
 
 export interface AllowanceReader {
+  /**
+   * What an account lets a session key spend, or `null` when it lets it spend nothing: the plugin
+   * refuses the question for a key the account never granted or has revoked, and for something that
+   * is not an address. A chain that could not be read is neither, and throws.
+   */
   of(account: string, sessionKey: string): Promise<Allowance | null>;
   /**
    * The agents a wallet has granted an allowance to and not revoked: one read, from the plugin's own
@@ -47,7 +53,7 @@ export interface AllowanceReader {
   agentsOf(account: string): Promise<readonly Address[] | null>;
 }
 
-/** Reads the session-key plugin on Arc. `null` when there is no allowance to read. */
+/** Reads the session-key plugin on Arc. `null` when there is no allowance to read; throws when it could not look. */
 export class ArcAllowances implements AllowanceReader {
   readonly #client: ReturnType<typeof createPublicClient>;
   readonly #plugin: Address;
@@ -62,7 +68,7 @@ export class ArcAllowances implements AllowanceReader {
     }
     this.#plugin = c.sessionKeyPlugin as Address;
     this.#usdc = c.usdc as Address;
-    this.#client = createPublicClient({ chain: chainOf(net), transport: http(rpcUrl(net)) });
+    this.#client = createPublicClient({ chain: chainOf(net), transport: readTransport(net) });
   }
 
   get plugin(): Address { return this.#plugin; }
@@ -99,9 +105,12 @@ export class ArcAllowances implements AllowanceReader {
         }),
       ]);
       return describe(info as SpendLimitInfo, Number((range as readonly [number, number])[1]));
-    } catch {
-      // An account with no such session key reverts. That is an answer, not an outage.
-      return null;
+    } catch (error) {
+      // An account with no such session key is refused by the plugin, with its own error. That is
+      // an answer. Anything else is the chain not being read, and saying "no allowance" for it told
+      // an owner their agent had none while the node was down.
+      if (refusedByContract(error)) return null;
+      throw error;
     }
   }
 }

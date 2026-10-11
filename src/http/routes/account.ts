@@ -1,6 +1,6 @@
 import { format } from "../../shared/money.ts";
 import type { RouteContext } from "../deps.ts";
-import { json, fail, freeCap } from "../respond.ts";
+import { json, fail, freeCap, unavailable } from "../respond.ts";
 
 /** What an agent holds, and what a session key may still spend: read from the chain, never kept here. */
 export async function accountRoutes({ req, deps, client, seg }: RouteContext): Promise<Response | null> {
@@ -27,7 +27,13 @@ export async function accountRoutes({ req, deps, client, seg }: RouteContext): P
     const capped = freeCap(deps, client, "allowance reads");
     if (capped) return capped;
     if (!deps.allowances) return fail(404, `no session-key plugin on ${deps.net}, so nothing to read`);
-    const found = await deps.allowances.of(seg[1], seg[2]);
+    let found;
+    try {
+      found = await deps.allowances.of(seg[1], seg[2]);
+    } catch {
+      // Not a 404: there may well be one. The agent asking should ask again, not conclude it has none.
+      return unavailable("the session-key plugin could not be read");
+    }
     if (!found) return fail(404, "no allowance for that account and session key");
     return json({
       account: seg[1], sessionKey: seg[2],

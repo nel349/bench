@@ -51,6 +51,14 @@ describe("who holds an identity, and when that is not known", () => {
     await expect(registry().holderOf(42n)).rejects.toThrow();
   }, 30_000);
 
+  /** A node's own error can carry data too. It is not the registry's refusal because it is there. */
+  test("a node's error that carries words or an empty answer is still a failure", async () => {
+    for (const data of ["upstream request timeout", "0x", "0x1234"]) {
+      answer = { error: { code: -32603, message: "Internal error", data } };
+      await expect(registry().holderOf(42n)).rejects.toThrow();
+    }
+  }, 60_000);
+
   test("the check that fails closed still says nobody for either", async () => {
     answer = { error: { code: -32603, message: "Internal error" } };
     expect(await registry().ownerOf(42n)).toBeNull();

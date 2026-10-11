@@ -1,5 +1,5 @@
-import { createPublicClient, http, parseAbi, getAddress, type Address } from "viem";
-import { chainOf, contractsOf, rpcUrl, type Network } from "./chain.ts";
+import { createPublicClient, parseAbi, getAddress, type Address } from "viem";
+import { chainOf, contractsOf, type Network, readTransport } from "./chain.ts";
 import type { Usdc } from "../shared/money.ts";
 
 /**
@@ -45,7 +45,7 @@ export class ArcFunds implements FundsReader {
     this.#usdc = getAddress(c.usdc);
     this.#gateway = getAddress(c.gatewayWallet);
     this.#probePrice = probePrice;
-    this.#client = createPublicClient({ chain: chainOf(net), transport: http(rpcUrl(net)) });
+    this.#client = createPublicClient({ chain: chainOf(net), transport: readTransport(net) });
   }
 
   async read(agent: string): Promise<Funds | null> {
