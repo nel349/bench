@@ -109,7 +109,8 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
     sessionKeyPlugin: null,
-    bountyEscrow: null,
+    // Deployed 12 October 2026, in 0xa8f0c8eb…8047. The same address as testnet, as CREATE2 promised.
+    bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
     erc8004: null,
   },
   testnet: {

@@ -32,6 +32,12 @@ describe("what is genuinely shared is shared", () => {
     expect(CONTRACTS.mainnet.entryPoint).toBe(CONTRACTS.testnet.entryPoint);
     expect(CONTRACTS.mainnet.ownerPlugin).toBe(CONTRACTS.testnet.ownerPlugin);
   });
+  // One arbiter and one salt on both, so CREATE2 puts the escrow at one address. A different one
+  // here would mean a deployment with another arbiter, whose payouts our key could not sign.
+  test("our escrow is at the same address on both", () => {
+    expect(CONTRACTS.mainnet.bountyEscrow).not.toBeNull();
+    expect(CONTRACTS.mainnet.bountyEscrow).toBe(CONTRACTS.testnet.bountyEscrow);
+  });
 });
 
 describe("what is absent from mainnet is null, not a testnet address", () => {
