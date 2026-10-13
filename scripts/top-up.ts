@@ -16,10 +16,11 @@
 import { readFileSync } from "node:fs";
 import { privateKeyToAccount } from "viem/accounts";
 import { createPublicClient, createWalletClient, http, parseAbi, formatUnits, getAddress } from "viem";
-import { chainOf, contractsOf, rpcUrl } from "../src/chain/chain.ts";
+import { chainOf, contractsOf, rpcUrl, type Network } from "../src/chain/chain.ts";
 import { usdc as parseUsdc, format } from "../src/shared/money.ts";
 
-const net = "testnet" as const;
+/** Testnet unless told otherwise, like the server: mainnet costs real money. */
+const net = (process.env["ARC_NETWORK"] ?? "testnet") as Network;
 const c = contractsOf(net);
 const send = process.argv.includes("--send");
 
@@ -30,7 +31,7 @@ const send = process.argv.includes("--send");
  * line is missing the script never ran, and if `send` reads false when `--send` was typed then the
  * shell ate the flag. One run of this produced silence and cost an exchange to diagnose.
  */
-console.log(`top-up  args: ${process.argv.slice(2).join(" ") || "(none)"}  send=${send}`);
+console.log(`top-up  args: ${process.argv.slice(2).join(" ") || "(none)"}  send=${send}  network=${net}`);
 
 const amountArg = process.argv.find((a) => /^--amount=/.test(a))?.split("=")[1] ?? "0.10";
 const amount = parseUsdc(amountArg);

@@ -27,10 +27,19 @@ console.log(`send   ${formatUnits(amount, 18)} USDC`);
 
 if (!send) { console.log("\nDry run. Nothing was sent. Add --send to spend."); process.exit(0); }
 
+/** The funding key, named rather than defaulted: a line of an env file, or a file holding the key alone. */
 const keyEnv = process.argv.find((a) => /^--from-env=/.test(a))?.split("=")[1];
-if (!keyEnv) { console.error("Name the funding key: --from-env=<path>:<VAR>"); process.exit(1); }
-const [file, name] = keyEnv.split(":");
-const raw = new RegExp(`^${name}=(.*)$`, "m").exec(readFileSync(file!, "utf8"))?.[1]?.trim();
+const keyFile = process.argv.find((a) => /^--from-file=/.test(a))?.split("=")[1];
+let raw: string | undefined;
+if (keyEnv) {
+  const [file, name] = keyEnv.split(":");
+  raw = new RegExp(`^${name}=(.*)$`, "m").exec(readFileSync(file!, "utf8"))?.[1]?.trim();
+} else if (keyFile) {
+  raw = readFileSync(keyFile, "utf8").trim();
+} else {
+  console.error("Name the funding key: --from-env=<path>:<VAR>  or  --from-file=<path>");
+  process.exit(1);
+}
 if (!raw || !/^0x[0-9a-fA-F]{64}$/.test(raw)) { console.error("that key is not usable"); process.exit(1); }
 
 const from = privateKeyToAccount(raw as Hex);
