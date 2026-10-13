@@ -1,7 +1,7 @@
 import { expect, test, describe } from "bun:test";
 import {
   CONTRACTS, arcMainnet, arcTestnet, caip2, chainOf, circleTransportPath, contractsOf,
-  missingContracts, requireContracts, SESSION_KEY_PLUGIN, type Network,
+  missingContracts, missingFrom, requireContracts, SESSION_KEY_PLUGIN, type Network,
 } from "../../src/chain/chain.ts";
 
 const NETWORKS: Network[] = ["mainnet", "testnet"];
@@ -45,9 +45,15 @@ describe("what is absent from mainnet is null, not a testnet address", () => {
     expect(CONTRACTS.mainnet.sessionKeyPlugin).toBeNull();
     expect(CONTRACTS.testnet.sessionKeyPlugin).not.toBeNull();
   });
-  test("no ERC-8004 on mainnet", () => {
-    expect(CONTRACTS.mainnet.erc8004).toBeNull();
-    expect(CONTRACTS.testnet.erc8004).not.toBeNull();
+  // The standard keeps one set of addresses for testnets and another for mainnets. Looking for the
+  // testnet set on mainnet finds nothing, which was once read as "not deployed".
+  test("ERC-8004 is on both, at a different set of addresses on each", () => {
+    const mainnet = CONTRACTS.mainnet.erc8004!;
+    const testnet = CONTRACTS.testnet.erc8004!;
+    expect(mainnet).not.toBeNull();
+    for (const registry of ["identity", "reputation", "validation"] as const) {
+      expect(mainnet[registry]).not.toBe(testnet[registry]);
+    }
   });
   test("a testnet-only address never appears in the mainnet table", () => {
     const mainnet = JSON.stringify(CONTRACTS.mainnet).toLowerCase();
@@ -111,8 +117,18 @@ describe("the server refuses to start on a network that cannot serve it", () => 
     expect(missing[0]).toContain("sessionKeyPlugin");
   });
 
-  test("mainnet names both problems at once, not one per restart", () => {
-    expect(missingContracts("mainnet", rated)).toHaveLength(2);
+  test("with ratings on chain as well, the plugin is still all mainnet lacks", () => {
+    const missing = missingContracts("mainnet", rated);
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain("sessionKeyPlugin");
+  });
+
+  test("a network lacking both is told both at once, not one per restart", () => {
+    const bare = { ...CONTRACTS.mainnet, sessionKeyPlugin: null, erc8004: null };
+    const missing = missingFrom(bare, "mainnet", rated);
+    expect(missing).toHaveLength(2);
+    expect(missing[0]).toContain("sessionKeyPlugin");
+    expect(missing[1]).toContain("ERC-8004");
   });
 
   test("mainnet is fine for a read-only lane", () => {

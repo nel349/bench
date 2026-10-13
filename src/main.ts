@@ -99,9 +99,9 @@ const payments: Payments = payTo
 /**
  * Identities, checked only where there is a registry to check them against.
  *
- * ERC-8004 is deployed on testnet and not on mainnet, so this is `null` there until the registries
- * go up — and a null verifier means a claimed id stays a claim. That is the honest failure: runs
- * still score under the address that paid, which was always the part that could not be faked.
+ * On a network with no ERC-8004 registries this is `null`, and a null verifier means a claimed id
+ * stays a claim. That is the honest failure: runs still score under the address that paid, which
+ * was always the part that could not be faked.
  */
 const registry = contractsOf(net).erc8004 ? new ArcRegistry(net) : null;
 const identities = registry && payTo

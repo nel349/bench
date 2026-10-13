@@ -20,8 +20,8 @@ export type Network = "mainnet" | "testnet";
  * Arc mainnet. Hand-defined because `viem@2.45.3` ships only `arcTestnet`.
  *
  * The published hostnames — `rpc.arc.network`, `rpc.arc.io`, `rpc.mainnet.arc.network` — did not
- * answer `eth_chainId` on 2026-09-17. The thirdweb endpoint did. Override with `ARC_RPC_URL` when a
- * first-party endpoint appears, which is the expected outcome rather than a hope.
+ * answer `eth_chainId` on 2026-09-17. The thirdweb endpoint did. A first-party one has appeared
+ * since, `rpc.mainnet.arc.io`, which answered on 2026-10-12; `ARC_RPC_URL` points a process at it.
  */
 export const arcMainnet = defineChain({
   id: 5042,
@@ -36,10 +36,14 @@ export { arcTestnet };
 /**
  * What lives on a given Arc network.
  *
- * `sessionKeyPlugin` and `erc8004` are **nullable on purpose**. Both are absent from mainnet today,
- * and a caller that needs them has to say what it does about that. The alternative — falling back to
- * the testnet address — is the exact bug this file is written to prevent: it reads as deployed,
- * every call returns empty, and nothing says why.
+ * `sessionKeyPlugin` and `erc8004` are **nullable on purpose**. The plugin is absent from mainnet
+ * today, and a caller that needs either has to say what it does about that. The alternative — falling
+ * back to the testnet address — is the exact bug this file is written to prevent: it reads as
+ * deployed, every call returns empty, and nothing says why.
+ *
+ * That bug was made once from the other side. ERC-8004 has one set of addresses for testnets and
+ * another for mainnets, and on 2026-09-17 the testnet set was looked for on mainnet, found empty,
+ * and written down as "not deployed". The registries were there all along, at their mainnet set.
  */
 export interface ArcContracts {
   /** The ERC-20 view over native USDC. Same address on both networks. 6 decimals, and it truncates. */
@@ -71,7 +75,7 @@ export interface ArcContracts {
    * that calls an empty address gets empty answers with nothing saying why.
    */
   readonly sessionKeyPlugin: Address | null;
-  /** ERC-8004 registries. Present on testnet, **absent from mainnet** as of 2026-09-17. */
+  /** ERC-8004 registries. **Different on each network**: the standard keeps one set of addresses for testnets and one for mainnets. */
   readonly erc8004: {
     readonly identity: Address;
     readonly reputation: Address;
@@ -111,7 +115,14 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     sessionKeyPlugin: null,
     // Deployed 12 October 2026, in 0xa8f0c8eb…8047. The same address as testnet, as CREATE2 promised.
     bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
-    erc8004: null,
+    // The mainnet set, as Arc's own contract list gives it. Checked on 2026-10-12: the same proxies
+    // and the same implementations as on testnet, version 2.0.0, with the reputation registry
+    // pointing at this identity registry.
+    erc8004: {
+      identity: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+      reputation: "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63",
+      validation: "0x8004Cc8439f36fd5F9F049D9fF86523Df6dAAB58",
+    },
   },
   testnet: {
     usdc: "0x3600000000000000000000000000000000000000",
@@ -214,8 +225,7 @@ export function caip2(n: Network): `eip155:${number}` {
 /**
  * What this process needs on chain before it can serve a single paid request.
  *
- * The mainnet table is honest about absence: `sessionKeyPlugin` and `erc8004` are null until they
- * are deployed. Honesty is not enough on its own — without this check the server boots happily on
+ * The mainnet table is honest about absence: `sessionKeyPlugin` is null until it is deployed. Honesty is not enough on its own — without this check the server boots happily on
  * mainnet and fails at the first allowance, somewhere far from the cause.
  *
  * So: say it once, at startup, naming exactly what is missing and what to do about it.
@@ -228,7 +238,11 @@ export interface Requirements {
 }
 
 export function missingContracts(n: Network, need: Requirements): string[] {
-  const c = CONTRACTS[n];
+  return missingFrom(CONTRACTS[n], n, need);
+}
+
+/** What `need` asks for that `c` does not have, all of it, said for the network `n`. */
+export function missingFrom(c: ArcContracts, n: Network, need: Requirements): string[] {
   const missing: string[] = [];
   if (need.allowance && c.sessionKeyPlugin === null) {
     missing.push(
