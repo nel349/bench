@@ -40,10 +40,11 @@ describe("what is genuinely shared is shared", () => {
   });
 });
 
-describe("what is absent from mainnet is null, not a testnet address", () => {
-  test("no session-key plugin on mainnet until we deploy it", () => {
-    expect(CONTRACTS.mainnet.sessionKeyPlugin).toBeNull();
-    expect(CONTRACTS.testnet.sessionKeyPlugin).not.toBeNull();
+describe("what differs between the networks is kept apart", () => {
+  // CREATE2 put the plugin at one address on both, as it did the escrow.
+  test("the session-key plugin is on both, at the address the Mandate names", () => {
+    expect(CONTRACTS.mainnet.sessionKeyPlugin).toBe(SESSION_KEY_PLUGIN);
+    expect(CONTRACTS.testnet.sessionKeyPlugin).toBe(SESSION_KEY_PLUGIN);
   });
   // The standard keeps one set of addresses for testnets and another for mainnets. Looking for the
   // testnet set on mainnet finds nothing, which was once read as "not deployed".
@@ -60,7 +61,6 @@ describe("what is absent from mainnet is null, not a testnet address", () => {
     for (const only of [
       CONTRACTS.testnet.gatewayWallet,
       CONTRACTS.testnet.gatewayMinter,
-      CONTRACTS.testnet.sessionKeyPlugin!,
       ...Object.values(CONTRACTS.testnet.erc8004!),
     ]) {
       expect(mainnet).not.toContain(only.toLowerCase());
@@ -106,19 +106,16 @@ describe("the server refuses to start on a network that cannot serve it", () => 
   const paid = { allowance: true, onChainRatings: false } as const;
   const rated = { allowance: true, onChainRatings: true } as const;
 
-  test("testnet can serve everything today", () => {
-    expect(missingContracts("testnet", rated)).toEqual([]);
-    expect(requireContracts("testnet", rated)).toBe(CONTRACTS.testnet);
+  test("both networks can serve everything today", () => {
+    for (const n of NETWORKS) {
+      expect(missingContracts(n, rated)).toEqual([]);
+      expect(requireContracts(n, rated)).toBe(CONTRACTS[n]);
+    }
   });
 
-  test("mainnet cannot take a paid attempt until the plugin is deployed", () => {
-    const missing = missingContracts("mainnet", paid);
-    expect(missing).toHaveLength(1);
-    expect(missing[0]).toContain("sessionKeyPlugin");
-  });
-
-  test("with ratings on chain as well, the plugin is still all mainnet lacks", () => {
-    const missing = missingContracts("mainnet", rated);
+  test("a network without the plugin cannot take a paid attempt", () => {
+    const bare = { ...CONTRACTS.mainnet, sessionKeyPlugin: null };
+    const missing = missingFrom(bare, "mainnet", paid);
     expect(missing).toHaveLength(1);
     expect(missing[0]).toContain("sessionKeyPlugin");
   });
@@ -131,21 +128,21 @@ describe("the server refuses to start on a network that cannot serve it", () => 
     expect(missing[1]).toContain("ERC-8004");
   });
 
-  test("mainnet is fine for a read-only lane", () => {
-    expect(missingContracts("mainnet", { allowance: false, onChainRatings: false })).toEqual([]);
+  test("a read-only lane needs neither", () => {
+    const bare = { ...CONTRACTS.mainnet, sessionKeyPlugin: null, erc8004: null };
+    expect(missingFrom(bare, "mainnet", { allowance: false, onChainRatings: false })).toEqual([]);
   });
 
   test("the error says where the plugin will land, not just that it is absent", () => {
-    expect(() => requireContracts("mainnet", rated)).toThrow(SESSION_KEY_PLUGIN);
+    const bare = { ...CONTRACTS.mainnet, sessionKeyPlugin: null };
+    expect(missingFrom(bare, "mainnet", paid)[0]).toContain(SESSION_KEY_PLUGIN);
   });
 });
 
 describe("the plugin address is deterministic across chains", () => {
-  test("testnet already points at it", () => {
+  test("both networks point at the one address", () => {
     expect(CONTRACTS.testnet.sessionKeyPlugin).toBe(SESSION_KEY_PLUGIN);
-  });
-  test("mainnet is null until deployed, though the address is known", () => {
-    expect(CONTRACTS.mainnet.sessionKeyPlugin).toBeNull();
+    expect(CONTRACTS.mainnet.sessionKeyPlugin).toBe(SESSION_KEY_PLUGIN);
     expect(SESSION_KEY_PLUGIN).toMatch(/^0x[0-9a-fA-F]{40}$/);
   });
 });

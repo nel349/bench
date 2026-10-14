@@ -112,7 +112,9 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
     gatewayMinter: "0x2222222d7164433c4C09B0b0D809a9b52C04C205",
     entryPoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     ownerPlugin: "0x0000000C984AFf541D6cE86Bb697e68ec57873C8",
-    sessionKeyPlugin: null,
+    // Deployed 14 October 2026, in 0x8ce044bf…7b4b, through the CREATE2 factory: the same 13,132
+    // bytes as on testnet, at the address the Mandate's profiles already name.
+    sessionKeyPlugin: SESSION_KEY_PLUGIN,
     // Deployed 12 October 2026, in 0xa8f0c8eb…8047. The same address as testnet, as CREATE2 promised.
     bountyEscrow: "0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB",
     // The mainnet set, as Arc's own contract list gives it. Checked on 2026-10-12: the same proxies
