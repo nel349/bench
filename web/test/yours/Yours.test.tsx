@@ -497,6 +497,21 @@ describe("connecting a wallet", () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
+  /** It used to ask the gym, be refused, and say it would try again, which it could do for ever. */
+  test("where no wallet serves the network, the page says so, asks the gym nothing, and points at the standings", () => {
+    const asked = serving(500);
+    vi.stubGlobal("fetch", asked);
+    for (const wallet of ["", WALLET]) {
+      const { unmount } = show(<Yours wallet={wallet} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={null} explorer="https://arcscan.app" gym={GYM} walletUrl={null} />);
+      expect(screen.getByText(/no wallet works on this network yet/i)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Standings" })).toHaveAttribute("href", "/#standings");
+      expect(screen.queryByLabelText(/paste your wallet's address/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/could not be read|allowance/i)).not.toBeInTheDocument();
+      unmount();
+    }
+    expect(asked.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith("/owner/"))).toEqual([]);
+  });
+
   test("where no wallet serves the network, the header offers nothing to connect", () => {
     const { container } = render(<WalletButton owner={null} connectHref={null} onConnect={() => {}} onDisconnect={() => {}} />);
     expect(container).toBeEmptyDOMElement();

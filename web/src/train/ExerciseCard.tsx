@@ -6,6 +6,8 @@ import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface ExerciseCardProps {
   readonly problem: ProblemDetailWire;
+  /** Whether an owner's wallet serves this network. Without one an agent pays from a balance of its own, and is not sent to the skill. */
+  readonly allowance: boolean;
 }
 
 /**
@@ -16,7 +18,7 @@ export interface ExerciseCardProps {
  * the dollars are the score and the questions are how you get there. Where nobody has proven a
  * fewest, the card says so rather than showing a number that would be read as one.
  */
-export function ExerciseCard({ problem }: ExerciseCardProps) {
+export function ExerciseCard({ problem, allowance }: ExerciseCardProps) {
   const par = parCost(problem.par, problem.prices.ask);
   return (
     <header className="exercise">
@@ -44,7 +46,7 @@ export function ExerciseCard({ problem }: ExerciseCardProps) {
       </dl>
       {/* The card said what the problem is and not how an agent gets to it. */}
       <p className="ex-start">
-        <FormattedMessage id="exercise.start" values={{ link: (chunks) => <a href={PATHS.fund}>{chunks}</a> }} />
+        <FormattedMessage id={allowance ? "exercise.start" : "exercise.startOwn"} values={{ link: (chunks) => <a href={PATHS.fund}>{chunks}</a> }} />
       </p>
     </header>
   );

@@ -78,7 +78,7 @@ const TABLE: StandingsWire = {
  * not say what they were looking at. These are the same pages in the order an owner needs them.
  */
 describe("the first screen and the pages", () => {
-  const front = (hash: string, standings: StandingsWire = TABLE, over: Record<string, unknown> = {}) => {
+  const front = (hash: string, standings: StandingsWire = TABLE, over: Record<string, unknown> = {}, walletUrl: string | null = null) => {
     window.location.hash = hash;
     // jsdom has no matchMedia; a browser asked to reduce motion holds the demo on a finished board.
     vi.stubGlobal("matchMedia", (query: string) => ({
@@ -90,11 +90,11 @@ describe("the first screen and the pages", () => {
       "/problems/blackbox": { ...problem("blackbox", "hard", null), statement: "s", scoring: "c" }, "/leaderboard/blackbox": [],
       ...over,
     }));
-    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl={null} />);
+    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl={walletUrl} />);
   };
 
   test("the first screen says what Bench is for, the way in, and what an owner does", async () => {
-    front("");
+    front("", TABLE, {}, "https://wallet.test/");
     expect(document.title).toBe("Bench: a gym for agents");
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("See what your agent can really do.");
     expect(screen.getByRole("link", { name: "Set up your agent" })).toHaveAttribute("href", "/fund");
@@ -106,6 +106,17 @@ describe("the first screen and the pages", () => {
     // The demo and the exercise menu are on Exercises, where they explain something.
     expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
+  });
+
+  /** Where no wallet serves the network there is no allowance to give, and the first screen must not promise one. */
+  test("with no wallet on the network, the first step is a balance and no allowance is promised", async () => {
+    front("");
+    const how = await screen.findByRole("region", { name: "How it goes" });
+    expect(within(how).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "You give it a balance", "You tell it to train", "You watch where it stands",
+    ]);
+    expect(how).toHaveTextContent("What you add is the most it can spend, and it cannot be taken back.");
+    expect(how).not.toHaveTextContent(/allowance|on your phone/);
   });
 
   test("it says who leads, the cheapest record and how many are on the standings, from the gym's own count", async () => {
@@ -365,7 +376,7 @@ describe("an exercise", () => {
 
   test("shows the gym's statement, its level, and the fewest questions it needs, in questions and in dollars", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} allowance />);
     expect(await screen.findByText("A hidden number.")).toBeInTheDocument();
     expect(screen.getByText("hard")).toBeInTheDocument();
     expect(screen.getByText("14 questions")).toBeInTheDocument();
@@ -375,14 +386,29 @@ describe("an exercise", () => {
   test("says no fewest is proven rather than showing a number", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/zendo": { ...problem("zendo", "medium", null), statement: "s", scoring: "c" },
                                      "/leaderboard/zendo": [] }));
-    show(<Exercise id="zendo" demoHref={null} />);
+    show(<Exercise id="zendo" demoHref={null} allowance />);
     expect(await screen.findByText("not proven")).toBeInTheDocument();
+  });
+
+  test("says how an agent gets to play: through the skill where there is an allowance to give", async () => {
+    vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
+    show(<Exercise id="liar" demoHref={null} allowance />);
+    expect(await screen.findByText(/through the Bench skill/)).toBeInTheDocument();
+  });
+
+  /** The skill pays through the owner's wallet. Where none serves the network, sending an agent to it sends it nowhere. */
+  test("with no wallet on the network, it says the agent pays from a balance of its own, and does not name the skill", async () => {
+    vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
+    show(<Exercise id="liar" demoHref={null} allowance={false} />);
+    const how = (await screen.findByText(/paying from a balance of its own/)).closest("p")!;
+    expect(within(how).getByRole("link", { name: "Start" })).toHaveAttribute("href", "/fund");
+    expect(how).not.toHaveTextContent(/skill/i);
   });
 
   test("its leaderboard keeps the gym's order, cheapest first, and marks the recorded solves", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar,
       "/leaderboard/liar": [score("a1", "0.280000", true), score("a2", "0.400000")] }));
-    show(<Exercise id="liar" demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} allowance />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("agent-a1");
     expect(rows[0]).toHaveTextContent("recorded");
@@ -392,7 +418,7 @@ describe("an exercise", () => {
 
   test("an empty leaderboard says what would fill it", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} />);
+    show(<Exercise id="liar" demoHref={null} allowance />);
     expect(await screen.findByText(/first paid solve takes first place/i)).toBeInTheDocument();
   });
 });

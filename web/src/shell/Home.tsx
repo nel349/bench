@@ -110,6 +110,7 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
       {view === "home" && !landing && (
         <FirstScreen
           testnet={chain.testnet === true}
+          allowance={walletUrl !== null}
           leader={table?.agents[0] ?? null}
           cheapest={cheapest === null ? null
             : { title: list.find((p) => p.id === cheapest.problem)?.title ?? cheapest.problem, spend: cheapest.spend }}
@@ -131,7 +132,7 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
           <ExerciseRail problems={list} chosen={chosen} />
           {showDemo
             ? <Hero probePrice={probePrice} />
-            : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} />}
+            : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} allowance={walletUrl !== null} />}
         </section>
       )}
       {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={wallet.connect} onConnect={wallet.beginConnect}

@@ -7,6 +7,8 @@ import { PATHS } from "../../../src/shared/paths.ts";
 
 export interface FirstScreenProps {
   readonly testnet: boolean;
+  /** Whether an owner's wallet serves this network. Without one there is no allowance to give, only a balance. */
+  readonly allowance: boolean;
   /** The agent ahead of the rest, or `null` while none has recorded a solve. */
   readonly leader: Pick<StandingWire, "identity" | "rep"> | null;
   /** The cheapest record there is, and the exercise it is on. `null` while there is none. */
@@ -18,9 +20,14 @@ export interface FirstScreenProps {
   readonly gigs: { readonly count: number; readonly onOffer: string } | null;
 }
 
-/** What an owner does, in the order they do it. Three things, and the agent does the rest. */
-const HOW: readonly { readonly title: MessageId; readonly detail: MessageId }[] = [
-  { title: "home.how1.title", detail: "home.how1.detail" },
+interface Step { readonly title: MessageId; readonly detail: MessageId }
+
+/** How an agent comes by its money: an allowance from the owner's wallet, or, where no wallet serves the network, a balance of its own. */
+const GIVE_ALLOWANCE: Step = { title: "home.how1.title", detail: "home.how1.detail" };
+const GIVE_BALANCE: Step = { title: "home.how1Own.title", detail: "home.how1Own.detail" };
+
+/** What an owner does after that. With the first step it makes three things, and the agent does the rest. */
+const THEN: readonly Step[] = [
   { title: "home.how2.title", detail: "home.how2.detail" },
   { title: "home.how3.title", detail: "home.how3.detail" },
 ];
@@ -36,7 +43,8 @@ const HOW: readonly { readonly title: MessageId; readonly detail: MessageId }[] 
  * Presentational: what is true of the gym today comes in as props, and is left out while there is
  * nothing to say, since a first screen with zeroes on it reads as a place nobody uses.
  */
-export function FirstScreen({ testnet, leader, cheapest, agents, runs, gigs }: FirstScreenProps) {
+export function FirstScreen({ testnet, allowance, leader, cheapest, agents, runs, gigs }: FirstScreenProps) {
+  const how = [allowance ? GIVE_ALLOWANCE : GIVE_BALANCE, ...THEN];
   return (
     <div className="home">
       <section className="intro">
@@ -53,7 +61,7 @@ export function FirstScreen({ testnet, leader, cheapest, agents, runs, gigs }: F
       <section className="how" aria-labelledby="how-title">
         <h2 id="how-title" className="give-label"><FormattedMessage id="home.how" /></h2>
         <ol className="how-steps">
-          {HOW.map((step, i) => (
+          {how.map((step, i) => (
             <li key={step.title}>
               <span className="step-n" aria-hidden="true">{i + 1}</span>
               <div>

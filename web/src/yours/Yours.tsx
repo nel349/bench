@@ -41,7 +41,10 @@ export interface YoursProps {
  * wallet's address.
  */
 export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer, gym, walletUrl }: YoursProps) {
-  const valid = isWallet(wallet);
+  // Where no wallet serves the network there is no owner's page to read, for any address: the page
+  // says so and asks for nothing. It used to ask, fail, and promise to try again.
+  const served = walletUrl !== null;
+  const valid = served && isWallet(wallet);
   const owner = useOwner(valid ? wallet : null);
   const problems = useProblems();
   const bounties = useBounties();
@@ -72,16 +75,17 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer
         <p className="kicker"><span>//</span> <FormattedMessage id="yours.kicker" /></p>
         <h2 className="board-title"><FormattedMessage id="yours.title" /></h2>
         <p className="sub">
-          {valid
+          {!served && <FormattedMessage id="yours.subNoWallet" values={{ link: (chunks) => <a href={viewHref("standings")}>{chunks}</a> }} />}
+          {served && (valid
             ? <FormattedMessage id="yours.subWallet" values={{ wallet: short(wallet) }} />
-            : <FormattedMessage id="yours.subNone" />}
+            : <FormattedMessage id="yours.subNone" />)}
         </p>
       </header>
 
-      {!valid && connectHref !== null && (
+      {served && !valid && connectHref !== null && (
         <a className="btn primary yours-connect" href={connectHref} onClick={onConnect}><FormattedMessage id="yours.connect" /></a>
       )}
-      {!valid && <WalletEntry typed={wallet} connect={connect} />}
+      {served && !valid && <WalletEntry typed={wallet} connect={connect} />}
       {valid && owner.isPending && <p className="state idle"><FormattedMessage id="yours.reading" /></p>}
       {valid && owner.isError && <p className="state bad"><FormattedMessage id="yours.failed" /></p>}
       {valid && owner.data && owner.data.agents.length === 0 && (
