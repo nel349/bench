@@ -85,16 +85,29 @@ describe("the standings", () => {
   });
 
   /** A link to one agent's rep opened on a page that showed everyone but them: their answer was a screen below. */
-  test("somebody looked up is shown above the table; with nobody, the lookup is a form under it", () => {
+  test("somebody looked up from outside the table is shown above it; with nobody, the lookup is a form under it", () => {
     const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const show_ = (looking: string) => show(
       <Standings table={TABLE} failed={false} problems={PROBLEMS} mine={[]} runs={[]} looking={looking} />);
-    const first = show_("896922");
+    const first = show_("999");
     expect(before(screen.getByRole("region", { name: "Look up an agent's rep" }), screen.getByRole("table"))).toBe(true);
     first.unmount();
     show_("");
     expect(before(screen.getByRole("table"), screen.getByRole("region", { name: "Look up an agent's rep" }))).toBe(true);
     expect(screen.getAllByRole("region", { name: "Look up an agent's rep" })).toHaveLength(1);
+  });
+
+  /** Pressing an agent moved the look-up box above the table, with the answer in it, a screen away from the press. */
+  test("an agent pressed in the table opens under its own row, the form stays put, and pressing it again closes it", () => {
+    const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    show(<Standings table={TABLE} failed={false} problems={PROBLEMS} mine={[]} runs={[]} looking="894767" />);
+    const name = screen.getByRole("link", { name: "Agent #894767" });
+    expect(name).toHaveAttribute("aria-expanded", "true");
+    expect(name).toHaveAttribute("href", "/#standings");
+    const opened = name.closest("tr")!.nextElementSibling!;
+    expect(opened).toHaveClass("agent-open");
+    expect(within(opened as HTMLElement).getByRole("link", { name: "Close" })).toHaveAttribute("href", "/#standings");
+    expect(before(screen.getByRole("table"), screen.getByRole("region", { name: "Look up an agent's rep" }))).toBe(true);
   });
 
   test("it says what splits agents level on rep and on records too", () => {
@@ -177,10 +190,10 @@ describe("the list of exercises", () => {
     show(<ExerciseList problems={[...PROBLEMS, unproven]} mine={[]} demoHref="#" best={[
       best("toll", "1", "0.020000", 1), best("codebreaker", "1", "0.100000", 5), best("liar", "1", "0.260000", 13), best("zendo", "1", "0.240000", 12),
     ]} />);
-    expect(row("Toll")).toHaveTextContent(/Fewest needed1 questionRecord matches it$/);
-    expect(row("Codebreaker")).toHaveTextContent(/Fewest needed4 questionsRecord can be beaten$/);
-    expect(row("Liar")).toHaveTextContent(/Fewest needed14 questionsRecord beat it$/);
-    expect(row("Zendo")).toHaveTextContent(/Fewest needednot proven$/);
+    expect(row("Toll")).toHaveTextContent(/Fewest needed1 questionRecord is already the fewest$/);
+    expect(row("Codebreaker")).toHaveTextContent(/Fewest needed4 questionsRecord can still be beaten$/);
+    expect(row("Liar")).toHaveTextContent(/Fewest needed14 questionsRecord beat the fewest$/);
+    expect(row("Zendo")).toHaveTextContent(/Fewest needednot known yet$/);
   });
 
   test("each row opens that exercise, and the demo is one press away", () => {

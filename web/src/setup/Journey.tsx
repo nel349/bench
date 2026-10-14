@@ -4,6 +4,7 @@ import { viewHref } from "../shell/useView.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
 import { CONNECTOR_INSTALL, CONNECTOR_NOTES, SKILL_INSTALL, STEPS } from "./steps.ts";
 import { CopyLine } from "../shared/components/CopyLine.tsx";
+import { QrCode } from "../shared/components/QrCode.tsx";
 
 export interface JourneyProps {
   /** Which steps a connected wallet has done; `null` when no wallet is connected. */
@@ -43,15 +44,19 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
   );
   /**
    * Step 1 is done on the phone, so each screen is given what gets the wallet onto the phone. A
-   * laptop is shown the address to type there. It was shown a button, which opened the wallet on
+   * laptop is shown a code to scan with the phone's camera, and the address to type for anyone who
+   * would rather. It was shown a button, which opened the wallet on
    * the laptop and offered to make it on the wrong device, with the address in small print under it.
    * Only a phone gets the button.
    */
   const extras: readonly ReactNode[] = [
     <>
-      <div className="laptop-only">
-        <p className="fine"><FormattedMessage id="step1.onPhone" /></p>
-        <p className="type-this"><b className="url">{wallet.replace(/^https:\/\//, "")}</b></p>
+      <div className="laptop-only on-phone">
+        <QrCode text={wallet} label={intl.formatMessage({ id: "step1.qr" })} />
+        <div>
+          <p className="fine"><FormattedMessage id="step1.onPhone" /></p>
+          <p className="type-this"><b className="url">{wallet.replace(/^https:\/\//, "")}</b></p>
+        </div>
       </div>
       <a className="btn primary open-wallet phone-only" href={wallet} target="_blank" rel="noreferrer">
         <FormattedMessage id="step1.open" />

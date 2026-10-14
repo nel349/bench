@@ -55,7 +55,7 @@ function serving(owner: OwnerWire | 500, standings?: StandingsWire) {
 }
 
 /** The page for one wallet, as the shell draws it. */
-const page = <Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />;
+const page = <Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />;
 /** The table of an agent's latest runs, which is one of two tables on its card. */
 const runsTable = () => document.getElementById(`runs-${AGENT}`)!;
 /** A figure on the card, by its label: the `dd` beside the `dt`. */
@@ -281,69 +281,63 @@ describe("the owner's page", () => {
   /** The gap this page exists for: after step 4 nothing showed what the agent was doing. */
   test("a run being played shows live, with its questions and what it has cost so far", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ live: run("a20"), runs: [run("a20")] })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText(/playing liar now: 7 questions/i)).toBeInTheDocument();
   });
 
   test("names the gigs an agent already qualifies for, and how to enter", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ qualifies: ["b3"] })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByRole("link", { name: gig.title })).toHaveAttribute("href", "/#gigs");
     expect(screen.getByText(/tell your agent which gig to take/i)).toBeInTheDocument();
   });
 
-  /** It was offered again on every refresh of the page's data, which reconnected a wallet just disconnected. */
-  test("the wallet is offered once when its page has opened, not again on each refresh", async () => {
-    // The owner's page read anew each time, with a total that shows which reading is on screen.
-    let reads = 0;
-    const steady = serving({ wallet: WALLET, agents: [], more: 0, partial: false });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input) !== `/owner/${WALLET}`) return steady(input);
-      reads += 1;
-      return new Response(JSON.stringify({ wallet: WALLET, agents: [agent({ spend: `${reads}.000000` })], more: 0, partial: false }), { status: 200 });
-    }));
-    const offer = vi.fn();
-    const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(<QueryClientProvider client={queries}><Yours wallet={WALLET} offer={offer} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} /></QueryClientProvider>, { network: HERE });
-    await waitFor(() => expect(offer).toHaveBeenCalledWith(WALLET));
-    await queries.invalidateQueries();
-    await waitFor(() => expect(screen.getByText("Spent training").nextSibling).toHaveTextContent("$2.00"));
-    expect(offer).toHaveBeenCalledTimes(1);
-  });
-
-  /** After a disconnect, pasting the same address again did nothing: the page remembered having offered it. */
-  test("the same wallet, left and opened again, is offered again; and an address typed in is asked for", async () => {
+  /**
+   * Opening a wallet's page connected it, and a reader who looked a wallet up found it in the header
+   * as theirs, on every page. Looking is looking; saying a wallet is yours is a button.
+   */
+  test("opening a wallet's page connects nothing, and This is my wallet does", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
-    const offer = vi.fn(), connect = vi.fn();
-    const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const page = (wallet: string) => (
-      <QueryClientProvider client={queries}>
-        <Yours wallet={wallet} offer={offer} connect={connect} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />
-      </QueryClientProvider>
-    );
-    const { rerender } = render(page(WALLET), { network: HERE });
-    await waitFor(() => expect(offer).toHaveBeenCalledTimes(1));
-    rerender(page(""));
+    const connect = vi.fn();
+    show(<Yours wallet={WALLET} connected={null} connect={connect} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    await screen.findByText(/has not granted an allowance/i);
+    expect(connect).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "This is my wallet" }));
+    expect(connect).toHaveBeenCalledWith(WALLET);
+  });
+
+  test("the wallet already connected is not asked about", async () => {
+    vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
+    show(<Yours wallet={WALLET} connected={WALLET.toLowerCase()} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    await screen.findByText(/has not granted an allowance/i);
+    expect(screen.queryByRole("button", { name: "This is my wallet" })).not.toBeInTheDocument();
+  });
+
+  test("an address typed in opens that wallet's page and connects nothing", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
+    const connect = vi.fn();
+    window.location.hash = "#yours";
+    show(<Yours wallet="" connected={null} connect={connect} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     await user.type(screen.getByLabelText(/or paste your wallet's address/i), WALLET);
     await user.click(screen.getByRole("button", { name: "Open" }));
-    expect(connect).toHaveBeenCalledWith(WALLET);
-    rerender(page(WALLET));
-    await waitFor(() => expect(offer).toHaveBeenCalledTimes(2));
+    expect(window.location.hash).toBe(`#yours/${WALLET}`);
+    expect(connect).not.toHaveBeenCalled();
   });
 
   test("Connect wallet says it was pressed, on the way out to the wallet", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
     const onConnect = vi.fn();
-    show(<Yours wallet="" offer={() => {}} connect={() => {}} onConnect={onConnect} connectHref="#stay" gym={GYM} />);
+    show(<Yours wallet="" connected={null} connect={() => {}} onConnect={onConnect} connectHref="#stay" gym={GYM} />);
     await user.click(screen.getByRole("link", { name: "Connect Mandate" }));
     expect(onConnect).toHaveBeenCalled();
   });
 
   test("a page the chain would not wholly give says it may not be everything", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent()], more: 0, partial: true }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText(/could not be read from the chain just now/i)).toBeInTheDocument();
   });
 
@@ -359,14 +353,14 @@ describe("the owner's page", () => {
     const gone = agent({ address: "0x00000000000000000000000000000000000000aa", current: false, allowance: null,
                          runs: [run("a41", { paid: "1.200000" })] });
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [mine, gone], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText(/since you last looked/i)).toHaveTextContent("1 run, $0.30 spent");
     expect(screen.getAllByText("new")).toHaveLength(1);
   });
 
   test("rep the registry would not give is said to be unread, not none", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ rep: null, repUnread: true, ranked: [] })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     await screen.findByRole("heading", { name: "Agent #894767" });
     expect(tile("Where it stands")).toHaveTextContent(/^unread$/);
     // What it has recorded comes from the same reading: unread too, and not "0 of 2".
@@ -380,7 +374,7 @@ describe("the owner's page", () => {
   /** "Revoked" was said of any agent the wallet does not grant to, one it never granted to included. */
   test("an agent the wallet does not grant to is shown without claiming it was revoked", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ current: false, allowance: null })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect((await screen.findByText("Allowance")).nextSibling).toHaveTextContent("none now");
     expect(screen.getByText(/does not grant it an allowance now/i)).toBeInTheDocument();
     expect(screen.queryByText(/revoked/i)).not.toBeInTheDocument();
@@ -390,27 +384,27 @@ describe("the owner's page", () => {
 
   test("a wallet with more agents than one page carries says how many are not shown", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent()], more: 5, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText("5 more agents of this wallet are not shown.")).toBeInTheDocument();
   });
 
   test("a wallet with no agents says so and points to setting one up", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText(/has not granted an allowance/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /set up your agent/i })).toBeInTheDocument();
   });
 
   test("without a wallet it offers to connect one, and still takes a pasted address", () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
-    show(<Yours wallet="" offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet="" connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(screen.getByRole("link", { name: "Connect Mandate" })).toHaveAttribute("href", CONNECT);
     expect(screen.getByLabelText(/or paste your wallet's address/i)).toBeInTheDocument();
   });
 
   test("without a wallet it says where the link comes from, and asks for the address", () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
-    show(<Yours wallet="" offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={null} gym={GYM} />);
+    show(<Yours wallet="" connected={null} connect={() => {}} onConnect={() => {}} connectHref={null} gym={GYM} />);
     expect(screen.getByText(/gives you this page's link when it starts training/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open" })).toBeDisabled();
   });
@@ -427,7 +421,7 @@ describe("the owner's page", () => {
     const recorded = run("a30", { endedBy: "solved", solved: true, ranked: true, paid: "0.390000" });
     const before = run("a2", { startedAt: Date.now() - 7_200_000, paid: "9.000000" });
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ runs: [recorded, before] })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     const line = await screen.findByText(/since you last looked/i);
     expect(line).toHaveTextContent("Since you last looked: 1 run, $0.39 spent, 1 recorded.");
     // And its row says the same $0.39, not the $0.14 the run scored.
@@ -439,7 +433,7 @@ describe("the owner's page", () => {
     const user = userEvent.setup();
     const five = ["a5", "a4", "a3", "a2", "a1"].map((id, i) => run(id, { startedAt: Date.now() - (i + 1) * 60_000 }));
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ runs: five })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     const more = await screen.findByRole("button", { name: "Show 2 more runs" });
     expect(more).toHaveAttribute("aria-expanded", "false");
     // What it says it controls is the table it controls.
@@ -454,14 +448,14 @@ describe("the owner's page", () => {
 
   test("three runs or fewer need no button", async () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [agent({ runs: [run("a1"), run("a2"), run("a3")] })], more: 0, partial: false }));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     await screen.findByRole("heading", { name: "Agent #894767" });
     expect(screen.queryByRole("button", { name: /more run/i })).not.toBeInTheDocument();
   });
 
   test("a read that fails is said, not shown as an empty wallet", async () => {
     vi.stubGlobal("fetch", serving(500));
-    show(<Yours wallet={WALLET} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
+    show(<Yours wallet={WALLET} connected={null} connect={() => {}} onConnect={() => {}} connectHref={CONNECT} gym={GYM} />);
     expect(await screen.findByText(/could not be read just now/i)).toBeInTheDocument();
     expect(screen.queryByText(/has not granted/i)).not.toBeInTheDocument();
   });
@@ -514,7 +508,7 @@ describe("connecting a wallet", () => {
     const asked = serving(500);
     vi.stubGlobal("fetch", asked);
     for (const wallet of ["", WALLET]) {
-      const { unmount } = show(<Yours wallet={wallet} offer={() => {}} connect={() => {}} onConnect={() => {}} connectHref={null} gym={GYM} />, MAINNET);
+      const { unmount } = show(<Yours wallet={wallet} connected={null} connect={() => {}} onConnect={() => {}} connectHref={null} gym={GYM} />, MAINNET);
       expect(screen.getByText(/allowances are not on this network yet/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Standings" })).toHaveAttribute("href", "/#standings");
       expect(screen.queryByLabelText(/paste your wallet's address/i)).not.toBeInTheDocument();

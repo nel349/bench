@@ -1,4 +1,5 @@
 import { FormattedMessage, useIntl } from "react-intl";
+import { Fragment } from "react";
 import type { FeedRowWire, ProblemWire, StandingsWire } from "../../../src/shared/wire.ts";
 import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
@@ -8,6 +9,7 @@ import { since } from "../shared/lib/elapsed.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { Empty } from "../shared/components/Empty.tsx";
 import { RepLookup } from "./RepLookup.tsx";
+import { RepResult } from "./RepResult.tsx";
 import { Rep } from "./Rep.tsx";
 
 export interface StandingsProps {
@@ -51,11 +53,13 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
   };
   const agents = table?.agents ?? [];
   /**
-   * With somebody looked up, their rep is the thing asked for, so it goes above the table: under it,
-   * a link to one agent's rep opened on a page that showed everyone but them. With nobody looked up
-   * it is a form, and sits under the table it is about.
+   * With somebody looked up from outside the table, by a link or the form, their rep is the thing
+   * asked for, so it goes above the table: under it, a link to one agent's rep opened on a page that
+   * showed everyone but them. An agent pressed in the table opens under its own row, where the reader
+   * was looking, and the form stays under the table: it used to jump above it, and the answer with it.
    */
-  const lookup = <RepLookup looking={looking} />;
+  const inTable = looking !== "" && agents.some((a) => a.identity === looking);
+  const lookup = <RepLookup looking={looking} showResult={!inTable} />;
   const best = problems.flatMap((p) => table?.best.filter((b) => b.problem === p.id) ?? []);
   return (
     <section className="board standings">
@@ -65,7 +69,7 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
         <p className="sub"><FormattedMessage id="standings.sub" values={{ ...LEVEL_WEIGHT, ceiling }} /></p>
       </header>
 
-      {looking !== "" && lookup}
+      {looking !== "" && !inTable && lookup}
       {failed && table === undefined && <p className="state bad"><FormattedMessage id="standings.failed" /></p>}
       {table !== undefined && agents.length === 0 && (
         <Empty count={0} noun={<FormattedMessage id="standings.emptyNoun" />}
@@ -87,10 +91,13 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
                 </thead>
                 <tbody>
                   {agents.map((a, i) => (
-                    <tr key={a.identity} className={mine.includes(a.identity) ? "mine" : undefined}>
+                    <Fragment key={a.identity}>
+                    <tr className={mine.includes(a.identity) ? "mine" : undefined}>
                       <td className="place" data-label={col.place}>{i + 1}</td>
                       <td>
-                        <a className="agent" href={viewHref("standings", a.identity)}>
+                        {/* Pressed again, it closes. */}
+                        <a className="agent" href={looking === a.identity ? viewHref("standings") : viewHref("standings", a.identity)}
+                           aria-expanded={looking === a.identity}>
                           <FormattedMessage id="agent.title" values={{ id: a.identity }} />
                         </a>
                         {mine.includes(a.identity) && <span className="new-tag"><FormattedMessage id="standings.mine" /></span>}
@@ -104,6 +111,15 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
                       <td className="num" data-label={col.runs}>{a.runs}</td>
                       <td className="num dim" data-label={col.last}>{say(since(a.lastRunAt))}</td>
                     </tr>
+                    {looking === a.identity && (
+                      <tr className="agent-open">
+                        <td colSpan={7}>
+                          <RepResult looking={a.identity} />
+                          <a className="fine" href={viewHref("standings")}><FormattedMessage id="standings.close" /></a>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -134,7 +150,7 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
         </div>
       )}
 
-      {looking === "" && lookup}
+      {(looking === "" || inTable) && lookup}
       <Rep runs={runs} titleOf={titleOf} />
     </section>
   );

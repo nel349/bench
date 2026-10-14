@@ -515,6 +515,10 @@ button.btn { cursor: pointer; }
 /* ─── rep, looked up ─── */
 
 .rep-lookup { max-width: 720px; margin: 0 0 28px; }
+/* An agent's record, opened under its own row in the standings. */
+.ledger .agent-open td { padding-top: 0; background: linear-gradient(90deg, rgba(198,255,26,0.05), transparent); }
+.ledger .agent-open .rep-result { margin-top: 4px; }
+.ledger .agent-open > td > a.fine { display: inline-block; margin-top: 10px; color: var(--text-dim); }
 .rep-lookup .lookup { margin-top: 0; }
 .rep-result { margin-top: 16px; }
 .rep-figure { margin: 0; display: flex; align-items: baseline; gap: 10px; }
@@ -537,7 +541,21 @@ button.btn { cursor: pointer; }
 
 /* ═══ gigs and the record ════════════════════════════════════════════════════════════════════ */
 
-.board { width: 100%; height: 100%; overflow-y: auto; padding: 8px 4px 24px; }
+.board { width: 100%; height: 100%; overflow-y: auto; padding: 8px 14px 24px 4px; scrollbar-gutter: stable; }
+/*
+ * What scrolls inside the frame fades out at its foot. A row was cut in half at the bottom edge,
+ * which read as a broken layout rather than as more below; the padding under the last row lets it
+ * scroll clear of the fade.
+ */
+@media (min-width: 981px) {
+  .board, .train, .exboard {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+  }
+  .board { padding-bottom: 48px; }
+  .train { padding-bottom: 32px; }
+  .exboard { padding-bottom: 32px; padding-right: 12px; }
+}
 .board-head { max-width: 720px; margin-bottom: 22px; }
 /* A page's own introduction is read across, not down a narrow column as the first screen's is. */
 .board-head .sub { max-width: 68ch; margin-top: 14px; }
@@ -640,7 +658,7 @@ a.tile-figure:hover { text-decoration: underline; text-underline-offset: 4px; }
 .agent-cols .owner-runs { margin-top: 0; }
 .best-table a { color: var(--text); text-decoration: none; }
 .best-table a:hover { color: var(--signal); }
-.best-table .mark { margin-left: 8px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--core); }
+.best-table .mark { margin-left: 8px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--signal); }
 .best-table tr.unsolved td { color: var(--text-dim); }
 .best-table .none { font-size: 12px; }
 .owner-next { margin-top: 16px; padding: 12px 14px; border: 1px solid var(--lattice-hot); }
@@ -656,6 +674,7 @@ a.tile-figure:hover { text-decoration: underline; text-underline-offset: 4px; }
 .owner-gigs li { font-size: 13px; color: var(--text); }
 .owner-gigs a { color: var(--core); }
 .owner-runs { margin-top: 16px; }
+.claim { max-width: 900px; margin: 0 0 16px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); border: 1px dashed var(--lattice-hot); }
 .owner-since { max-width: 900px; margin: 0 0 16px; padding: 10px 12px; font-size: 13px; color: var(--signal); border-left: 2px solid var(--signal); background: linear-gradient(90deg, rgba(198,255,26,0.07), transparent); }
 .new-tag { margin-left: 8px; padding: 1px 5px; font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--void); background: var(--signal); }
 
@@ -808,6 +827,10 @@ a.tile-figure:hover { text-decoration: underline; text-underline-offset: 4px; }
 .type-this { margin: 6px 0 0; padding: 10px 12px; border: 1px solid var(--lattice-hot); background: var(--void); font-family: var(--mono); font-size: 16px; letter-spacing: 0.02em; color: var(--text); }
 .step-body p.type-this { color: var(--text); font-size: 16px; }
 .type-this .url { color: var(--text); }
+/* The code to scan and the address to type, side by side: two ways onto the phone. */
+.on-phone { display: flex; align-items: center; gap: 16px; margin-top: 8px; }
+.on-phone > div { min-width: 0; flex: 1; }
+.qr { width: 112px; height: 112px; flex: none; image-rendering: pixelated; border: 1px solid var(--lattice-hot); }
 @media (max-width: 640px) {
   .laptop-only { display: none; }
   .phone-note { display: block; }

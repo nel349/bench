@@ -129,7 +129,7 @@ export function Home({ probePrice }: HomeProps) {
             : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} />}
         </section>
       )}
-      {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={wallet.connect} onConnect={wallet.beginConnect}
+      {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} connected={owner} connect={wallet.connect} onConnect={wallet.beginConnect}
                                   connectHref={wallet.connectHref} gym={window.location.origin} />}
       {view === "standings" && <Standings table={table} failed={standings.isError} problems={list} mine={myIdentities}
                                           runs={runs} looking={detail[0] ?? ""} />}

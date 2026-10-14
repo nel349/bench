@@ -117,6 +117,13 @@ describe("the first screen and the pages", () => {
     expect(await within(how).findByText(/what it costs/i)).toHaveTextContent("What it costs: $0.02 for each question, and $0.25 to record a solve");
   });
 
+  /** "Enough rep lets it take paid work" was the first time rep was mentioned, with no word of what it is. */
+  test("the first screen says what rep is where it first mentions it", async () => {
+    front("");
+    const how = await screen.findByRole("region", { name: "How it goes" });
+    expect(how).toHaveTextContent("Its rep is its score: a point for each easy exercise it has recorded, two for a medium, three for a hard.");
+  });
+
   test("the first screen says what a newcomer needs before they press anything", async () => {
     front("", TABLE, {}, "https://wallet.test/");
     expect(await screen.findByText(/you need a phone, and Claude Code, Cursor or Codex on a laptop/i)).toBeInTheDocument();
@@ -338,14 +345,17 @@ describe("coming back from the wallet, and opening an owner's link", () => {
     expect(kept.get("bench.owner.wallet")).toBe(WALLET);
   });
 
-  /** With one connected, pasting another's address and pressing Open did nothing. */
-  test("an address typed on My agent is connected, in place of the one that was", async () => {
+  /** A look-up is not a connection: the reader who pasted an address found it in the header as theirs. */
+  test("an address typed on My agent opens its page and leaves the connected wallet as it was", async () => {
     const user = userEvent.setup();
     arrive("#yours", { "bench.owner.wallet": WALLET });
     await user.type(await screen.findByLabelText(/wallet/i), OTHER);
     await user.click(screen.getByRole("button", { name: "Open" }));
-    expect(kept.get("bench.owner.wallet")).toBe(OTHER);
+    await waitFor(() => expect(window.location.hash).toBe(`#yours/${OTHER}`));
+    expect(kept.get("bench.owner.wallet")).toBe(WALLET);
   });
+
+
 
   test("Disconnect disconnects: nothing is kept, and Connect wallet is offered again", async () => {
     const user = userEvent.setup();
@@ -368,10 +378,19 @@ describe("coming back from the wallet, and opening an owner's link", () => {
     expect(window.location.hash).toBe("#home");
   });
 
-  test("an owner's link, opened with no wallet connected, connects that wallet once its page shows", async () => {
+  /**
+   * It used to connect that wallet once its page showed, and the same held for any wallet's link or
+   * a pasted address: a reader who looked a wallet up found it in the header as theirs. Now the owner
+   * says so, with one press.
+   */
+  test("an owner's link, opened with no wallet connected, connects nothing until its owner says it is theirs", async () => {
+    const user = userEvent.setup();
     arrive(`#yours/${WALLET}`);
-    expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
+    await screen.findByText(/has not granted an allowance to any agent/);
+    expect(kept.has("bench.owner.wallet")).toBe(false);
+    await user.click(screen.getByRole("button", { name: "This is my wallet" }));
     expect(kept.get("bench.owner.wallet")).toBe(WALLET);
+    expect(await screen.findByRole("button", { name: "Disconnect" })).toBeInTheDocument();
   });
 
   test("pressing Connect wallet notes that it was pressed", async () => {
@@ -401,7 +420,7 @@ describe("an exercise", () => {
     vi.stubGlobal("fetch", serving({ "/problems/zendo": { ...problem("zendo", "medium", null), statement: "s", scoring: "c" },
                                      "/leaderboard/zendo": [] }));
     show(<Exercise id="zendo" demoHref={null} />);
-    expect(await screen.findByText("not proven")).toBeInTheDocument();
+    expect(await screen.findAllByText("not known yet")).toHaveLength(2);
   });
 
   test("says how an agent gets to play: through the skill where there is an allowance to give", async () => {
@@ -439,7 +458,7 @@ describe("an exercise", () => {
 
 describe("looking up rep", () => {
   const rating: ChainRatingWire = { agent: "894767", rating: 3, ranked: ["toll", "codebreaker"], scribe: SCRIBE, source: "erc-8004" };
-  const lookup = (looking: string) => <RepLookup looking={looking} />;
+  const lookup = (looking: string) => <RepLookup looking={looking} showResult />;
 
   test("an identity shows the rep the gate reads, out of what the gym's exercises allow", async () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": rating }));
@@ -498,6 +517,14 @@ describe("looking up rep", () => {
 });
 
 describe("a won gig", () => {
+  /** A newcomer saw ten-cent gigs needing rep that costs a quarter a record, and nothing said who posts them or that rep is kept. */
+  test("the page says who posts gigs and how, and that rep is earned once", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(<Gigs bounties={[]} mine={undefined} />);
+    expect(screen.getByText(/whoever needs something solved posts it through Bench's API/i)).toBeInTheDocument();
+    expect(screen.getByText(/rep is earned once, by recording solves, and counts for every gig after/i)).toBeInTheDocument();
+  });
+
   const gig = (over: Partial<BountyWire>): BountyWire => ({
     id: "b1", poster: "0xposter", title: "Hash the gym's name", statement: "Return it.", amount: "0.100000",
     deadline: Date.now() + 86_400_000, minRating: 3, postedAt: 0, attempts: 1, open: false, solverIdentity: null,

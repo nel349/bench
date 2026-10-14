@@ -1,5 +1,5 @@
 import { FormattedMessage } from "react-intl";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
 import { useBounties, useOwner, useProblems, useStandings } from "../shared/api/useGym.ts";
 import { OwnerAgent } from "./OwnerAgent.tsx";
@@ -17,9 +17,9 @@ import { PATHS } from "../../../src/shared/paths.ts";
 export interface YoursProps {
   /** The wallet the address bar names: the part of `#yours/…` after the view. */
   readonly wallet: string;
-  /** Called once with a wallet when its page is shown, so this browser may keep it as the connected one. */
-  readonly offer: (wallet: string) => void;
-  /** Called with an address its owner typed in, which is asking for it. */
+  /** The wallet this browser is connected to, or `null`. */
+  readonly connected: string | null;
+  /** Called when the owner says the wallet on this page is theirs, which is asking for it. */
   readonly connect: (wallet: string) => void;
   /** Called as the owner leaves for the wallet's own Connect. */
   readonly onConnect: () => void;
@@ -37,7 +37,7 @@ export interface YoursProps {
  * in the URL so it can be bookmarked. Everything on it is public, so it asks for nothing but the
  * wallet's address.
  */
-export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: YoursProps) {
+export function Yours({ wallet, connected, connect, onConnect, connectHref, gym }: YoursProps) {
   const { walletUrl } = useNetwork();
   // Where no wallet serves the network there is no owner's page to read, for any address: the page
   // says so and asks for nothing. It used to ask, fail, and promise to try again.
@@ -47,17 +47,14 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: Y
   const problems = useProblems();
   const bounties = useBounties();
   const standings = useStandings();
-  // Once for each wallet shown, not on every refresh of its data: a wallet its owner had just
-  // disconnected was being connected again by the next poll.
   const shown = valid && owner.data !== undefined;
-  const offered = useRef<string | null>(null);
-  // A different wallet's page, or none, starts again: the same wallet opened later is offered afresh.
-  useEffect(() => { offered.current = null; }, [wallet]);
-  useEffect(() => {
-    if (!shown || offered.current === wallet) return;
-    offered.current = wallet;
-    offer(wallet);
-  }, [shown, wallet, offer]);
+  /**
+   * Opening a wallet's page does not connect it. It used to, for a page opened by link or by a
+   * pasted address, and a reader who looked a wallet up found it in the header as theirs, on every
+   * page, and Start ticking off steps for it. Looking is looking: the owner says a wallet is theirs
+   * with Connect Mandate, or with the button this offers.
+   */
+  const unclaimed = shown && (connected === null || connected.toLowerCase() !== wallet.toLowerCase());
 
   const since = useLastVisit(valid ? wallet : null, shown);
   // Of the agents it grants to now: what an agent it does not grant to did is not this visit's news.
@@ -83,7 +80,7 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: Y
       {served && !valid && connectHref !== null && (
         <a className="btn primary yours-connect" href={connectHref} onClick={onConnect}><FormattedMessage id="yours.connect" /></a>
       )}
-      {served && !valid && <WalletEntry typed={wallet} connect={connect} />}
+      {served && !valid && <WalletEntry typed={wallet} />}
       {valid && owner.isPending && <p className="state idle"><FormattedMessage id="yours.reading" /></p>}
       {valid && owner.isError && <p className="state bad"><FormattedMessage id="yours.failed" /></p>}
       {valid && owner.data && owner.data.agents.length === 0 && (
@@ -91,6 +88,12 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: Y
                action={{ href: PATHS.fund, label: <FormattedMessage id="yours.emptyAction" /> }}>
           <p><FormattedMessage id="yours.empty" /></p>
         </Empty>
+      )}
+      {unclaimed && (
+        <p className="claim">
+          <FormattedMessage id="yours.claim" />
+          <button type="button" className="btn" onClick={() => connect(wallet)}><FormattedMessage id="yours.claimButton" /></button>
+        </p>
       )}
       {summary !== null && summary.runs > 0 && (
         <p className="owner-since">
@@ -112,12 +115,11 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: Y
   );
 }
 
-/** Opening the page by hand, with the wallet's address. */
-function WalletEntry({ typed, connect }: { readonly typed: string; readonly connect: (wallet: string) => void }) {
+/** Opening a wallet's page by hand, with its address. It opens the page and connects nothing. */
+function WalletEntry({ typed }: { readonly typed: string }) {
   const [draft, setDraft] = useState(typed);
   const open = (e: FormEvent) => {
     e.preventDefault();
-    connect(draft.trim());
     window.location.assign(viewHref("yours", draft.trim()));
   };
   return (
