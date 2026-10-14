@@ -7,6 +7,7 @@ import { usdc, format } from "../../src/shared/money.ts";
 import { boardFrom, ports, type RayResult } from "../../src/problems/blackbox-rules.ts";
 import "../../src/problems/blackbox.ts";
 import { PRICE, submissionPrice } from "../../src/shared/pricing.ts";
+import { MemoryStore } from "../../src/store/runs.ts";
 
 const AGENT = "agent:aria";
 const SEED = "4242";
@@ -301,5 +302,44 @@ describe("several requests at once", () => {
     await Promise.all(ids.map((id) => runs.ask(id, { side: "up", index: 0 })));
     expect(performance.now() - started).toBeLessThan(200);
     for (const id of ids) expect(runs.get(id)!.probes).toHaveLength(1);
+  });
+});
+
+/**
+ * Through the connector a quote is paid the moment it arrives, so an agent told an answer cost five
+ * cents paid the ten it was asked. The run says its next prices first, worked out the way the next
+ * submission will be quoted.
+ */
+describe("a run says what its next question, answer and record cost, before any is paid", () => {
+  const PAYER = "0xAbCdEf0000000000000000000000000000000001";
+
+  test("a fresh run: a question at list price, a free first answer, the record at its price", () => {
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
+    expect(attempts.pricesFor(a.id, null)).toEqual({ ask: PRICE.ask, submit: 0n, rank: PRICE.rank });
+  });
+
+  test("after its own answer, the next is the list price, as the submission will be quoted", async () => {
+    const a = attempts.start(AGENT, "blackbox", SEED)!;
+    await attempts.ask(a.id, { side: "up", index: 0 });
+    const before = attempts.pricesFor(a.id, null)!.submit;
+    const graded = await attempts.submit(a.id, [{ x: 0, y: 0 }]) as Graded;
+    expect(graded.paid).toBe(before);
+    const next = attempts.pricesFor(a.id, null)!.submit;
+    const quoted = await attempts.submit(a.id, [{ x: 0, y: 0 }]) as Graded;
+    expect(next).toBe(PRICE.submit);
+    expect(quoted.paid).toBe(next);
+  });
+
+  test("a run nobody has paid into is priced by the address named as its payer, in any case", () => {
+    const store = new MemoryStore();
+    const runs = new Attempts(money, store);
+    for (let i = 0; i < 3; i++) store.noteSubmission(PAYER.toLowerCase(), "blackbox");
+    const a = runs.start("anonymous", "blackbox", SEED)!;
+    expect(runs.pricesFor(a.id, PAYER)!.submit).toBe(submissionPrice(3));
+    expect(runs.pricesFor(a.id, null)!.submit).toBe(0n);
+  });
+
+  test("an unknown run has no prices", () => {
+    expect(attempts.pricesFor("a999", null)).toBeNull();
   });
 });

@@ -127,6 +127,15 @@ describe("the free surface is free", () => {
     expect(((await paired.json()) as SettingsWire).other).toBe("https://mainnet.bench.test");
   });
 
+  test("a run's next prices are free to read, and a payer that is not an address is refused", async () => {
+    const { id } = await (await call("POST", "/attempts", { problem: "blackbox" })).json() as { id: string };
+    const prices = await (await call("GET", `/attempts/${id}/prices`)).json() as Record<string, string>;
+    expect(prices).toEqual({ attempt: id, ask: "0.020000", submit: "0.000000", rank: "0.250000" });
+    expect((await call("GET", `/attempts/${id}/prices?payer=0x9fa928ACfE2eEcEad9698ebBad835E7129688b28`)).status).toBe(200);
+    expect((await call("GET", `/attempts/${id}/prices?payer=nobody`)).status).toBe(400);
+    expect((await call("GET", "/attempts/a99999/prices")).status).toBe(404);
+  });
+
   test("nothing was charged for any of that", () => {
     expect(money.spentBy(AGENT)).toBe(0n);
   });

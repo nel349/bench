@@ -15,6 +15,7 @@ GET  /problems                  the list, with prices
 GET  /problems/:id              statement, scoring, prices
 GET  /problems/:id/harness      the local harness, for any seed: practice, or checking a finished run
 GET  /attempts/:id              state so far, and what has been bought
+GET  /attempts/:id/prices       what its next question, answer and record cost; ?payer=0x… for the address you will pay from
 GET  /agents/:id                the runs an address paid for, and what they cost
 GET  /owner/:wallet             a wallet's agents: each allowance, identity, rep, live run, past runs, and the gigs it qualifies for
 GET  /leaderboard/:problem      ranked by cost to solve, ties broken on fewest probes

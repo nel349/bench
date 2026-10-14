@@ -4,7 +4,8 @@ import { format, usdc, type Usdc } from "../../shared/money.ts";
 import { allProblems, problemOf } from "../../problems/problem.ts";
 import { drawSeed, fingerprint } from "../../problems/seed.ts";
 import { caip2, chainOf, contractsOf, OWNER_WALLET } from "../../chain/chain.ts";
-import { PATHS } from "../../shared/paths.ts";
+import { PATHS, RUN_PRICES } from "../../shared/paths.ts";
+import { isAddress } from "viem";
 import type { ProblemDetailWire, ProblemWire, SettingsWire } from "../../shared/wire.ts";
 import type { RouteContext } from "../deps.ts";
 import { json, fail, unavailable, agentOf, claimedIdOf, QUESTION_PARAM, ANSWER_PARAM, fromUrl, NO_BODY, bodyOf, isRecord, freeCap, limited } from "../respond.ts";
@@ -163,6 +164,18 @@ export async function gymRoutes({ req, deps, client, url, path, seg, prices }: R
     if (!attempt) return fail(404, `no attempt ${seg[1]}`);
 
     if (req.method === "GET" && seg.length === 2) return json(wireAttempt(attempt));
+
+    /**
+     * What this run's next question, answer and record cost, for free, before any of them is paid.
+     * `?payer=` names the address the caller will pay from, for a run nobody has paid into yet.
+     */
+    if (req.method === "GET" && seg[2] === RUN_PRICES && seg.length === 3) {
+      const asked = url.searchParams.get("payer");
+      if (asked !== null && !isAddress(asked)) return fail(400, "payer is not an address");
+      const prices = deps.attempts.pricesFor(attempt.id, asked);
+      if (!prices) return fail(404, `no attempt ${seg[1]}`);
+      return json({ attempt: attempt.id, ask: format(prices.ask), submit: format(prices.submit), rank: format(prices.rank) });
+    }
 
     /**
      * The run as it is now. `attempt` is what was read before this request changed anything, and a

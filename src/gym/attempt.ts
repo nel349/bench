@@ -220,6 +220,26 @@ export class Attempts {
   readonly #serial = new Serial();
 
   get(id: AttemptId): Attempt | undefined { return this.store.get(id); }
+
+  /**
+   * What this run's next question, answer and record would cost now, said before anything is paid.
+   *
+   * An answer's price depends on how many the payer has already sent on this problem, so the list
+   * price was a guess: an agent told five cents paid ten, through a connector that pays a quote as
+   * it arrives. This is the price the next submission will be quoted, worked out the same way.
+   *
+   * A run nobody has paid into yet is priced by its label until its first payment binds a payer, and
+   * that payment may change the answer's price. `payer` is the address the caller will pay from, so
+   * the price is the one that address will be asked.
+   */
+  pricesFor(id: AttemptId, payer: string | null): { ask: Usdc; submit: Usdc; rank: Usdc } | null {
+    const a = this.store.get(id);
+    if (!a) return null;
+    const counted = a.payer === null && payer !== null
+      ? this.store.priorSubmissions(payer.toLowerCase(), a.problem)
+      : this.#counted(a);
+    return { ask: PRICE.ask, submit: submissionPrice(Math.max(a.submissions, counted)), rank: PRICE.rank };
+  }
   all(): Attempt[] { return this.store.all(); }
 
   /**

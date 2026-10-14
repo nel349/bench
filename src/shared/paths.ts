@@ -35,6 +35,12 @@ export const PATHS = {
   health: "/health",
 } as const;
 
+/**
+ * Under a run, `/attempts/:id/prices`: what its next question, answer and record cost, said for
+ * free. A segment and not a path of its own, beside the run's other routes.
+ */
+export const RUN_PRICES = "prices";
+
 /** How many runs the feed carries. Enough to show a session, small enough to poll often. */
 export const FEED_LIMIT = 40;
 
