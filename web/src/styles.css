@@ -496,6 +496,83 @@ button.btn { cursor: pointer; }
 .ex-stats dd { margin: 6px 0 0; font-family: var(--display); font-size: 17px; color: var(--text); }
 .ex-stats .none { font-family: var(--mono); font-size: 12px; color: var(--text-faint); }
 
+/* ═══ an exercise's sample, drawn ═══════════════════════════════════════════════════════════════
+   Lime is the answer, the thing an agent pays to find. Magenta is what is hidden (Black Box's atoms,
+   as on the front page). Red-orange is only the lie, the one answer that says no when it means yes. */
+.ex-sample { margin: 0 0 18px; padding: 14px 16px 12px; background: var(--panel); border: 1px solid var(--lattice); }
+.ex-sample figcaption { display: grid; gap: 4px; font-size: 13px; line-height: 1.5; color: var(--text-dim); max-width: 64ch; }
+.ex-sample figcaption .cap { font-size: 9px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--signal); }
+.ex-sample-note { margin: 10px 0 0; font-size: 11px; line-height: 1.5; color: var(--text-faint); max-width: 72ch; }
+.sample-draw { display: block; width: 100%; margin: 14px auto 0; font-family: var(--mono); }
+.sample-draw text { font-family: var(--mono); fill: var(--text-dim); }
+
+.sample-draw.toll, .sample-draw.blackbox { max-width: 300px; }
+.toll .wall { fill: none; stroke: var(--lattice-hot); stroke-width: 0.08; stroke-linecap: square; }
+.toll .route { fill: none; stroke: var(--signal); stroke-width: 0.14; stroke-linejoin: round; stroke-linecap: round; }
+.toll .end { fill: var(--signal); transition: opacity 300ms; }
+.toll .end.dim { opacity: 0.25; }
+.toll .head { fill: var(--signal); opacity: 0.35; }
+
+/* Played out: what is not there yet is a faint shape, and arrives with a short fade. */
+.sample-draw .pending { opacity: 0.12; }
+.sample-draw li, .sample-draw .row, .sample-draw g { transition: opacity 400ms; }
+
+.bisect .history { fill: var(--lattice); }
+.bisect .broken { fill: var(--text-faint); }
+.bisect .doubt { fill: none; stroke: var(--signal); stroke-width: 2; transition: x 500ms, width 500ms; }
+.bisect .probe { stroke-width: 3; }
+.bisect .probe.good { stroke: var(--text); }
+.bisect .probe.bad { stroke: var(--core); }
+.bisect .probe.untestable { stroke: var(--text-faint); }
+.bisect .mark { fill: var(--signal); font-size: 16px; }
+.bisect .now { fill: var(--text-dim); font-size: 14px; }
+.bisect .end { font-size: 14px; }
+
+.zendo .rule { margin: 0 0 10px; font-family: var(--display); font-size: 15px; color: var(--signal); }
+.zendo .rule.hidden { color: var(--text-faint); }
+.zendo ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.zendo li { display: flex; align-items: center; gap: 14px; }
+.zendo .triple { display: flex; gap: 4px; }
+.zendo .triple b { width: 34px; padding: 4px 0; text-align: center; font-weight: 500; color: var(--text); background: var(--void); border: 1px solid var(--lattice-hot); }
+.zendo .answer { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; }
+.zendo .yes .answer { color: var(--signal); }
+.zendo .no .answer { color: var(--text-faint); }
+
+.codebreaker { display: grid; gap: 8px; }
+.codebreaker .row { display: flex; align-items: center; gap: 6px; }
+.codebreaker .row.code { padding-bottom: 8px; margin-bottom: 2px; border-bottom: 1px solid var(--lattice-hot); }
+.codebreaker .peg { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--void); }
+.codebreaker .c-A { background: #c6ff1a; }
+.codebreaker .c-B { background: #ff2e88; }
+.codebreaker .c-C { background: #00e0ff; }
+.codebreaker .c-D { background: #e9e5ff; }
+.codebreaker .c-E { background: #ffb020; }
+.codebreaker .c-F { background: #9d7bff; }
+.codebreaker .peg.hidden { background: var(--void); color: var(--text-faint); border: 1px dashed var(--lattice-hot); }
+.codebreaker .score { display: grid; grid-template-columns: repeat(2, 9px); gap: 3px; margin-left: 12px; }
+.codebreaker .score i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--lattice-hot); }
+.codebreaker .score i.exact { background: var(--signal); border-color: var(--signal); }
+.codebreaker .score i.near { border-color: var(--signal); }
+
+.ranking rect { fill: var(--lattice-hot); transition: y 400ms, height 400ms, fill 300ms; }
+.ranking .asked rect { fill: var(--signal); }
+.ranking text { font-size: 16px; }
+.ranking .asked text { fill: var(--signal); }
+
+.blackbox .grid { fill: none; stroke: var(--lattice); stroke-width: 0.04; }
+.blackbox .ray { fill: none; stroke: var(--signal); stroke-width: 0.1; stroke-linejoin: round; stroke-linecap: round; opacity: 0.9; }
+.blackbox .atom { fill: var(--core); }
+
+.liar .line { stroke: var(--lattice-hot); stroke-width: 2; }
+.liar .number { stroke: var(--signal); stroke-width: 4; }
+.liar .mark { fill: var(--signal); font-size: 16px; }
+.liar .end { font-size: 14px; }
+.liar .answer rect { fill: none; stroke: var(--lattice-hot); stroke-width: 1.5; }
+.liar .lie rect { fill: none; stroke: var(--ice); stroke-width: 2.5; }
+.liar .lie text { fill: var(--ice); }
+.liar .pending rect { fill: none; stroke: var(--lattice-hot); stroke-width: 1.5; }
+.liar g text { font-size: 14px; }
+
 .exboard { min-height: 0; overflow-y: auto; border-top: 1px solid var(--lattice-hot); padding-top: 12px; }
 .exboard-head { margin: 0 0 8px; font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--text-dim); }
 .exboard-empty { margin: 0; font-size: 13px; line-height: 1.55; color: var(--text-faint); max-width: 56ch; }

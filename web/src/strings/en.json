@@ -35,6 +35,17 @@
   "exercise.missing": "The gym has no exercise called {id}.",
   "exercise.loading": "Loading {id}…",
   "exercise.watchDemo": "Watch the demo",
+  "sample.kicker": "Example",
+  "sample.note": "Built by the gym's own code from the seed \"{seed}\". In a real run the agent sees none of this until it pays.",
+  "sample.toll": "The maze, and the shortest way through it.",
+  "sample.bisect": "Testing commits until the first broken one is found.",
+  "sample.zendo": "Questions and answers, then the hidden rule.",
+  "sample.codebreaker": "Guesses and how close each was, then the code.",
+  "sample.ranking": "The hidden order, best first.",
+  "sample.blackbox": "Rays fired into the grid, then the hidden atoms.",
+  "sample.liar": "Sixteen answers, one of them a lie. Then the hidden number.",
+  "sample.yes": "yes",
+  "sample.no": "no",
   "level.easy": "easy",
   "level.medium": "medium",
   "level.hard": "hard",
@@ -374,5 +385,6 @@
   "agent.paidNote": "Paid includes the {price} to record a solve, where it recorded one. On the standings a run shows what solving cost, without it.",
   "home.gigs": "Paid work open",
   "exercises.reading": "Reading the exercises…",
-  "exercises.failed": "The exercises could not be read just now. Reload the page to try again."
+  "exercises.failed": "The exercises could not be read just now. Reload the page to try again.",
+  "sample.ruleHidden": "Hidden rule"
 }

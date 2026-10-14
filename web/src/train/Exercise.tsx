@@ -2,6 +2,7 @@ import { FormattedMessage } from "react-intl";
 import { useBoard, useProblem } from "../shared/api/useGym.ts";
 import { ExerciseCard } from "./ExerciseCard.tsx";
 import { Leaderboard } from "./Leaderboard.tsx";
+import { ExerciseSample } from "./sample/ExerciseSample.tsx";
 
 export interface ExerciseProps {
   readonly id: string;
@@ -9,7 +10,7 @@ export interface ExerciseProps {
   readonly demoHref: string | null;
 }
 
-/** One exercise, read from the gym: its card and its leaderboard. */
+/** One exercise, read from the gym: its card, a sample of it drawn, and its leaderboard. */
 export function Exercise({ id, demoHref }: ExerciseProps) {
   const problem = useProblem(id);
   const board = useBoard(id);
@@ -18,6 +19,7 @@ export function Exercise({ id, demoHref }: ExerciseProps) {
   return (
     <section className="exhibit exercise-view" aria-label={problem.data.title}>
       <ExerciseCard problem={problem.data} />
+      <ExerciseSample id={problem.data.id} />
       {demoHref && <a className="ex-switch" href={demoHref}><FormattedMessage id="exercise.watchDemo" /></a>}
       <Leaderboard rows={board.data ?? []} title={problem.data.title} />
     </section>

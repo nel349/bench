@@ -29,13 +29,18 @@ export function useClock(key: string | number, running: boolean): number {
   return elapsed;
 }
 
-/** Whether the person has asked for less motion. Honoured by showing a finished board instead. */
+/**
+ * Whether the person has asked for less motion. Honoured by showing a finished board instead.
+ *
+ * A window with no `matchMedia` (jsdom, an old embedded view) cannot have been asked, so it moves.
+ */
 export function usePrefersReducedMotion(): boolean {
   const query = "(prefers-reduced-motion: reduce)";
   const [reduced, setReduced] = useState(() =>
-    typeof window !== "undefined" && window.matchMedia(query).matches);
+    typeof window !== "undefined" && (window.matchMedia?.(query).matches ?? false));
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia(query);
     const changed = () => setReduced(media.matches);
     media.addEventListener("change", changed);
