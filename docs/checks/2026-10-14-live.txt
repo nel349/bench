@@ -1,0 +1,20 @@
+The live sites, checked from outside: 14 October 2026, bench 037d7a6
+
+  bun run check:live
+
+  ok    mainnet: on chain 5042
+  ok    mainnet: names the wallet, opening on arc
+  ok    mainnet: serves seven exercises
+  ok    mainnet: serves its standings
+  ok    mainnet: serves its page
+  ok    testnet: on chain 5042002
+  ok    testnet: names the wallet, opening on arcTestnet
+  ok    testnet: serves seven exercises
+  ok    testnet: serves its standings
+  ok    testnet: serves its page
+  ok    https://bench-ai.dev/attempts/a1: solved, with the record PROOF.md gives
+  ok    https://bench-ai.dev/attempts/a5: solved, with the record PROOF.md gives
+  ok    https://testnet.bench-ai.dev/attempts/a10: solved, with the record PROOF.md gives
+  ok    every link in README.md and docs/PROOF.md opens (49)
+  
+  14 of 14 passed
