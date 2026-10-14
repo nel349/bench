@@ -491,6 +491,13 @@ describe("connecting a wallet", () => {
     expect(connectUrl(null, "http://bench.test")).toBeNull();
   });
 
+  test("Connect keeps the network the wallet is told to open on, so it sends back the address for this gym's money", () => {
+    const url = new URL(connectUrl("https://kuiralabs.github.io/mandate/?network=arc", "https://bench-ai.dev")!);
+    expect(url.pathname).toBe("/mandate/connect");
+    expect(url.searchParams.get("network")).toBe("arc");
+    expect(url.searchParams.get("return")).toBe("https://bench-ai.dev/#connected/");
+  });
+
   test("the header offers Connect wallet, or the connected wallet and Disconnect", async () => {
     const user = userEvent.setup();
     const { rerender } = render(<WalletButton owner={null} connectHref={CONNECT} onConnect={() => {}} onDisconnect={() => {}} />);

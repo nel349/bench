@@ -120,6 +120,11 @@ describe("the free surface is free", () => {
     expect(((await mainnet.json()) as SettingsWire).wallet).toBe(OWNER_WALLET.mainnet);
   });
 
+  test("each gym tells the wallet which network to open on, so an owner lands in the wallet for its money", () => {
+    expect(new URL(OWNER_WALLET.mainnet!).searchParams.get("network")).toBe("arc");
+    expect(new URL(OWNER_WALLET.testnet!).searchParams.get("network")).toBe("arcTestnet");
+  });
+
   /** Each network has a gym of its own, and the page's switch needs to know where the other one is. */
   test("the settings name the gym on the other network where one is configured, and none otherwise", async () => {
     expect(((await (await call("GET", "/settings")).json()) as SettingsWire).other).toBeNull();

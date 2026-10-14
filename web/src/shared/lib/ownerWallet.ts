@@ -16,8 +16,19 @@ export const CONNECTED_VIEW = "connected";
  * The wallet shows this page's host and asks before it sends anything; see the mandate's
  * `src/ui/connect.ts`. `null` where no wallet serves this network.
  */
-export const connectUrl = (walletUrl: string | null, origin: string): string | null =>
-  walletUrl === null ? null : `${walletUrl}connect?return=${encodeURIComponent(`${origin}/#${CONNECTED_VIEW}/`)}`;
+export function connectUrl(walletUrl: string | null, origin: string): string | null {
+  if (walletUrl === null) return null;
+  // The wallet's own page `connect`, keeping what the wallet's address carries, the network it is to
+  // open on, so the address it sends back is the one for this gym's money.
+  const wallet = new URL(walletUrl);
+  const url = new URL(CONNECT_PAGE, wallet);
+  wallet.searchParams.forEach((value, name) => url.searchParams.set(name, value));
+  url.searchParams.set("return", `${origin}/#${CONNECTED_VIEW}/`);
+  return url.toString();
+}
+
+/** The wallet's page that asks the owner before sending their address back. */
+const CONNECT_PAGE = "connect";
 
 /** The wallet this browser is connected to. */
 const KEY_WALLET = KEY;

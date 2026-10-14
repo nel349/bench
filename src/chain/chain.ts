@@ -142,6 +142,24 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
   },
 } as const;
 
+/** The wallet's address, before it is told which network to open on. */
+const WALLET_BASE = "https://kuiralabs.github.io/mandate/";
+/** Each network by the name the wallet knows it by, which is Circle's. */
+const WALLET_NETWORK: Readonly<Record<Network, string>> = { mainnet: "arc", testnet: "arcTestnet" };
+/** The parameter the wallet reads to open on a network. */
+const WALLET_NETWORK_PARAM = "network";
+
+/**
+ * The wallet, told which network to open on. It remembers the network a phone last showed, and a
+ * fresh one shows Arc testnet, so without this an owner sent from the mainnet gym arrived in their
+ * test wallet, and Connect handed the mainnet gym a testnet address.
+ */
+function walletOn(net: Network): string {
+  const url = new URL(WALLET_BASE);
+  url.searchParams.set(WALLET_NETWORK_PARAM, WALLET_NETWORK[net]);
+  return url.toString();
+}
+
 /**
  * Where an owner opens the wallet their agent spends from: the Agent Mandate app, built for the web.
  *
@@ -152,8 +170,8 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
  */
 export const OWNER_WALLET: Readonly<Record<Network, string | null>> = {
   // The same wallet: on Arc mainnet it opens with Circle's LIVE key, shared since 14 October.
-  mainnet: "https://kuiralabs.github.io/mandate/",
-  testnet: "https://kuiralabs.github.io/mandate/",
+  mainnet: walletOn("mainnet"),
+  testnet: walletOn("testnet"),
 };
 
 /** Which network this process talks to. Testnet unless told otherwise: mainnet costs real money. */
