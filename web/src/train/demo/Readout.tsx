@@ -55,6 +55,7 @@ export function Readout({ seed, frame, atoms, budget, price }: ReadoutProps) {
         </div>
         <div className="spent"><dt><FormattedMessage id="demo.spent" /></dt><dd><Amount value={decimal(spent)} /></dd></div>
       </dl>
+      <p className="budget-note"><FormattedMessage id="demo.budgetNote" values={{ budget }} /></p>
       <div className={`verdict ${frame.ending ?? "running"}`} aria-live="polite">
         {frame.ending === "solved" && (
           <>

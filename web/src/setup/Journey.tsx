@@ -2,7 +2,8 @@ import { FormattedMessage, useIntl } from "react-intl";
 import type { ReactNode } from "react";
 import { viewHref } from "../shell/useView.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
-import { CONNECTOR_INSTALL, CONNECTOR_NOTES, SKILL_INSTALL, STEPS } from "./steps.ts";
+import { CONNECTOR_NOTES, SKILL_INSTALL, STEPS } from "./steps.ts";
+import { ConnectorFor } from "./ConnectorFor.tsx";
 import { CopyLine } from "../shared/components/CopyLine.tsx";
 import { QrCode } from "../shared/components/QrCode.tsx";
 
@@ -73,7 +74,7 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
     </>,
     onLaptop(<>
       <CopyLine text={SKILL_INSTALL} label="copy.skill" />
-      <CopyLine text={CONNECTOR_INSTALL} label="copy.connector" />
+      <ConnectorFor />
       <p className="fine">
         <FormattedMessage id="step2.note" values={{
           link: (chunks) => <a href={CONNECTOR_NOTES} target="_blank" rel="noreferrer">{chunks}</a>,

@@ -82,8 +82,13 @@ export async function recordRoutes({ req, deps, client, path, seg }: RouteContex
       } catch {
         return unavailable("the reputation registry could not be read");
       }
+      // A made-up number answered "no recorded solves yet", as though the agent were real.
+      let exists: boolean | null = null;
+      if (deps.ownerOf) {
+        try { exists = (await deps.ownerOf(agentId)) !== null; } catch { exists = null; }
+      }
       const chain: ChainRatingWire = { agent: agentId.toString(), rating: weigh(problems), ranked: problems,
-                                       scribe: deps.reputation.scribe, source: "erc-8004" };
+                                       scribe: deps.reputation.scribe, source: "erc-8004", exists };
       return json(chain);
     }
     const r = rate(deps.attempts.all(), seg[1]);

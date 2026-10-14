@@ -1,4 +1,4 @@
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { short } from "../shared/lib/elapsed.ts";
 
 export interface WalletButtonProps {
@@ -18,8 +18,9 @@ export interface WalletButtonProps {
  * `useOwnerWallet`.
  */
 export function WalletButton({ owner, connectHref, onConnect, onDisconnect }: WalletButtonProps) {
+  const intl = useIntl();
   if (owner === null) {
-    return connectHref === null ? null : <a className="wallet-connect" href={connectHref} onClick={onConnect}><FormattedMessage id="wallet.connect" /></a>;
+    return connectHref === null ? null : <a className="wallet-connect" href={connectHref} onClick={onConnect} title={intl.formatMessage({ id: "wallet.connectWhat" })}><FormattedMessage id="wallet.connect" /></a>;
   }
   return (
     <span className="wallet-chip">

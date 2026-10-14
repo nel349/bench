@@ -130,6 +130,6 @@ describe("the first screen on mainnet, beside a testnet gym", () => {
     show(<Home probePrice="0.020000" />, here);
     const how = await screen.findByRole("region", { name: "How it goes, on testnet today" });
     expect(within(how).getAllByRole("heading", { level: 3 })[0]).toHaveTextContent("You give it an allowance");
-    expect(within(how).getByRole("link", { name: "How that works" })).toHaveAttribute("href", "/fund");
+    expect(within(how).getByRole("link", { name: "how, for developers" })).toHaveAttribute("href", "/fund");
   });
 });

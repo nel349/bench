@@ -115,7 +115,7 @@ export function FirstScreen({ leader, cheapest, agents, runs, gigs, prices }: Fi
               <dd>
                 <FormattedMessage id="home.leadingValue" values={{
                   id: leader.identity, rep: leader.rep,
-                  link: (chunks) => <a href={viewHref("standings")}>{chunks}</a>,
+                  link: (chunks) => <a href={viewHref("standings", leader.identity)}>{chunks}</a>,
                 }} />
               </dd>
             </div>}

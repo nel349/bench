@@ -114,7 +114,9 @@ describe("the first screen and the pages", () => {
   test("the first screen says both prices: a question, and recording a solve", async () => {
     front("");
     const how = await screen.findByRole("region", { name: "How it goes" });
-    expect(await within(how).findByText(/what it costs/i)).toHaveTextContent("What it costs: $0.02 for each question, and $0.25 to record a solve");
+    const costs = await within(how).findByText(/what it costs/i);
+    expect(costs).toHaveTextContent("What it costs: $0.02 for each question; an answer is free the first time on an exercise and costs more after that; $0.25 to record a solve");
+    expect(costs).toHaveTextContent("A $1 limit covers a few recorded runs.");
   });
 
   /** "Enough rep lets it take paid work" was the first time rep was mentioned, with no word of what it is. */
@@ -433,7 +435,7 @@ describe("an exercise", () => {
   test("with no wallet on the network, it sends the reader to Start for how, and does not name the skill", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
     show(<Exercise id="liar" demoHref={null} />, MAINNET);
-    const how = (await screen.findByText(/how it gets to, on this network, is on/i)).closest("p")!;
+    const how = (await screen.findByText(/on this network that takes a key of its own/i)).closest("p")!;
     expect(within(how).getByRole("link", { name: "Start" })).toHaveAttribute("href", "/fund");
     expect(how).not.toHaveTextContent(/skill/i);
   });
@@ -445,8 +447,21 @@ describe("an exercise", () => {
     const rows = await screen.findAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("agent-a1");
     expect(rows[0]).toHaveTextContent("recorded");
+    expect(rows[0]).not.toHaveTextContent("not recorded");
     expect(rows[1]).toHaveTextContent("agent-a2");
-    expect(rows[1]).not.toHaveTextContent("recorded");
+    expect(rows[1]).toHaveTextContent("not recorded");
+  });
+
+  /** A test run nobody recorded headed Toll's board, while every other page named the record holder. */
+  test("a recorded solve is listed ahead of a cheaper one nobody recorded, which says it was not", async () => {
+    vi.stubGlobal("fetch", serving({ "/problems/liar": liar,
+      "/leaderboard/liar": [score("cheap", "0.020000"), score("held", "0.280000", true), score("dear", "0.400000")] }));
+    show(<Exercise id="liar" demoHref={null} />);
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("agent-held"), expect.stringContaining("agent-cheap"), expect.stringContaining("agent-dear"),
+    ]);
+    expect(rows[1]).toHaveTextContent("not recorded");
   });
 
   test("an empty leaderboard says what would fill it", async () => {
@@ -457,8 +472,16 @@ describe("an exercise", () => {
 });
 
 describe("looking up rep", () => {
-  const rating: ChainRatingWire = { agent: "894767", rating: 3, ranked: ["toll", "codebreaker"], scribe: SCRIBE, source: "erc-8004" };
+  const rating: ChainRatingWire = { agent: "894767", rating: 3, ranked: ["toll", "codebreaker"], scribe: SCRIBE, source: "erc-8004", exists: true };
   const lookup = (looking: string) => <RepLookup looking={looking} showResult />;
+
+  /** A made-up number answered "has no recorded solves yet", as though somebody held it. */
+  test("a number nobody holds is said to be no agent, not an agent with no record", async () => {
+    vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/99999": { ...rating, agent: "99999", rating: 0, ranked: [], exists: false } }));
+    show(lookup("99999"));
+    expect(await screen.findByText(/there is no agent #99999 on this network/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no recorded solves yet/i)).not.toBeInTheDocument();
+  });
 
   test("an identity shows the rep the gate reads, out of what the gym's exercises allow", async () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": rating }));
@@ -521,7 +544,8 @@ describe("a won gig", () => {
   test("the page says who posts gigs and how, and that rep is earned once", () => {
     vi.stubGlobal("fetch", serving({}));
     show(<Gigs bounties={[]} mine={undefined} />);
-    expect(screen.getByText(/whoever needs something solved posts it through Bench's API/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Bench's API" })).toHaveAttribute("href", expect.stringContaining("docs/API.md"));
+    expect(screen.getByText(/whoever needs something solved posts it through/i)).toBeInTheDocument();
     expect(screen.getByText(/rep is earned once, by recording solves, and counts for every gig after/i)).toBeInTheDocument();
   });
 

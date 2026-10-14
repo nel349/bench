@@ -30,7 +30,7 @@ export function OwnKeySteps({ gym, initialAgent }: OwnKeyStepsProps) {
   const { testnet } = useNetwork();
   return (
     <>
-      <p className="own-for"><FormattedMessage id="own.for" /></p>
+      <p className="own-for"><FormattedMessage id="own.for" values={{ testnet: String(testnet) }} /></p>
       <ol className="journey">
         <li>
           <span className="step-n" aria-label={intl.formatMessage({ id: "setup.step" }, { n: 1 })}>1</span>

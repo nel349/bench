@@ -18,7 +18,7 @@ import { GENERATOR } from "../../src/problems/problem.ts";
 import { MemoryReputation } from "../../src/gym/reputation.ts";
 import { describe as describeAllowance } from "../../src/chain/allowance.ts";
 import { Bounties } from "../../src/bounties/bounties.ts";
-import type { OwnerWire, ProblemDetailWire, ProblemWire, SettingsWire, StandingsWire } from "../../src/shared/wire.ts";
+import type { ChainRatingWire, OwnerWire, ProblemDetailWire, ProblemWire, SettingsWire, StandingsWire } from "../../src/shared/wire.ts";
 import { OWNER_WALLET } from "../../src/chain/chain.ts";
 import "../../src/problems/blackbox.ts";
 
@@ -1011,6 +1011,19 @@ describe("ranking a run, and the bounty gate reading the ledger", () => {
 
     const rating = await (await callRanked("GET", `/rating/${ID}`)).json() as { rating: number; ranked: string[]; source: string };
     expect(rating).toMatchObject({ rating: 3, ranked: ["blackbox"], source: "erc-8004" });
+  });
+
+  /** A made-up number answered "no recorded solves yet", as though somebody held it. */
+  test("a rating says whether anyone holds the identity, and says it does not know when the registry will not answer", async () => {
+    const read = async (deps: Deps, id: string) =>
+      await (await handle(new Request(`http://bench.test/rating/${id}`), deps)).json() as ChainRatingWire;
+    const HOLDER = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
+    const held: Deps = { ...ranked, ownerOf: async (agentId) => (agentId === 42n ? HOLDER : null) };
+    expect((await read(held, "42")).exists).toBe(true);
+    expect((await read(held, "999999")).exists).toBe(false);
+    expect((await read({ ...ranked, ownerOf: async () => { throw new Error("rpc down"); } }, "42")).exists).toBeNull();
+    const { ownerOf: _unasked, ...noRegistry } = ranked;
+    expect((await read(noRegistry, "42")).exists).toBeNull();
   });
 
   test("an open run is refused before it is charged", async () => {

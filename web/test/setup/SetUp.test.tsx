@@ -71,7 +71,7 @@ describe("the front door", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
     await toOwnKey(user);
-    expect(screen.getByText("For developers.")).toBeInTheDocument();
+    expect(screen.getByText("For a developer whose agent already pays for itself.")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "What your agent needs", "Add to its balance", "Send it to train",
     ]);
@@ -268,6 +268,25 @@ describe("step 1, which is on the phone", () => {
   });
 });
 
+/** The first screen names Claude Code, Cursor and Codex; step 2 had a line for Claude Code alone. */
+describe("step 2, for the agent the owner runs", () => {
+  test("Claude Code gets its command, and Cursor and Codex their settings, each said where it goes", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    const pick = screen.getByRole("group", { name: "Your agent" });
+    expect(within(pick).getByRole("button", { name: "Claude Code" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/claude mcp add arc-mandate/)).toBeInTheDocument();
+    await user.click(within(pick).getByRole("button", { name: "Cursor" }));
+    expect(screen.getByText(/~\/\.cursor\/mcp\.json/)).toBeInTheDocument();
+    expect(screen.getByText(/"mcpServers"/)).toBeInTheDocument();
+    expect(screen.queryByText(/claude mcp add arc-mandate/)).not.toBeInTheDocument();
+    await user.click(within(pick).getByRole("button", { name: "Codex" }));
+    expect(screen.getByText(/~\/\.codex\/config\.toml/)).toBeInTheDocument();
+    expect(screen.getByText(/\[mcp_servers\.arc-mandate\]/)).toBeInTheDocument();
+  });
+});
+
 /**
  * The main button on mainnet's first screen promised five minutes and opened a form only a developer
  * with a paying agent could fill in. Start there now sends a newcomer to where the setup runs.
@@ -288,7 +307,7 @@ describe("Start on mainnet, beside a testnet gym", () => {
   test("an agent that pays for itself is told how, in full, and in real money's words", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null), here);
-    expect(screen.getByText("For developers.")).toBeInTheDocument();
+    expect(screen.getByText("For a developer whose agent already pays for itself.")).toBeInTheDocument();
     expect(screen.getByText(/you add USDC from a wallet in this browser, such as MetaMask, on Arc mainnet/i)).toBeInTheDocument();
     expect(screen.queryByText(/test USDC/i)).not.toBeInTheDocument();
   });

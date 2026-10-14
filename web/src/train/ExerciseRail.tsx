@@ -27,7 +27,8 @@ export function ExerciseRail({ problems, chosen }: ExerciseRailProps) {
         <a key={p.id} href={viewHref("exercises", p.id)} className={p.id === chosen ? "rail-item on" : "rail-item"}
            aria-current={p.id === chosen ? "true" : undefined}>
           <span className="rail-name">{p.title}</span>
-          <span className={`rail-level ${p.level}`} aria-label={intl.formatMessage({ id: `level.${p.level}` })}>
+          <span className={`rail-level ${p.level}`} aria-label={intl.formatMessage({ id: `level.${p.level}` })}
+                title={intl.formatMessage({ id: `level.${p.level}` })}>
             {[1, 2, 3].map((n) => <i key={n} className={n <= MARKS[p.level] ? "on" : ""} />)}
           </span>
         </a>

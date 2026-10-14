@@ -38,6 +38,8 @@ export const SKILL_INSTALL = "npx skills add nel349/bench";
 /** Where Bench's own source is, and in it one agent that pays for itself: a key, an identity, a run. */
 const BENCH_SOURCE = "https://github.com/nel349/bench";
 export const OWN_KEY_EXAMPLE = `${BENCH_SOURCE}/blob/main/scripts/real-run.ts`;
+/** Bench's API as its docs set it out: how to play, record, and post a gig. */
+export const API_DOCS = `${BENCH_SOURCE}/blob/main/docs/API.md`;
 
 /** Where the connector's source is, and its notes on configuring it. */
 const CONNECTOR_SOURCE = "https://github.com/nel349/arc-agent-mandate";
@@ -48,3 +50,22 @@ export const CONNECTOR_NOTES = `${CONNECTOR_SOURCE}/blob/main/mcp/README.md`;
  * through the key the wallet already publishes.
  */
 export const CONNECTOR_INSTALL = "claude mcp add arc-mandate -s user -- npx -y @kuiralabs/arc-mandate";
+
+/** The agents step 2 has the connector's setup for, in the order offered. Claude Code is the one tested. */
+export const AGENTS = ["claude", "cursor", "codex"] as const;
+export type Agent = (typeof AGENTS)[number];
+
+/** The same connector, as Cursor's MCP settings file declares a server. */
+export const CURSOR_CONFIG = `{
+  "mcpServers": {
+    "arc-mandate": {
+      "command": "npx",
+      "args": ["-y", "@kuiralabs/arc-mandate"]
+    }
+  }
+}`;
+
+/** The same connector, as Codex's settings file declares a server. */
+export const CODEX_CONFIG = `[mcp_servers.arc-mandate]
+command = "npx"
+args = ["-y", "@kuiralabs/arc-mandate"]`;

@@ -8,6 +8,7 @@ import { Amount } from "../shared/components/Amount.tsx";
 import { short, until } from "../shared/lib/elapsed.ts";
 import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { Empty } from "../shared/components/Empty.tsx";
+import { API_DOCS } from "../setup/steps.ts";
 
 export interface GigsProps {
   readonly bounties: readonly BountyWire[];
@@ -83,7 +84,7 @@ export function Gigs({ bounties, mine }: GigsProps) {
       <header className="board-head">
         <p className="kicker"><span>//</span> <FormattedMessage id="gigs.kicker" /></p>
         <h2 className="board-title"><FormattedMessage id="gigs.title" /></h2>
-        <p className="sub"><FormattedMessage id="gigs.sub" /></p>
+        <p className="sub"><FormattedMessage id="gigs.sub" values={{ link: (chunks) => <a href={API_DOCS} target="_blank" rel="noreferrer">{chunks}</a> }} /></p>
       </header>
 
       {sorted.length === 0 ? (

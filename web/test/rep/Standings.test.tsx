@@ -165,7 +165,7 @@ describe("the list of exercises", () => {
     const prices = screen.getAllByRole("list")[0]!;
     expect(within(prices).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "$0.02 a question",
-      "An answer is free the first time on an exercise, then $0.05 or more",
+      "An answer is free the first time on an exercise, then $0.05 for the next two, then double each time, so guessing gets dear",
       "$0.25 to record a solve",
       "Rep for a recorded solve: easy 1, medium 2, hard 3",
     ]);

@@ -78,6 +78,11 @@ export interface ChainRatingWire {
   /** The only address whose entries count. A reader filters the registry by it. */
   readonly scribe: string;
   readonly source: "erc-8004";
+  /**
+   * Whether anyone holds this identity. `false` is a number nobody has registered, which is not an
+   * agent with no record; `null` where the registry could not say, which is neither.
+   */
+  readonly exists: boolean | null;
 }
 
 /** What a wallet's allowance to one agent stands at, read from the plugin. */

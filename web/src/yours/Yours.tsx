@@ -38,7 +38,7 @@ export interface YoursProps {
  * wallet's address.
  */
 export function Yours({ wallet, connected, connect, onConnect, connectHref, gym }: YoursProps) {
-  const { walletUrl } = useNetwork();
+  const { walletUrl, other } = useNetwork();
   // Where no wallet serves the network there is no owner's page to read, for any address: the page
   // says so and asks for nothing. It used to ask, fail, and promise to try again.
   const served = walletUrl !== null;
@@ -71,6 +71,7 @@ export function Yours({ wallet, connected, connect, onConnect, connectHref, gym 
         <h2 className="board-title"><FormattedMessage id="yours.title" /></h2>
         <p className="sub">
           {!served && <FormattedMessage id="yours.subNoWallet" values={{ link: (chunks) => <a href={viewHref("standings")}>{chunks}</a> }} />}
+          {!served && other !== null && <>{" "}<FormattedMessage id="yours.subNoWalletAcross" values={{ link: (chunks) => <a href={`${other}${viewHref("yours")}`}>{chunks}</a> }} /></>}
           {served && (valid
             ? <FormattedMessage id="yours.subWallet" values={{ wallet: short(wallet) }} />
             : <FormattedMessage id="yours.subNone" />)}

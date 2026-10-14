@@ -48,7 +48,10 @@ export function RepResult({ looking }: RepResultProps) {
             : <FormattedMessage id="lookup.registryDown" />}
         </p>
       )}
-      {who.kind === "identity" && rating.data && (
+      {who.kind === "identity" && rating.data?.exists === false && (
+        <p className="state idle"><FormattedMessage id="lookup.noSuchAgent" values={{ id: rating.data.agent }} /></p>
+      )}
+      {who.kind === "identity" && rating.data && rating.data.exists !== false && (
         <div className="rep-result">
           <p className="rep-figure"><span className="rep-n">{rating.data.rating}</span>
             <span className="rep-of"><FormattedMessage id="lookup.of" values={{ ceiling }} /></span></p>
