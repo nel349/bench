@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage } from "react-intl";
 import { useState, type FormEvent } from "react";
 import { viewHref } from "../shell/useView.ts";
@@ -69,13 +70,17 @@ export function Yours({ wallet, connected, connect, onConnect, connectHref, gym 
       <header className="board-head">
         <p className="kicker"><span>//</span> <FormattedMessage id="yours.kicker" /></p>
         <h2 className="board-title"><FormattedMessage id="yours.title" /></h2>
-        <p className="sub">
-          {!served && <FormattedMessage id="yours.subNoWallet" values={{ link: (chunks) => <a href={viewHref("standings")}>{chunks}</a> }} />}
-          {!served && other !== null && <>{" "}<FormattedMessage id="yours.subNoWalletAcross" values={{ link: (chunks) => <a href={`${other}${viewHref("yours")}`}>{chunks}</a> }} /></>}
-          {served && (valid
-            ? <FormattedMessage id="yours.subWallet" values={{ wallet: short(wallet) }} />
-            : <FormattedMessage id="yours.subNone" />)}
-        </p>
+        {served && !valid ? (
+          <Explained about="page.about" head={<p className="sub"><FormattedMessage id="yours.leadNone" /></p>}>
+            <p><FormattedMessage id="yours.subNone" /></p>
+          </Explained>
+        ) : (
+          <p className="sub">
+            {!served && <FormattedMessage id="yours.subNoWallet" values={{ link: (chunks) => <a href={viewHref("standings")}>{chunks}</a> }} />}
+            {!served && other !== null && <>{" "}<FormattedMessage id="yours.subNoWalletAcross" values={{ link: (chunks) => <a href={`${other}${viewHref("yours")}`}>{chunks}</a> }} /></>}
+            {served && <FormattedMessage id="yours.subWallet" values={{ wallet: short(wallet) }} />}
+          </p>
+        )}
       </header>
 
       {served && !valid && connectHref !== null && (

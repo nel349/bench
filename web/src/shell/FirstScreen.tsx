@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage } from "react-intl";
 import type { MessageId } from "../strings/StringsProvider.tsx";
 import type { StandingWire } from "../../../src/shared/wire.ts";
@@ -59,7 +60,9 @@ export function FirstScreen({ leader, cheapest, agents, runs, gigs, prices }: Fi
       <section className="intro">
         <p className="kicker"><span>//</span> <FormattedMessage id="home.kicker" /></p>
         <h1 className="headline"><FormattedMessage id="home.headline" /></h1>
-        <p className="sub"><FormattedMessage id="home.sub" /></p>
+        <Explained about="home.about" head={<p className="sub"><FormattedMessage id="home.lead" /></p>}>
+          <p><FormattedMessage id="home.sub" /></p>
+        </Explained>
         <div className="ctas">
           {across === null
             ? <a className="btn primary" href={PATHS.fund}><FormattedMessage id="home.ctaSetUp" /></a>
@@ -74,24 +77,28 @@ export function FirstScreen({ leader, cheapest, agents, runs, gigs, prices }: Fi
       </section>
 
       <section className="how" aria-labelledby="how-title">
-        <h2 id="how-title" className="give-label"><FormattedMessage id={across === null ? "home.how" : "home.howAcross"} /></h2>
+        {/* The three titles say it; what each means, and what it costs, are behind the "?". */}
+        <Explained about="home.aboutHow" head={
+          <h2 id="how-title" className="give-label"><FormattedMessage id={across === null ? "home.how" : "home.howAcross"} /></h2>
+        }>
+          {how.map((step, i) => (
+            <p key={step.title}><b>{i + 1}.</b> <FormattedMessage id={step.detail} /></p>
+          ))}
+          {/* Both prices: "a few cents" over a record of $0.02 hid that being recorded is a quarter. */}
+          {prices !== null && (
+            <p><FormattedMessage id="home.costs" values={{ ask: <Amount value={prices.ask} />, record: <Amount value={prices.rank} /> }} /></p>
+          )}
+        </Explained>
         <ol className="how-steps">
           {how.map((step, i) => (
             <li key={step.title}>
               <span className="step-n" aria-hidden="true">{i + 1}</span>
               <div>
                 <h3><FormattedMessage id={step.title} /></h3>
-                <p><FormattedMessage id={step.detail} /></p>
               </div>
             </li>
           ))}
         </ol>
-        {/* Both prices, here: "a few cents" over a record of $0.02 hid that being recorded is a quarter. */}
-        {prices !== null && (
-          <p className="how-here">
-            <FormattedMessage id="home.costs" values={{ ask: <Amount value={prices.ask} />, record: <Amount value={prices.rank} /> }} />
-          </p>
-        )}
         {across !== null && (
           <p className="how-here">
             <FormattedMessage id="home.ownHere" values={{ link: (chunks) => <a href={PATHS.fund}>{chunks}</a> }} />

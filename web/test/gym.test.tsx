@@ -1,3 +1,4 @@
+import { openHints } from "./hints.ts";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -114,7 +115,9 @@ describe("the first screen and the pages", () => {
   test("the first screen says both prices: a question, and recording a solve", async () => {
     front("");
     const how = await screen.findByRole("region", { name: "How it goes" });
-    const costs = await within(how).findByText(/what it costs/i);
+    await within(how).findByRole("button", { name: /what it costs/i });
+    openHints(how);
+    const costs = await within(how).findByText(/^what it costs/i);
     expect(costs).toHaveTextContent("What it costs: $0.02 for each question; an answer is free the first time on an exercise and costs more after that; $0.25 to record a solve");
     expect(costs).toHaveTextContent("A $1 limit covers a few recorded runs.");
   });
@@ -123,6 +126,7 @@ describe("the first screen and the pages", () => {
   test("the first screen says what rep is where it first mentions it", async () => {
     front("");
     const how = await screen.findByRole("region", { name: "How it goes" });
+    openHints(how);
     expect(how).toHaveTextContent("Its rep is its score: a point for each easy exercise it has recorded, two for a medium, three for a hard.");
   });
 
@@ -138,6 +142,7 @@ describe("the first screen and the pages", () => {
     expect(within(how).getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "You give it a balance", "You tell it to train", "You watch where it stands",
     ]);
+    openHints(how);
     expect(how).toHaveTextContent("What you add is the most it can spend, and it cannot be taken back.");
     expect(how).not.toHaveTextContent(/allowance|on your phone/);
   });
@@ -544,6 +549,7 @@ describe("a won gig", () => {
   test("the page says who posts gigs and how, and that rep is earned once", () => {
     vi.stubGlobal("fetch", serving({}));
     show(<Gigs bounties={[]} mine={undefined} />);
+    openHints();
     expect(screen.getByRole("link", { name: "Bench's API" })).toHaveAttribute("href", expect.stringContaining("docs/API.md"));
     expect(screen.getByText(/whoever needs something solved posts it through/i)).toBeInTheDocument();
     expect(screen.getByText(/rep is earned once, by recording solves, and counts for every gig after/i)).toBeInTheDocument();

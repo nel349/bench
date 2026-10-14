@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useSay } from "../shared/lib/useSay.ts";
 import type { FeedRowWire } from "../../../src/shared/wire.ts";
@@ -33,7 +34,9 @@ export function Rep({ runs, titleOf }: RepProps) {
   return (
     <section className="runs-record" aria-labelledby="runs-title">
       <h3 id="runs-title" className="section-title"><FormattedMessage id="rep.title" /></h3>
-      <p className="sub"><FormattedMessage id="rep.sub" /></p>
+      <Explained about="page.about" head={<p className="sub"><FormattedMessage id="rep.lead" /></p>}>
+        <p><FormattedMessage id="rep.sub" /></p>
+      </Explained>
       {runs.length === 0 ? (
         <p className="state idle"><FormattedMessage id="rep.empty" /></p>
       ) : (

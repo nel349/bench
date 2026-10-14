@@ -1,5 +1,6 @@
+import { openHints } from "../hints.ts";
 import { describe, expect, test, vi, beforeEach } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "../strings.tsx";
 import { MAINNET, NETWORKS, TESTNET, on } from "../network.ts";
@@ -208,11 +209,25 @@ describe("the five steps", () => {
   test("on testnet step 1 is test USDC from the faucet button; on mainnet it is real USDC, sent", () => {
     const { unmount } = render(journey(), { network: TESTNET });
     expect(screen.getByRole("heading", { level: 3, name: /open the wallet, and add test USDC/i })).toBeInTheDocument();
+    openHints();
     expect(screen.getByText(/a button for test USDC, which is free/i)).toBeInTheDocument();
     unmount();
     render(journey(), { network: on(MAINNET, { walletUrl: WALLET }) });
     expect(screen.getByRole("heading", { level: 3, name: /open the wallet, and add USDC/i })).not.toHaveTextContent(/test/i);
+    openHints();
     expect(screen.getByText(/this is real USDC: once your wallet is made, send USDC on Arc mainnet/i)).toBeInTheDocument();
+  });
+  test("a step shows what to do, and its explanation opens and closes with the question mark", () => {
+    render(journey());
+    const step = document.querySelectorAll(".journey li")[1]!;
+    const hint = within(step as HTMLElement).getByRole("button", { name: "About step 2" });
+    expect(hint).toHaveAttribute("aria-expanded", "false");
+    expect(step).not.toHaveTextContent(/teaches your agent the gym/);
+    act(() => { fireEvent.click(hint); });
+    expect(hint).toHaveAttribute("aria-expanded", "true");
+    expect(step).toHaveTextContent(/teaches your agent the gym/);
+    act(() => { fireEvent.click(hint); });
+    expect(step).not.toHaveTextContent(/teaches your agent the gym/);
   });
 });
 
@@ -255,3 +270,4 @@ describe("an agent that pays for itself, from nothing", () => {
     expect(screen.queryByText(/test USDC/i)).not.toBeInTheDocument();
   });
 });
+

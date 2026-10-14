@@ -1,3 +1,4 @@
+import { openHints } from "../hints.ts";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { render } from "../strings.tsx";
@@ -190,6 +191,7 @@ describe("with an allowance, the way offered first", () => {
     show(page(null));
     const steps = [...document.querySelectorAll(".journey li")];
     expect(steps.map((li) => li.classList.contains("key"))).toEqual([false, false, false, true, false]);
+    openHints(steps[3]);
     expect(steps[3]).toHaveTextContent(/this is the whole of training/i);
   });
 
@@ -255,6 +257,7 @@ describe("step 1, which is on the phone", () => {
     const address = screen.getByText("kuiralabs.github.io/mandate/");
     expect(address.closest(".laptop-only")).not.toBeNull();
     expect(screen.getByRole("link", { name: /open the wallet/i })).toHaveClass("phone-only");
+    openHints();
     expect(screen.getByText(/mandate, a separate site/i)).toBeInTheDocument();
   });
 
@@ -370,6 +373,7 @@ describe("Start on mainnet, once the wallet serves it", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null), LIVE);
     expect(screen.getByRole("heading", { level: 3, name: /open the wallet, and add usdc/i })).toBeInTheDocument();
+    openHints();
     expect(screen.queryByText(/test USDC/)).not.toBeInTheDocument();
     expect(screen.getByText(/this is real USDC/i)).toBeInTheDocument();
   });
@@ -380,6 +384,7 @@ describe("Start on mainnet, once the wallet serves it", () => {
     show(page(null), LIVE);
     expect(screen.getByText("claude mcp add arc-mandate-mainnet -s user -- npx -y @kuiralabs/arc-mandate mainnet")).toBeInTheDocument();
     // A second connector, beside the testnet one rather than in its place.
+    openHints();
     expect(screen.getByText(/beside the testnet connector/)).toBeInTheDocument();
     const pick = screen.getByRole("group", { name: "Your agent" });
     await user.click(within(pick).getByRole("button", { name: "Cursor" }));

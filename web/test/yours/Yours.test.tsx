@@ -1,3 +1,4 @@
+import { openHints } from "../hints.ts";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { render, say } from "../strings.tsx";
@@ -405,6 +406,7 @@ describe("the owner's page", () => {
   test("without a wallet it says where the link comes from, and asks for the address", () => {
     vi.stubGlobal("fetch", serving({ wallet: WALLET, agents: [], more: 0, partial: false }));
     show(<Yours wallet="" connected={null} connect={() => {}} onConnect={() => {}} connectHref={null} gym={GYM} />);
+    openHints();
     expect(screen.getByText(/gives you this page's link when it starts training/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open" })).toBeDisabled();
   });

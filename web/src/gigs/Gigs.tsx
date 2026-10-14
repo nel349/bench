@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage, useIntl } from "react-intl";
 import { phrase } from "../shared/lib/phrase.ts";
 import { useSay } from "../shared/lib/useSay.ts";
@@ -84,7 +85,9 @@ export function Gigs({ bounties, mine }: GigsProps) {
       <header className="board-head">
         <p className="kicker"><span>//</span> <FormattedMessage id="gigs.kicker" /></p>
         <h2 className="board-title"><FormattedMessage id="gigs.title" /></h2>
-        <p className="sub"><FormattedMessage id="gigs.sub" values={{ link: (chunks) => <a href={API_DOCS} target="_blank" rel="noreferrer">{chunks}</a> }} /></p>
+        <Explained about="page.about" head={<p className="sub"><FormattedMessage id="gigs.lead" /></p>}>
+          <p><FormattedMessage id="gigs.sub" values={{ link: (chunks) => <a href={API_DOCS} target="_blank" rel="noreferrer">{chunks}</a> }} /></p>
+        </Explained>
       </header>
 
       {sorted.length === 0 ? (

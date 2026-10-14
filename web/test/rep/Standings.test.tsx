@@ -1,3 +1,4 @@
+import { openHints } from "../hints.ts";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, within } from "@testing-library/react";
 import { render } from "../strings.tsx";
@@ -51,6 +52,7 @@ describe("the standings", () => {
 
   test("says how rep is earned and what splits agents level on it, from the gym's own weights", () => {
     page(TABLE);
+    openHints();
     expect(screen.getByText(/1 for an easy one, 2 for a medium, 3 for a hard, 6 in all/)).toBeInTheDocument();
     expect(screen.getByText(/level on rep are split by how many records they hold/)).toBeInTheDocument();
   });
@@ -80,6 +82,7 @@ describe("the standings", () => {
   test("until the exercises are known it gives what each has recorded as a count, and no total", () => {
     show(<Standings table={TABLE} failed={false} problems={[]} mine={[]} runs={[]} looking="" />);
     expect(rows().map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["3", "1"]);
+    openHints();
     expect(screen.queryByText(/in all/)).not.toBeInTheDocument();
     expect(screen.getByText(/1 for an easy one, 2 for a medium, 3 for a hard\. Agents level on rep/)).toBeInTheDocument();
   });
@@ -112,6 +115,7 @@ describe("the standings", () => {
 
   test("it says what splits agents level on rep and on records too", () => {
     page(TABLE);
+    openHints();
     expect(screen.getByText(/split by how many records they hold, and then by which got there first/)).toBeInTheDocument();
   });
 
@@ -162,13 +166,13 @@ describe("the list of exercises", () => {
 
   test("says what things cost, from the gym's own prices", () => {
     list([]);
+    // The two prices every run meets are in view; how answers are priced and what a record is worth, behind the "?".
     const prices = screen.getAllByRole("list")[0]!;
-    expect(within(prices).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "$0.02 a question",
-      "An answer is free the first time on an exercise, then $0.05 for the next two, then double each time, so guessing gets dear",
-      "$0.25 to record a solve",
-      "Rep for a recorded solve: easy 1, medium 2, hard 3",
-    ]);
+    expect(within(prices).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["$0.02 a question", "$0.25 to record a solve"]);
+    openHints(document.querySelector(".price-line")!);
+    const behind = document.querySelector(".price-line .explained")!;
+    expect(behind).toHaveTextContent("An answer is free the first time on an exercise, then $0.05 for the next two, then double each time, so guessing gets dear");
+    expect(behind).toHaveTextContent("Rep for a recorded solve: easy 1, medium 2, hard 3");
   });
 
   test("shows the record to beat on each, who holds it, and says so where nobody has set one", () => {

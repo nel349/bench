@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage, useIntl } from "react-intl";
 import type { MessageId } from "../strings/StringsProvider.tsx";
 import { useState } from "react";
@@ -77,10 +78,11 @@ export function SetUp({ probePrice, gym, initialAgent }: SetUpProps) {
                 <FormattedMessage id="setup.title1" /><br />
                 <FormattedMessage id={allowance ? "setup.title2Allowance" : "setup.title2Own"} />
               </h1>
-              <p className="sub">
-                <FormattedMessage id={allowance ? "setup.subAllowance" : "setup.subOwn"}
-                                  values={{ price: asDollars(probePrice) }} />
-              </p>
+              <Explained about="setup.aboutPage" head={
+                <p className="sub"><FormattedMessage id={allowance ? "setup.leadAllowance" : "setup.leadOwn"} /></p>
+              }>
+                <p><FormattedMessage id={allowance ? "setup.subAllowance" : "setup.subOwn"} values={{ price: asDollars(probePrice) }} /></p>
+              </Explained>
             </>
           ) : <Unguided />}
         </section>

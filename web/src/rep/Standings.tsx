@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Fragment } from "react";
 import type { FeedRowWire, ProblemWire, StandingsWire } from "../../../src/shared/wire.ts";
@@ -66,7 +67,9 @@ export function Standings({ table, failed, problems, mine, runs, looking }: Stan
       <header className="board-head">
         <p className="kicker"><span>//</span> <FormattedMessage id="standings.kicker" /></p>
         <h2 className="board-title"><FormattedMessage id="standings.title" /></h2>
-        <p className="sub"><FormattedMessage id="standings.sub" values={{ ...LEVEL_WEIGHT, ceiling }} /></p>
+        <Explained about="page.about" head={<p className="sub"><FormattedMessage id="standings.lead" /></p>}>
+          <p><FormattedMessage id="standings.sub" values={{ ...LEVEL_WEIGHT, ceiling }} /></p>
+        </Explained>
       </header>
 
       {looking !== "" && !inTable && lookup}

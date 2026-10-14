@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage } from "react-intl";
 import type { BestWire, ProblemWire } from "../../../src/shared/wire.ts";
 import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
@@ -35,18 +36,26 @@ export function ExerciseList({ problems, best, mine, demoHref }: ExerciseListPro
         <div>
           <p className="kicker"><span>//</span> <FormattedMessage id="exercises.kicker" /></p>
           <h2 className="board-title"><FormattedMessage id="exercises.title" /></h2>
-          <p className="sub"><FormattedMessage id="exercises.sub" values={{ count: problems.length }} /></p>
+          <Explained about="page.about" head={<p className="sub"><FormattedMessage id="exercises.lead" values={{ count: problems.length }} /></p>}>
+            <p><FormattedMessage id="exercises.sub" values={{ count: problems.length }} /></p>
+          </Explained>
         </div>
         <a className="btn" href={demoHref}><FormattedMessage id="exercises.demo" /></a>
       </header>
 
       {prices && (
-        <ul className="price-line">
-          <li><FormattedMessage id="exercises.priceAsk" values={{ price: <Amount value={prices.ask} /> }} /></li>
-          <li><FormattedMessage id="exercises.priceAnswer" values={{ price: <Amount value={prices.submit} /> }} /></li>
-          <li><FormattedMessage id="exercises.priceRecord" values={{ price: <Amount value={prices.rank} /> }} /></li>
-          <li className="dim"><FormattedMessage id="exercises.repFor" values={LEVEL_WEIGHT} /></li>
-        </ul>
+        <div className="price-line">
+          {/* The two prices every run meets; how an answer is priced and what a record is worth, behind the "?". */}
+          <Explained about="exercises.aboutPrices" head={
+            <ul>
+              <li><FormattedMessage id="exercises.priceAsk" values={{ price: <Amount value={prices.ask} /> }} /></li>
+              <li><FormattedMessage id="exercises.priceRecord" values={{ price: <Amount value={prices.rank} /> }} /></li>
+            </ul>
+          }>
+            <p><FormattedMessage id="exercises.priceAnswer" values={{ price: <Amount value={prices.submit} /> }} /></p>
+            <p className="dim"><FormattedMessage id="exercises.repFor" values={LEVEL_WEIGHT} /></p>
+          </Explained>
+        </div>
       )}
 
       <ul className="ex-rows">

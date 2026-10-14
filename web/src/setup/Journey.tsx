@@ -1,3 +1,4 @@
+import { Explained } from "../shared/components/Explained.tsx";
 import { FormattedMessage, useIntl } from "react-intl";
 import type { ReactNode } from "react";
 import { viewHref } from "../shell/useView.ts";
@@ -51,20 +52,18 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
    * would rather. It was shown a button, which opened the wallet on
    * the laptop and offered to make it on the wrong device, with the address in small print under it.
    * Only a phone gets the button.
+   *
+   * What each step shows is the one thing to do there: a code to scan, a button or a line to copy.
    */
-  const extras: readonly ReactNode[] = [
+  const actions: readonly ReactNode[] = [
     <>
       <div className="laptop-only on-phone">
         <QrCode text={wallet} label={intl.formatMessage({ id: "step1.qr" })} />
-        <div>
-          <p className="fine"><FormattedMessage id="step1.onPhone" /></p>
-          <p className="type-this"><b className="url">{wallet.replace(/^https:\/\//, "")}</b></p>
-        </div>
+        <p className="type-this"><b className="url">{wallet.replace(/^https:\/\//, "")}</b></p>
       </div>
       <a className="btn primary open-wallet phone-only" href={wallet} target="_blank" rel="noreferrer">
         <FormattedMessage id="step1.open" />
       </a>
-      <p className="fine"><FormattedMessage id="step1.then" values={{ testnet: String(testnet) }} /></p>
       {/* Offered here, once there is a wallet to connect: above step 1 it asked for one before the step that makes it. */}
       {progress === null && connectHref !== null && (
         <p className="fine">
@@ -77,17 +76,29 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
     onLaptop(<>
       <CopyLine text={SKILL_INSTALL} label="copy.skill" />
       <ConnectorFor />
-      <p className="fine">
-        <FormattedMessage id="step2.note" values={{
-          link: (chunks) => <a href={CONNECTOR_NOTES} target="_blank" rel="noreferrer">{chunks}</a>,
-        }} />
-      </p>
     </>),
     null,
     onLaptop(<CopyLine text={intl.formatMessage({ id: "step4.sentence" }, { gym })} label="copy.sentence" />),
     owner !== null
       ? <a className="btn open-wallet" href={viewHref("yours", owner)}><FormattedMessage id="setup.watch" /></a>
       : null,
+  ];
+  /** What each step's "?" opens, after the step's own explanation: the fine print that was under its action. */
+  const notes: readonly ReactNode[] = [
+    <>
+      <p className="laptop-only"><FormattedMessage id="step1.onPhone" /></p>
+      <p><FormattedMessage id="step1.then" values={{ testnet: String(testnet) }} /></p>
+    </>,
+    <>
+      <p>
+        <FormattedMessage id="step2.note" values={{
+          link: (chunks) => <a href={CONNECTOR_NOTES} target="_blank" rel="noreferrer">{chunks}</a>,
+        }} />
+      </p>
+    </>,
+    null,
+    null,
+    null,
   ];
   // The first step not yet done is the one to do now.
   const next = progress === null ? -1 : progress.findIndex((done) => !done);
@@ -100,12 +111,16 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
             {progress?.[i] ? "✓" : step.n}
           </span>
           <div className="step-body">
-            <h3>
-              <FormattedMessage id={`step${step.n}.title`} values={{ testnet: String(testnet) }} />{" "}
-              <span className="where"><FormattedMessage id={`step.where.${step.where}`} /></span>
-            </h3>
-            <p><FormattedMessage id={`step${step.n}.detail`} values={{ testnet: String(testnet) }} /></p>
-            {extras[i]}
+            <Explained about="setup.aboutStep" aboutValues={{ n: step.n }} head={
+              <h3>
+                <FormattedMessage id={`step${step.n}.title`} values={{ testnet: String(testnet) }} />{" "}
+                <span className="where"><FormattedMessage id={`step.where.${step.where}`} /></span>
+              </h3>
+            }>
+              <p><FormattedMessage id={`step${step.n}.detail`} values={{ testnet: String(testnet) }} /></p>
+              {notes[i]}
+            </Explained>
+            {actions[i]}
           </div>
         </li>
       ))}
