@@ -1,0 +1,23 @@
+Nothing fake in a live path: checked 14 October 2026 at bench 87a5234
+
+Command, outside the tests:
+  grep -rniE "(mock|stub|fake|placeholder|dummy|lorem)\w*" src web/src scripts contracts/src | grep -v "/test/\|\.test\."
+
+Every line it finds, and why it is there:
+
+src/main.ts:105: * was always the part that could not be faked.
+src/main.ts:162: * The scribe is its own key, not the arbiter's, so a leak of one cannot fake the other's authority.
+src/chain/facilitator.ts:18: * test caught it, because every test stubbed the facilitator with the shape we invented.
+src/gym/attempt.ts:51:   * This is the half that cannot be faked. A claim is free; a payment is not, so an id only becomes
+src/gym/attempt.ts:251:   * address either way, which is the part that cannot be faked.
+web/src/strings/en.json:113:  "lookup.placeholder": "1234  or  0x…",
+web/src/styles.css:863:.field-row input::placeholder { color: var(--text-faint); }
+web/src/setup/DepositPanel.tsx:49:          <input id="agent" value={typed} spellCheck={false} autoComplete="off" placeholder="0x…"
+web/src/rep/RepLookup.tsx:46:                 placeholder={intl.formatMessage({ id: "lookup.placeholder" })} spellCheck={false} autoComplete="off" />
+web/src/yours/Yours.tsx:135:        <input id="wallet" value={draft} spellCheck={false} autoComplete="off" placeholder="0x…"
+scripts/local-loop.sh:5:# A stubbed arbiter proves the gym's own logic and nothing about whether the ABI matches, whether
+scripts/verify-abi.ts:4: * A wrong ABI compiles, typechecks and passes every test that stubs the chain. It fails once, in
+scripts/scribe-key.ts:6: * not the arbiter's: a leak of one must not let anyone fake the other's authority.
+scripts/probe-facilitator.ts:5: * stubs `fetch`. This is the first thing that actually speaks to them.
+
+Nine are comments: what a payment proves because it cannot be faked, why the scribe and the arbiter are separate keys, and where a stub in a test once hid a real fault. Five are the hint text in an input field (placeholder) and its colour. Nothing in a live path stands in for real data.

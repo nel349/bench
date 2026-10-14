@@ -1,0 +1,17 @@
+Fresh clone, timed: 14 October 2026, bench 87a5234
+
+On a Mac (macOS 26.6.2, Apple silicon), bun 1.3.14, forge Version: 1.0.0-nightly, into an empty folder, with the README's own commands:
+
+  git clone --recurse-submodules https://github.com/nel349/bench
+  cd bench
+  bun install
+  (cd web && bun install)
+  bun run gate
+
+94 seconds from clone to a green gate:
+   612 pass
+   0 fail
+        Tests  373 passed (373)
+  Ran 1 test suite in 124.02ms (18.29ms CPU time): 23 tests passed, 0 failed, 0 skipped (23 total tests)
+
+Found on the way: without the second install, which the README did not list before, gate stops at the page's typecheck (TS2688, vite/client not found). The README now lists it.
