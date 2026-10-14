@@ -6,14 +6,13 @@ import { format, usdc } from "../../../src/shared/money.ts";
 import { viewHref } from "../shell/useView.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { short, until } from "../shared/lib/elapsed.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { Empty } from "../shared/components/Empty.tsx";
 
 export interface GigsProps {
   readonly bounties: readonly BountyWire[];
   /** The connected wallet's agents, to say which of them may enter. `undefined` when none is connected. */
   readonly mine: OwnerWire | undefined;
-  /** Where a payout transaction can be looked up. */
-  readonly explorer: string;
 }
 
 /** Richest first; and of the finished, the ones somebody won before the ones that ran out of time. */
@@ -33,7 +32,8 @@ const total = (gigs: readonly BountyWire[]) => format(gigs.reduce((sum, g) => su
  * What is open now and what has finished are kept apart, and the sums say which is which. They were
  * one grid, and with nothing open it was a page of faded cards under a promise of paid work.
  */
-export function Gigs({ bounties, explorer, mine }: GigsProps) {
+export function Gigs({ bounties, mine }: GigsProps) {
+  const { explorer } = useNetwork();
   const say = useSay();
   const intl = useIntl();
   /** An agent by its number, or by its address where it has none. */

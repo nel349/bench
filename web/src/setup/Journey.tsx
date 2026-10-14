@@ -41,14 +41,30 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
       </div>
     </>
   );
+  /**
+   * Step 1 is done on the phone, so each screen is given what gets the wallet onto the phone. A
+   * laptop is shown the address to type there. It was shown a button, which opened the wallet on
+   * the laptop and offered to make it on the wrong device, with the address in small print under it.
+   * Only a phone gets the button.
+   */
   const extras: readonly ReactNode[] = [
     <>
-      <a className="btn primary open-wallet" href={wallet} target="_blank" rel="noreferrer">
+      <div className="laptop-only">
+        <p className="fine"><FormattedMessage id="step1.onPhone" /></p>
+        <p className="type-this"><b className="url">{wallet.replace(/^https:\/\//, "")}</b></p>
+      </div>
+      <a className="btn primary open-wallet phone-only" href={wallet} target="_blank" rel="noreferrer">
         <FormattedMessage id="step1.open" />
       </a>
-      <p className="fine laptop-only">
-        <FormattedMessage id="step1.laptop" values={{ url: <b className="url">{wallet.replace(/^https:\/\//, "")}</b> }} />
-      </p>
+      <p className="fine"><FormattedMessage id="step1.then" /></p>
+      {/* Offered here, once there is a wallet to connect: above step 1 it asked for one before the step that makes it. */}
+      {progress === null && connectHref !== null && (
+        <p className="fine">
+          <FormattedMessage id="setup.connectAfter" values={{
+            link: (chunks) => <a href={connectHref} onClick={onConnect}>{chunks}</a>,
+          }} />
+        </p>
+      )}
     </>,
     onLaptop(<>
       <CopyLine text={SKILL_INSTALL} label="copy.skill" />
@@ -68,13 +84,6 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
   // The first step not yet done is the one to do now.
   const next = progress === null ? -1 : progress.findIndex((done) => !done);
   return (
-    <>
-      {progress === null && connectHref !== null && (
-        <div className="journey-connect">
-          <p><FormattedMessage id="setup.connectFirst" /></p>
-          <a className="btn" href={connectHref} onClick={onConnect}><FormattedMessage id="wallet.connect" /></a>
-        </div>
-      )}
     <ol className="journey">
       {STEPS.map((step, i) => (
         <li key={step.n} className={[progress?.[i] ? "done" : i === next ? "next" : "", step.key ? "key" : ""].filter(Boolean).join(" ") || undefined}>
@@ -93,6 +102,5 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
         </li>
       ))}
     </ol>
-    </>
   );
 }

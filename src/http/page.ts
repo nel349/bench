@@ -1,7 +1,19 @@
 
+import { PATHS } from "../shared/paths.ts";
+
 /** Whether this request is a person navigating, rather than a client fetching. */
 export const wantsHtml = (req: Request): boolean =>
   (req.headers.get("accept") ?? "").includes("text/html");
+/**
+ * The paths that are pages of the app in their own right, as opposed to a view inside one.
+ *
+ * Whoever asks for one of these gets the page, a browser or not. Start's link is printed on the
+ * site and handed to agents, and a client that did not say it wanted HTML was told "no route" for
+ * an address that plainly exists.
+ */
+export const isPagePath = (path: string): boolean => PAGE_PATHS.includes(path);
+const PAGE_PATHS: readonly string[] = [PATHS.fund];
+
 /** Where `bun run build` puts the browser app. */
 export const APP_DIR = new URL("../../web/dist/", import.meta.url);
 /**

@@ -7,15 +7,13 @@ import { useAgentRecord, useChainRating, useProblems } from "../shared/api/useGy
 import { ApiError } from "../shared/api/client.ts";
 import { whoIs } from "./who.ts";
 import { short } from "../shared/lib/elapsed.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { Amount } from "../shared/components/Amount.tsx";
 import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
 
 export interface RepLookupProps {
   /** Who the address bar says is being looked up: the part of `#standings/…` after the view. */
   readonly looking: string;
-  /** The reputation registry, so a reader can check the number without us. `null` where there is none. */
-  readonly registry: string | null;
-  readonly explorer: string;
 }
 
 /**
@@ -26,7 +24,9 @@ export interface RepLookupProps {
  * gets the runs it paid for, which is our own record rather than the credential. The lookup lives in
  * the URL, so a result can be linked to.
  */
-export function RepLookup({ looking, registry, explorer }: RepLookupProps) {
+export function RepLookup({ looking }: RepLookupProps) {
+  // The registry is named so a reader can check the number without us; `null` where there is none.
+  const { registry, explorer } = useNetwork();
   const [draft, setDraft] = useState(looking);
   useEffect(() => setDraft(looking), [looking]);
   /**

@@ -4,11 +4,9 @@ import type { StandingWire } from "../../../src/shared/wire.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { viewHref } from "./useView.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 
 export interface FirstScreenProps {
-  readonly testnet: boolean;
-  /** Whether an owner's wallet serves this network. Without one there is no allowance to give, only a balance. */
-  readonly allowance: boolean;
   /** The agent ahead of the rest, or `null` while none has recorded a solve. */
   readonly leader: Pick<StandingWire, "identity" | "rep"> | null;
   /** The cheapest record there is, and the exercise it is on. `null` while there is none. */
@@ -18,6 +16,8 @@ export interface FirstScreenProps {
   readonly runs: number;
   /** The gigs open now and what they pay between them. `null` while none is open. */
   readonly gigs: { readonly count: number; readonly onOffer: string } | null;
+  /** What a question and a record cost here. `null` until the gym has said. */
+  readonly prices: { readonly ask: string; readonly rank: string } | null;
 }
 
 interface Step { readonly title: MessageId; readonly detail: MessageId }
@@ -40,11 +40,20 @@ const THEN: readonly Step[] = [
  * of one exercise. Somebody arriving could watch a ray cross a grid and still not know what the
  * place would do for them. The demo is on Exercises now, where it explains the thing beside it.
  *
- * Presentational: what is true of the gym today comes in as props, and is left out while there is
- * nothing to say, since a first screen with zeroes on it reads as a place nobody uses.
+ * What is true of the gym today comes in as props, and is left out while there is nothing to say,
+ * since a first screen with zeroes on it reads as a place nobody uses. Which network this is comes
+ * from the network context.
  */
-export function FirstScreen({ testnet, allowance, leader, cheapest, agents, runs, gigs }: FirstScreenProps) {
-  const how = [allowance ? GIVE_ALLOWANCE : GIVE_BALANCE, ...THEN];
+export function FirstScreen({ leader, cheapest, agents, runs, gigs, prices }: FirstScreenProps) {
+  const { testnet, walletUrl, other } = useNetwork();
+  /**
+   * Where the guided setup does not run but this gym names the network where it does, the first
+   * screen sends a newcomer there: the main button, and the steps, which are that network's and say
+   * so. What can be done here is one line under them. It used to promise five minutes and open a
+   * form only a developer could fill in.
+   */
+  const across = walletUrl === null && other !== null ? other : null;
+  const how = [walletUrl !== null || across !== null ? GIVE_ALLOWANCE : GIVE_BALANCE, ...THEN];
   return (
     <div className="home">
       <section className="intro">
@@ -52,14 +61,20 @@ export function FirstScreen({ testnet, allowance, leader, cheapest, agents, runs
         <h1 className="headline"><FormattedMessage id="home.headline" /></h1>
         <p className="sub"><FormattedMessage id="home.sub" /></p>
         <div className="ctas">
-          <a className="btn primary" href={PATHS.fund}><FormattedMessage id="home.ctaSetUp" /></a>
+          {across === null
+            ? <a className="btn primary" href={PATHS.fund}><FormattedMessage id="home.ctaSetUp" /></a>
+            : <a className="btn primary" href={`${across}${PATHS.fund}`}><FormattedMessage id="home.ctaAcross" /></a>}
           <a className="btn secondary" href={viewHref("standings")}><FormattedMessage id="home.ctaStandings" /></a>
         </div>
-        <p className="fine"><FormattedMessage id="home.fine" values={{ testnet: String(testnet) }} /></p>
+        <p className="fine">
+          {across === null
+            ? <FormattedMessage id="home.fine" values={{ testnet: String(testnet) }} />
+            : <FormattedMessage id="home.fineAcross" />}
+        </p>
       </section>
 
       <section className="how" aria-labelledby="how-title">
-        <h2 id="how-title" className="give-label"><FormattedMessage id="home.how" /></h2>
+        <h2 id="how-title" className="give-label"><FormattedMessage id={across === null ? "home.how" : "home.howAcross"} /></h2>
         <ol className="how-steps">
           {how.map((step, i) => (
             <li key={step.title}>
@@ -71,6 +86,17 @@ export function FirstScreen({ testnet, allowance, leader, cheapest, agents, runs
             </li>
           ))}
         </ol>
+        {/* Both prices, here: "a few cents" over a record of $0.02 hid that being recorded is a quarter. */}
+        {prices !== null && (
+          <p className="how-here">
+            <FormattedMessage id="home.costs" values={{ ask: <Amount value={prices.ask} />, record: <Amount value={prices.rank} /> }} />
+          </p>
+        )}
+        {across !== null && (
+          <p className="how-here">
+            <FormattedMessage id="home.ownHere" values={{ link: (chunks) => <a href={PATHS.fund}>{chunks}</a> }} />
+          </p>
+        )}
         {(leader !== null || gigs !== null) && (
           <dl className="facts">
             {/* Paid work is the reason to earn rep, so when some is open it is said first. */}

@@ -1,10 +1,10 @@
 import { FormattedMessage } from "react-intl";
 import { useSay } from "../shared/lib/useSay.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import type { Funding } from "./useFundAgent.ts";
 
 export interface FundingProgressProps {
   readonly state: Funding;
-  readonly explorer: string;
 }
 
 /**
@@ -13,7 +13,8 @@ export interface FundingProgressProps {
  * Every branch is named by the union, so a state cannot be rendered without its message and a new
  * one cannot be added without the compiler asking what it says.
  */
-export function FundingProgress({ state, explorer }: FundingProgressProps) {
+export function FundingProgress({ state }: FundingProgressProps) {
+  const { explorer } = useNetwork();
   const say = useSay();
   switch (state.step) {
     case "idle":

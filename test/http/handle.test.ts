@@ -120,6 +120,13 @@ describe("the free surface is free", () => {
     expect(((await mainnet.json()) as SettingsWire).wallet).toBeNull();
   });
 
+  /** Each network has a gym of its own, and the page's switch needs to know where the other one is. */
+  test("the settings name the gym on the other network where one is configured, and none otherwise", async () => {
+    expect(((await (await call("GET", "/settings")).json()) as SettingsWire).other).toBeNull();
+    const paired = await handle(new Request("http://bench.test/settings"), { ...deps, otherGym: "https://mainnet.bench.test" });
+    expect(((await paired.json()) as SettingsWire).other).toBe("https://mainnet.bench.test");
+  });
+
   test("nothing was charged for any of that", () => {
     expect(money.spentBy(AGENT)).toBe(0n);
   });

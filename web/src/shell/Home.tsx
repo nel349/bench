@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useBounties, useFeed, useOwner, useProblems, useStandings } from "../shared/api/useGym.ts";
 import { Plate } from "./Plate.tsx";
 import { Nav } from "./Nav.tsx";
+import { Masthead } from "./Masthead.tsx";
 import { FirstScreen } from "./FirstScreen.tsx";
 import { useRoute, viewHref } from "./useView.ts";
 import { Hero } from "../train/demo/Hero.tsx";
@@ -16,15 +17,10 @@ import { ExerciseRail } from "../train/ExerciseRail.tsx";
 import { byLevel } from "../train/order.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { format, usdc } from "../../../src/shared/money.ts";
-import { chainFor, type ArcChainId } from "../shared/chain/arc.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 
 export interface HomeProps {
-  readonly chainId: ArcChainId;
   readonly probePrice: string;
-  /** The reputation registry, for the rep lookup to point at. `null` where the server has none. */
-  readonly registry: string | null;
-  /** The owner's wallet app, for Connect wallet. `null` where none serves this network. */
-  readonly walletUrl: string | null;
 }
 
 /** The exercise with a demo of its own, and the word in the address that asks for it. */
@@ -41,9 +37,10 @@ const sum = (xs: readonly string[]) => format(xs.reduce((t, x) => t + usdc(x), 0
  * is doing is what they came back for. The rest answer, in turn: what is it tested on, who is
  * ahead, and what pays.
  */
-export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
+export function Home({ probePrice }: HomeProps) {
   const { view, detail } = useRoute();
-  const wallet = useOwnerWallet(walletUrl);
+  const { chain, testnet } = useNetwork();
+  const wallet = useOwnerWallet();
   const { returned: answered, owner } = wallet;
   const mine = useOwner(owner);
 
@@ -81,8 +78,6 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   const bounties = useBounties();
   const feed = useFeed();
   const standings = useStandings();
-  const chain = chainFor(chainId);
-  const explorer = chain.blockExplorers.default.url;
 
   const open = (bounties.data ?? []).filter((b) => b.open);
   const onOffer = sum(open.map((b) => b.amount));
@@ -97,26 +92,25 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
   return (
     <Plate
       top={{
-        start: <a className="brand" href={viewHref("home")}>BENCH<b>//</b></a>,
+        start: <Masthead home={viewHref("home")} />,
         end: <Nav current={view} wallet={wallet} />,
       }}
-      left={<FormattedMessage id="frame.network" values={{ testnet: String(chain.testnet === true), id: chain.id }} />}
+      left={<FormattedMessage id="frame.network" values={{ testnet: String(testnet), id: chain.id }} />}
       right={<FormattedMessage id="frame.gigsOpen" values={{ count: open.length, amount: <Amount value={onOffer} /> }} />}
       bottom={{
         start: <FormattedMessage id="frame.runsLogged" values={{ count: runs.length }} />,
-        end: <FormattedMessage id="frame.money" values={{ testnet: String(chain.testnet === true) }} />,
+        end: <FormattedMessage id="frame.money" values={{ testnet: String(testnet) }} />,
       }}
     >
       {view === "home" && !landing && (
         <FirstScreen
-          testnet={chain.testnet === true}
-          allowance={walletUrl !== null}
           leader={table?.agents[0] ?? null}
           cheapest={cheapest === null ? null
             : { title: list.find((p) => p.id === cheapest.problem)?.title ?? cheapest.problem, spend: cheapest.spend }}
           agents={(table?.agents.length ?? 0) + (table?.more ?? 0)}
           runs={(table?.agents ?? []).reduce((total, a) => total + a.runs, 0)}
           gigs={open.length === 0 ? null : { count: open.length, onOffer }}
+          prices={list[0]?.prices ?? null}
         />
       )}
       {/* Not until the gym has said what its exercises are: "0 puzzles" over an empty box is a claim about the gym. */}
@@ -132,14 +126,14 @@ export function Home({ chainId, probePrice, registry, walletUrl }: HomeProps) {
           <ExerciseRail problems={list} chosen={chosen} />
           {showDemo
             ? <Hero probePrice={probePrice} />
-            : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} allowance={walletUrl !== null} />}
+            : <Exercise id={chosen} demoHref={chosen === DEMO ? demoHref : null} />}
         </section>
       )}
       {view === "yours" && <Yours wallet={(detail[0] ?? "").trim()} offer={wallet.offer} connect={wallet.connect} onConnect={wallet.beginConnect}
-                                  connectHref={wallet.connectHref} explorer={explorer} gym={window.location.origin} walletUrl={walletUrl} />}
+                                  connectHref={wallet.connectHref} gym={window.location.origin} />}
       {view === "standings" && <Standings table={table} failed={standings.isError} problems={list} mine={myIdentities}
-                                          runs={runs} looking={detail[0] ?? ""} registry={registry} explorer={explorer} />}
-      {view === "gigs" && <Gigs bounties={bounties.data ?? []} explorer={explorer} mine={mine.data} />}
+                                          runs={runs} looking={detail[0] ?? ""} />}
+      {view === "gigs" && <Gigs bounties={bounties.data ?? []} mine={mine.data} />}
     </Plate>
   );
 }

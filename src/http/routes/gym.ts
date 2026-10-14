@@ -69,6 +69,7 @@ export async function gymRoutes({ req, deps, client, url, path, seg, prices }: R
       probePrice: format(PRICE.ask),
       reputation: deps.reputation ? c.erc8004?.reputation ?? null : null,
       wallet: OWNER_WALLET[deps.net],
+      other: deps.otherGym ?? null,
     };
     return json(settings);
   }

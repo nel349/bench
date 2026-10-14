@@ -60,6 +60,8 @@ export interface SettingsWire {
   readonly reputation: string | null;
   /** The owner's wallet, where an allowance is granted and revoked. `null` where there is none yet. */
   readonly wallet: string | null;
+  /** The same gym on the other Arc network, for the page's switch. `null` where none is named. */
+  readonly other: string | null;
 }
 
 /** One problem in full: what the list says, and the statement. */

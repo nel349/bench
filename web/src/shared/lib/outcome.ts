@@ -11,8 +11,8 @@ import { LIVE_FOR_MS } from "../../../../src/shared/live.ts";
 export const outcomeOf = (
   r: Pick<ScoreWire, "endedBy" | "ranked"> & { readonly startedAt?: number }, now = Date.now(),
 ): { readonly label: Phrase; readonly tone: string } =>
-  r.endedBy === "solved" && r.ranked ? { label: phrase("outcome.recorded"), tone: "rep" }
-  : r.endedBy === "solved" ? { label: phrase("outcome.solved"), tone: "rep" }
+  r.endedBy === "solved" && r.ranked ? { label: phrase("outcome.recorded"), tone: "won" }
+  : r.endedBy === "solved" ? { label: phrase("outcome.solved"), tone: "solved" }
   : r.endedBy === "refused" ? { label: phrase("outcome.ranOut"), tone: "ice" }
   // A run walked away from is never closed; past the hour it is not being played, it was left.
   : r.startedAt !== undefined && now - r.startedAt >= LIVE_FOR_MS ? { label: phrase("outcome.leftOpen"), tone: "dim" }

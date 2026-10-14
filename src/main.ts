@@ -15,6 +15,7 @@ import { ArcEscrow } from "./chain/escrow.ts";
 import { ArcReputation } from "./chain/reputation.ts";
 import { paidBy } from "./gym/rating.ts";
 import { defaultLimits, IDLE_S } from "./http/limits.ts";
+import { OTHER_GYM_ENV, otherGymFrom } from "./http/otherGym.ts";
 import { privateKeyFrom } from "./chain/keys.ts";
 import { ArcFunds } from "./chain/funds.ts";
 import { PRICE } from "./shared/pricing.ts";
@@ -170,8 +171,12 @@ const reputation = contractsOf(net).erc8004 && identities && scribeKey
 /** Reads an agent's balances for the funding page. Needs only a public RPC. */
 const funds = new ArcFunds(net, PRICE.ask);
 
+/** The gym on the other network, for the page's switch. Read here so a bad name stops the start. */
+const otherGym = otherGymFrom(process.env[OTHER_GYM_ENV]);
+
 const deps: Deps = {
   attempts, payments, net, bounties, funds,
+  ...(otherGym ? { otherGym } : {}),
   ...(allowances ? { allowances } : {}), ...(arbiter ? { arbiter } : {}),
   ...(escrowReader ? { escrow: escrowReader } : {}),
   ...(reputation ? { reputation } : {}), ...(identities ? { verifyIdentity: identities } : {}),

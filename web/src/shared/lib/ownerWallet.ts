@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNetwork } from "../network/NetworkProvider.tsx";
 
 const KEY = "bench.owner.wallet";
 const WALLET = /^0x[0-9a-fA-F]{40}$/;
@@ -139,7 +140,8 @@ export interface OwnerWallet {
  * not disconnected from it, so a link can never change whose agents "My agent" means or undo a
  * Disconnect.
  */
-export function useOwnerWallet(walletUrl: string | null): OwnerWallet {
+export function useOwnerWallet(): OwnerWallet {
+  const { walletUrl } = useNetwork();
   const [kept] = useState(keptHere);
   const [owner, setOwner] = useState<string | null>(() => walletIn(kept));
   /** Show what is kept now, which another tab may have changed since this one last looked. */

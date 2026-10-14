@@ -10,6 +10,7 @@ import { isWallet } from "../shared/lib/ownerWallet.ts";
 import { sinceSummary, useLastVisit } from "./lastVisit.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { short } from "../shared/lib/elapsed.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { LEVEL_WEIGHT } from "../../../src/problems/problem.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
 
@@ -24,12 +25,8 @@ export interface YoursProps {
   readonly onConnect: () => void;
   /** Where Connect wallet goes, or `null` where no wallet serves this network. */
   readonly connectHref: string | null;
-  /** Where a transaction can be looked up. */
-  readonly explorer: string;
   /** This gym's address, for the sentence that sends an agent to train. */
   readonly gym: string;
-  /** The owner's wallet app, where an allowance is changed or revoked. `null` where none serves this network. */
-  readonly walletUrl: string | null;
 }
 
 /**
@@ -40,7 +37,8 @@ export interface YoursProps {
  * in the URL so it can be bookmarked. Everything on it is public, so it asks for nothing but the
  * wallet's address.
  */
-export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer, gym, walletUrl }: YoursProps) {
+export function Yours({ wallet, offer, connect, onConnect, connectHref, gym }: YoursProps) {
+  const { walletUrl } = useNetwork();
   // Where no wallet serves the network there is no owner's page to read, for any address: the page
   // says so and asks for nothing. It used to ask, fail, and promise to try again.
   const served = walletUrl !== null;
@@ -103,7 +101,7 @@ export function Yours({ wallet, offer, connect, onConnect, connectHref, explorer
       )}
       {valid && owner.data && owner.data.agents.map((agent) => (
         <OwnerAgent key={agent.address} agent={agent} problems={exercises} ceiling={ceiling} place={placeOf(standings.data, agent.identity, agent.ranked.length > 0)}
-                    gigs={gigsOf(agent.qualifies)} explorer={explorer} gym={gym} walletUrl={walletUrl}
+                    gigs={gigsOf(agent.qualifies)} gym={gym}
                     seenAt={agent.current ? since : null} />
       ))}
       {valid && owner.data?.partial && <p className="state wait"><FormattedMessage id="yours.partial" /></p>}

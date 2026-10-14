@@ -12,8 +12,9 @@ export interface WalletButtonProps {
 }
 
 /**
- * The wallet's place in the header: Connect wallet, or the wallet that is connected and a way to
- * disconnect. Its agents are a tab of their own, in `Nav`. Presentational; the connection lives in
+ * The wallet's place in the header: Connect Mandate, or the wallet that is connected and a way to
+ * disconnect. Named for the wallet it goes to: "Connect wallet" read as the usual browser-wallet
+ * button, and then a different site called Mandate opened. Its agents are a tab of their own, in `Nav`. Presentational; the connection lives in
  * `useOwnerWallet`.
  */
 export function WalletButton({ owner, connectHref, onConnect, onDisconnect }: WalletButtonProps) {

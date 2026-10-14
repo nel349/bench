@@ -1,10 +1,11 @@
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { render } from "../strings.tsx";
+import { MAINNET, TESTNET, on } from "../network.ts";
+import type { Network } from "../../src/shared/network/network.ts";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import type { Address } from "viem";
 import { wagmiConfig } from "../../src/shared/chain/config.ts";
 import { SetUp } from "../../src/setup/SetUp.tsx";
 import type { FundsWire, OwnerWire } from "../../../src/shared/wire.ts";
@@ -29,23 +30,22 @@ function serving(byAddress: Record<string, FundsWire | 404>) {
   });
 }
 
-function show(node: React.ReactNode) {
+const WALLET = "https://kuiralabs.github.io/mandate/";
+const GYM = "https://bench.example";
+/** The network these pages are on: testnet, with the owner's wallet. */
+const HERE = on(TESTNET, { walletUrl: WALLET });
+
+function show(node: React.ReactNode, network: Network = HERE) {
   const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queries}>{node}</QueryClientProvider>
     </WagmiProvider>,
+    { network },
   );
 }
 
-const WALLET = "https://kuiralabs.github.io/mandate/";
-const GYM = "https://bench.example";
-
-const page = (initialAgent: string | null, wallet: string | null = WALLET) => (
-  <SetUp chainId={5042002} usdc={"0x3600000000000000000000000000000000000000" as Address}
-        gateway={"0x0077777d7EBA4688BDeF3E311b846F25870A19B9" as Address}
-        probePrice="0.020000" wallet={wallet} gym={GYM} initialAgent={initialAgent} />
-);
+const page = (initialAgent: string | null) => <SetUp probePrice="0.020000" gym={GYM} initialAgent={initialAgent} />;
 
 /** A balance of its own is the second way; a page opened without an agent in its link starts on the first. */
 const toOwnKey = (user: ReturnType<typeof userEvent.setup>) =>
@@ -59,7 +59,34 @@ describe("the front door", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
     await toOwnKey(user);
-    expect(screen.getByText(/paste an address to see what it holds/i)).toBeInTheDocument();
+    expect(screen.getByText(/checking it shows what it holds and moves no money/i)).toBeInTheDocument();
+  });
+
+  /**
+   * It was one field, "the address your agent printed when it started", under a warning: it took an
+   * agent, a key and what came next for granted. Now it says who it is for and sets out all three.
+   */
+  test("says who this way is for, what the agent needs, and what to do after, before it asks for anything", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    await toOwnKey(user);
+    expect(screen.getByText("For developers.")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
+      "What your agent needs", "Add to its balance", "Send it to train",
+    ]);
+    expect(screen.getByRole("link", { name: "scripts/real-run.ts" })).toHaveAttribute("href", expect.stringContaining("github.com/nel349/bench"));
+    expect(screen.getByText(/never the key itself/i)).toBeInTheDocument();
+    expect(screen.getByText(`Train on Bench at ${GYM}: solve and record as many exercises as you can, and spend as little as you can.`)).toBeInTheDocument();
+    // The warning about money that cannot come back belongs with the money, which is not on screen yet.
+    expect(screen.queryByText(/this cannot be undone/i)).not.toBeInTheDocument();
+  });
+
+  test("the warning that it cannot be undone is said where the money is added", async () => {
+    vi.stubGlobal("fetch", serving({ [AGENT]: funds({ probes: 25 }) }));
+    show(page(AGENT));
+    const add = (await screen.findByRole("group", { name: /how much to add/i })).closest(".give")!;
+    expect(add).toHaveTextContent(/this cannot be undone/i);
   });
 
   test("a funded agent is told how many answers it can buy", async () => {
@@ -84,7 +111,7 @@ describe("the front door", () => {
     }));
     show(page(AGENT));
     expect(await screen.findByText(/empty\. it cannot ask anything yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/cannot pay for anything\. It has to be moved to its balance/i)).toBeInTheDocument();
+    expect(screen.getByText(/is not its balance and cannot pay for a question\. Only the agent can move it/i)).toBeInTheDocument();
     // The page never calls the place to put money "its wallet": that is the name of the mistake.
     expect(screen.getByText("At its address")).toBeInTheDocument();
     expect(screen.queryByText(/to its own wallet/i)).not.toBeInTheDocument();
@@ -119,7 +146,7 @@ describe("the front door", () => {
     show(page(AGENT));
     expect(await screen.findByText(/can ask 25 questions/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/the address your agent printed/i), "9");
+    await user.type(screen.getByLabelText(/your agent's address/i), "9");
     await waitFor(() => {
       expect(screen.queryByText(/can ask 25 questions/i)).not.toBeInTheDocument();
     });
@@ -133,7 +160,7 @@ describe("the front door", () => {
     await toOwnKey(user);
     const check = screen.getByRole("button", { name: /check/i });
     expect(check).toBeDisabled();
-    await user.type(screen.getByLabelText(/the address your agent printed/i), OTHER);
+    await user.type(screen.getByLabelText(/your agent's address/i), OTHER);
     expect(check).toBeEnabled();
   });
 });
@@ -189,7 +216,7 @@ describe("with an allowance, the way offered first", () => {
   test("no balance of its own is offered, and nothing says it cannot be undone", () => {
     vi.stubGlobal("fetch", serving({}));
     show(page(null));
-    expect(screen.queryByLabelText(/the address your agent printed/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/your agent's address/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/cannot be undone/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/an allowance/i);
   });
@@ -205,13 +232,65 @@ describe("with an allowance, the way offered first", () => {
   });
 
   /** Mainnet has no wallet yet. A testnet link there would open a wallet on the wrong network. */
-  test("where no wallet serves the network, only the agent's own key is offered, and the page says why", () => {
+  test("where no wallet serves the network, the allowance is not offered and the page says it is not here", () => {
     vi.stubGlobal("fetch", serving({}));
-    show(page(null, null));
+    show(page(null), on(TESTNET, { walletUrl: null }));
     expect(screen.queryByRole("button", { name: /with an allowance/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /open the wallet/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/no wallet works on this network yet/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/the address your agent printed/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("The guided setup is not here yet.");
+    // Nowhere to send anyone: this gym names no counterpart.
+    expect(screen.queryByRole("link", { name: /set up on testnet/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/your agent's address/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Step 1 makes the wallet, on the phone. The page asked a newcomer to connect one above it, and its
+ * big button opened the wallet on the laptop.
+ */
+describe("step 1, which is on the phone", () => {
+  test("a laptop is given the address to type there, and the button is kept for a phone", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    const address = screen.getByText("kuiralabs.github.io/mandate/");
+    expect(address.closest(".laptop-only")).not.toBeNull();
+    expect(screen.getByRole("link", { name: /open the wallet/i })).toHaveClass("phone-only");
+    expect(screen.getByText(/mandate, a separate site/i)).toBeInTheDocument();
+  });
+
+  test("connecting is offered in step 1, after the wallet it connects exists, and nowhere above it", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null));
+    const connect = screen.getByRole("link", { name: "Connect it" });
+    expect(connect.closest("li")).toHaveTextContent(/open the wallet, and add test USDC/i);
+    // The header keeps its own Connect wallet; the steps have only this one.
+    expect(screen.getAllByRole("link", { name: /^connect (it|wallet)$/i }).filter((a) => a.closest(".load-panel") !== null)).toEqual([connect]);
+  });
+});
+
+/**
+ * The main button on mainnet's first screen promised five minutes and opened a form only a developer
+ * with a paying agent could fill in. Start there now sends a newcomer to where the setup runs.
+ */
+describe("Start on mainnet, beside a testnet gym", () => {
+  const TESTNET_GYM = "https://testnet.bench.example";
+  const here = on(MAINNET, { other: TESTNET_GYM });
+
+  test("the way in is the setup on testnet, and the page says this is real money", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null), here);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Set up on testnet.");
+    expect(screen.getByRole("link", { name: "Set up on testnet" })).toHaveAttribute("href", `${TESTNET_GYM}/fund`);
+    expect(screen.getByText(/you are on arc mainnet, where agents pay real USDC/i)).toBeInTheDocument();
+    expect(screen.queryByText(/five minutes: two steps on your phone/i)).not.toBeInTheDocument();
+  });
+
+  test("an agent that pays for itself is told how, in full, and in real money's words", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null), here);
+    expect(screen.getByText("For developers.")).toBeInTheDocument();
+    expect(screen.getByText(/you add USDC from a wallet in this browser, such as MetaMask, on Arc mainnet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/test USDC/i)).not.toBeInTheDocument();
   });
 });
 

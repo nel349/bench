@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import { CONNECT_FOR_MS, useOwnerWallet } from "../../../src/shared/lib/ownerWallet.ts";
+import { onNetwork } from "../../strings.tsx";
+import { TESTNET } from "../../network.ts";
 
 const W1 = "0x9fa928ACfE2eEcEad9698ebBad835E7129688b28";
 const W2 = "0x3535816e967Ad2B6271dfadf9138fb07eAB161Ce";
@@ -19,7 +21,7 @@ beforeEach(() => {
     removeItem: (key: string) => void kept.delete(key),
   });
 });
-const wallet = () => renderHook(() => useOwnerWallet("https://wallet.test/"));
+const wallet = () => renderHook(() => useOwnerWallet(), { wrapper: onNetwork(TESTNET) });
 /** Back from the wallet after Connect wallet was pressed here: the one answer that was asked for. */
 const askedFor = (hook: ReturnType<typeof wallet>, answer: string) => {
   act(() => hook.result.current.beginConnect());

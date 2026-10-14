@@ -41,6 +41,8 @@ export interface Deps {
    * Absent where there is no registry.
    */
   readonly ownerOf?: (agentId: bigint) => Promise<string | null>;
+  /** The same gym on the other Arc network, as an origin. Absent where none is named. */
+  readonly otherGym?: string;
   /** Caps on free requests and graded submissions. Absent, nothing is capped: tests and scripts. */
   readonly limits?: Limits;
 }

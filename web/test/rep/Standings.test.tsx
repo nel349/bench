@@ -29,7 +29,7 @@ beforeEach(() => {
 describe("the standings", () => {
   const page = (table: StandingsWire | undefined, over: { mine?: string[]; failed?: boolean } = {}) => show(
     <Standings table={table} failed={over.failed ?? false} problems={PROBLEMS} mine={over.mine ?? []} runs={[]}
-               looking="" registry={null} explorer="https://testnet.arcscan.app" />);
+               looking="" />);
   const TABLE: StandingsWire = {
     agents: [
       standing("894767", { rep: 6, ranked: ["toll", "codebreaker", "liar"], holds: ["toll", "liar"], runs: 15, lastRunAt: Date.now() - 3 * 3_600_000 }),
@@ -78,7 +78,7 @@ describe("the standings", () => {
 
   /** Before the gym has said what its exercises are there is no total to set a count against: not "7 of 0". */
   test("until the exercises are known it gives what each has recorded as a count, and no total", () => {
-    show(<Standings table={TABLE} failed={false} problems={[]} mine={[]} runs={[]} looking="" registry={null} explorer="https://testnet.arcscan.app" />);
+    show(<Standings table={TABLE} failed={false} problems={[]} mine={[]} runs={[]} looking="" />);
     expect(rows().map((r) => within(r).getAllByRole("cell")[3]!.textContent)).toEqual(["3", "1"]);
     expect(screen.queryByText(/in all/)).not.toBeInTheDocument();
     expect(screen.getByText(/1 for an easy one, 2 for a medium, 3 for a hard\. Agents level on rep/)).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("the standings", () => {
   test("somebody looked up is shown above the table; with nobody, the lookup is a form under it", () => {
     const before = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     const show_ = (looking: string) => show(
-      <Standings table={TABLE} failed={false} problems={PROBLEMS} mine={[]} runs={[]} looking={looking} registry={null} explorer="https://testnet.arcscan.app" />);
+      <Standings table={TABLE} failed={false} problems={PROBLEMS} mine={[]} runs={[]} looking={looking} />);
     const first = show_("896922");
     expect(before(screen.getByRole("region", { name: "Look up an agent's rep" }), screen.getByRole("table"))).toBe(true);
     first.unmount();

@@ -1,12 +1,13 @@
 import { FormattedMessage, useIntl } from "react-intl";
 import type { MessageId } from "../strings/StringsProvider.tsx";
 import { useState } from "react";
-import type { Address } from "viem";
-import { chainFor, type ArcChainId } from "../shared/chain/arc.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { Plate } from "../shell/Plate.tsx";
 import { Nav } from "../shell/Nav.tsx";
 import { Journey } from "./Journey.tsx";
-import { DepositPanel } from "./DepositPanel.tsx";
+import { OwnKeySteps } from "./OwnKeySteps.tsx";
+import { Unguided } from "./Unguided.tsx";
+import { Masthead } from "../shell/Masthead.tsx";
 import { asDollars } from "../shared/lib/money.ts";
 import { PATHS } from "../../../src/shared/paths.ts";
 import { useOwnerWallet } from "../shared/lib/ownerWallet.ts";
@@ -19,12 +20,7 @@ import { useMoreBelow } from "./useMoreBelow.ts";
 type Way = "allowance" | "own-key";
 
 export interface SetUpProps {
-  readonly chainId: ArcChainId;
-  readonly usdc: Address;
-  readonly gateway: Address;
   readonly probePrice: string;
-  /** The owner's wallet. `null` where none serves this network, which leaves only the agent's own key. */
-  readonly wallet: string | null;
   /** This gym's address, for the sentence the agent is given. */
   readonly gym: string;
   readonly initialAgent: string | null;
@@ -37,18 +33,23 @@ export interface SetUpProps {
  * the chain enforces, and one that can be revoked. An agent that brings its own key can be given a
  * balance instead, which is the second way, and a link carrying `?agent=` opens on it because that
  * link names a key.
+ *
+ * Where no phone wallet serves the network there is no first way. The page then says so, sends a
+ * newcomer to the network where the guided setup runs, and sets out the second way in full for the
+ * developer whose agent pays for itself.
  */
-export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initialAgent }: SetUpProps) {
+export function SetUp({ probePrice, gym, initialAgent }: SetUpProps) {
+  // The owner's wallet. `null` where none serves this network, which leaves only the agent's own key.
+  const { chain, testnet: testMoney, walletUrl: wallet } = useNetwork();
   const [way, setWay] = useState<Way>(wallet !== null && initialAgent === null ? "allowance" : "own-key");
-  const chain = chainFor(chainId);
-  const ownerWallet = useOwnerWallet(wallet);
+  const ownerWallet = useOwnerWallet();
   const owner = useOwner(ownerWallet.owner);
   const ownerFunds = useOwnerFunds(ownerWallet.owner);
   // Known only once the wallet's page has been read; until then the steps are shown plain.
   const progress = ownerWallet.owner === null || owner.data === undefined ? null : setupProgress(ownerFunds.data, owner.data);
   const panel = useMoreBelow<HTMLElement>();
   const intl = useIntl();
-  const testnet = String(chain.testnet === true);
+  const testnet = String(testMoney);
   const tab = (id: Way, label: MessageId) => (
     <button type="button" aria-pressed={way === id}
             className={way === id ? "way on" : "way"} onClick={() => setWay(id)}>
@@ -56,43 +57,53 @@ export function SetUp({ chainId, usdc, gateway, probePrice, wallet, gym, initial
     </button>
   );
 
+  /** The guided way, with a phone wallet and an allowance, is offered only where that wallet works. */
+  const guided = wallet !== null;
+  const allowance = guided && way === "allowance";
+
   return (
     <Plate
-      top={{ start: <a className="brand" href={PATHS.index}>BENCH<b>//</b></a>, end: <Nav current="start" wallet={ownerWallet} /> }}
+      top={{ start: <Masthead home={PATHS.index} />, end: <Nav current="start" wallet={ownerWallet} /> }}
       left={<FormattedMessage id="frame.network" values={{ testnet, id: chain.id }} />}
-      right={<FormattedMessage id={way === "allowance" ? "frame.allowanceEdge" : "frame.ownWalletEdge"} />}
+      right={<FormattedMessage id={allowance ? "frame.allowanceEdge" : "frame.ownWalletEdge"} />}
       bottom={{ end: <FormattedMessage id="frame.money" values={{ testnet }} /> }}
     >
       <div className="load">
         <section className="load-intro">
           <p className="kicker"><span>//</span> <FormattedMessage id="setup.kicker" /></p>
-          <h1 className="headline small">
-            <FormattedMessage id="setup.title1" /><br />
-            <FormattedMessage id={way === "allowance" ? "setup.title2Allowance" : "setup.title2Own"} />
-          </h1>
-          <p className="sub">
-            <FormattedMessage id={way === "allowance" ? "setup.subAllowance" : "setup.subOwn"}
-                              values={{ price: asDollars(probePrice) }} />
-          </p>
-          {wallet === null && <p className="warn"><FormattedMessage id="setup.noWallet" /></p>}
+          {guided ? (
+            <>
+              <h1 className="headline small">
+                <FormattedMessage id="setup.title1" /><br />
+                <FormattedMessage id={allowance ? "setup.title2Allowance" : "setup.title2Own"} />
+              </h1>
+              <p className="sub">
+                <FormattedMessage id={allowance ? "setup.subAllowance" : "setup.subOwn"}
+                                  values={{ price: asDollars(probePrice) }} />
+              </p>
+            </>
+          ) : <Unguided />}
         </section>
 
-        <section className="load-panel" ref={panel.ref}>
-          {wallet !== null && (
-            <div className="ways" role="group" aria-label={intl.formatMessage({ id: "setup.ways" })}>
-              {tab("allowance", "setup.wayAllowance")}
-              {tab("own-key", "setup.wayOwn")}
-            </div>
-          )}
-          {way === "allowance" && wallet !== null
-            ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.owner === null ? ownerWallet.connectHref : null}
-                       onConnect={ownerWallet.beginConnect}
-                       owner={ownerWallet.owner} />
-            : <DepositPanel chainId={chainId} usdc={usdc} gateway={gateway} initialAgent={initialAgent} />}
+        <div className="load-side">
+          <section className="load-panel" ref={panel.ref}>
+            {guided && (
+              <div className="ways" role="group" aria-label={intl.formatMessage({ id: "setup.ways" })}>
+                {tab("allowance", "setup.wayAllowance")}
+                {tab("own-key", "setup.wayOwn")}
+              </div>
+            )}
+            {allowance
+              ? <Journey wallet={wallet} gym={gym} progress={progress} connectHref={ownerWallet.owner === null ? ownerWallet.connectHref : null}
+                         onConnect={ownerWallet.beginConnect}
+                         owner={ownerWallet.owner} />
+              : <OwnKeySteps gym={gym} initialAgent={initialAgent} />}
+          </section>
+          {/* Under the panel, and not floating in it: there it sat on top of the sentence an owner has to copy. */}
           {panel.more && <button type="button" className="more-below" onClick={panel.showMore}>
-            <FormattedMessage id={way === "allowance" && wallet !== null ? "setup.moreBelow" : "setup.moreBelowOwn"} />
+            <FormattedMessage id="setup.moreBelow" />
           </button>}
-        </section>
+        </div>
       </div>
     </Plate>
   );

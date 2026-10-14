@@ -35,6 +35,10 @@ export const STEPS: readonly Step[] = [
 /** Teaches the agent the gym: the routes, the prices, and how a run is ranked. */
 export const SKILL_INSTALL = "npx skills add nel349/bench";
 
+/** Where Bench's own source is, and in it one agent that pays for itself: a key, an identity, a run. */
+const BENCH_SOURCE = "https://github.com/nel349/bench";
+export const OWN_KEY_EXAMPLE = `${BENCH_SOURCE}/blob/main/scripts/real-run.ts`;
+
 /** Where the connector's source is, and its notes on configuring it. */
 const CONNECTOR_SOURCE = "https://github.com/nel349/arc-agent-mandate";
 export const CONNECTOR_NOTES = `${CONNECTOR_SOURCE}/blob/main/mcp/README.md`;

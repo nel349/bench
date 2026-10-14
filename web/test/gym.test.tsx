@@ -2,6 +2,8 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "./strings.tsx";
+import { MAINNET, TESTNET, on } from "./network.ts";
+import type { Network } from "../src/shared/network/network.ts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   AgentRecordWire, BountyWire, ChainRatingWire, ProblemDetailWire, ProblemWire, ScoreWire, StandingsWire,
@@ -38,9 +40,9 @@ function serving(routes: Record<string, unknown | 404>) {
   });
 }
 
-function show(node: React.ReactNode) {
+function show(node: React.ReactNode, network: Network = TESTNET) {
   const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={queries}>{node}</QueryClientProvider>);
+  return render(<QueryClientProvider client={queries}>{node}</QueryClientProvider>, { network });
 }
 
 beforeEach(() => { vi.restoreAllMocks(); });
@@ -90,7 +92,7 @@ describe("the first screen and the pages", () => {
       "/problems/blackbox": { ...problem("blackbox", "hard", null), statement: "s", scoring: "c" }, "/leaderboard/blackbox": [],
       ...over,
     }));
-    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl={walletUrl} />);
+    show(<Home probePrice="0.020000" />, on(TESTNET, { walletUrl, registry: null }));
   };
 
   test("the first screen says what Bench is for, the way in, and what an owner does", async () => {
@@ -106,6 +108,18 @@ describe("the first screen and the pages", () => {
     // The demo and the exercise menu are on Exercises, where they explain something.
     expect(screen.queryByRole("region", { name: /demonstration of the black box/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Exercises" })).not.toBeInTheDocument();
+  });
+
+  /** "A few cents" beside a record of $0.02 hid that being recorded costs a quarter. */
+  test("the first screen says both prices: a question, and recording a solve", async () => {
+    front("");
+    const how = await screen.findByRole("region", { name: "How it goes" });
+    expect(await within(how).findByText(/what it costs/i)).toHaveTextContent("What it costs: $0.02 for each question, and $0.25 to record a solve");
+  });
+
+  test("the first screen says what a newcomer needs before they press anything", async () => {
+    front("", TABLE, {}, "https://wallet.test/");
+    expect(await screen.findByText(/you need a phone, and Claude Code, Cursor or Codex on a laptop/i)).toBeInTheDocument();
   });
 
   /** Where no wallet serves the network there is no allowance to give, and the first screen must not promise one. */
@@ -286,7 +300,7 @@ describe("coming back from the wallet, and opening an owner's link", () => {
       [`/owner/${WALLET}`]: { wallet: WALLET, agents: [], more: 0, partial: false },
       [`/owner/${OTHER}`]: { wallet: OTHER, agents: [], more: 0, partial: false } }));
     window.location.hash = hash;
-    show(<Home chainId={5042002} probePrice="0.020000" registry={null} walletUrl="https://wallet.test/" />);
+    show(<Home probePrice="0.020000" />, on(TESTNET, { registry: null }));
   };
 
   test("back with an address: it is connected, and its page opens", async () => {
@@ -338,7 +352,7 @@ describe("coming back from the wallet, and opening an owner's link", () => {
     arrive("", { "bench.owner.wallet": WALLET });
     await user.click(await screen.findByRole("button", { name: "Disconnect" }));
     expect(kept.has("bench.owner.wallet")).toBe(false);
-    expect(await screen.findByRole("link", { name: "Connect wallet" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Connect Mandate" })).toBeInTheDocument();
   });
 
   /** How their agent is doing is what an owner comes back for, and it was a tab away from where they landed. */
@@ -363,7 +377,7 @@ describe("coming back from the wallet, and opening an owner's link", () => {
   test("pressing Connect wallet notes that it was pressed", async () => {
     const user = userEvent.setup();
     arrive("");
-    const connect = await screen.findByRole("link", { name: "Connect wallet" });
+    const connect = await screen.findByRole("link", { name: "Connect Mandate" });
     // Kept in the app for the click: the wallet is another site.
     connect.addEventListener("click", (event) => event.preventDefault());
     await user.click(connect);
@@ -376,7 +390,7 @@ describe("an exercise", () => {
 
   test("shows the gym's statement, its level, and the fewest questions it needs, in questions and in dollars", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} allowance />);
+    show(<Exercise id="liar" demoHref={null} />);
     expect(await screen.findByText("A hidden number.")).toBeInTheDocument();
     expect(screen.getByText("hard")).toBeInTheDocument();
     expect(screen.getByText("14 questions")).toBeInTheDocument();
@@ -386,21 +400,21 @@ describe("an exercise", () => {
   test("says no fewest is proven rather than showing a number", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/zendo": { ...problem("zendo", "medium", null), statement: "s", scoring: "c" },
                                      "/leaderboard/zendo": [] }));
-    show(<Exercise id="zendo" demoHref={null} allowance />);
+    show(<Exercise id="zendo" demoHref={null} />);
     expect(await screen.findByText("not proven")).toBeInTheDocument();
   });
 
   test("says how an agent gets to play: through the skill where there is an allowance to give", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} allowance />);
+    show(<Exercise id="liar" demoHref={null} />);
     expect(await screen.findByText(/through the Bench skill/)).toBeInTheDocument();
   });
 
   /** The skill pays through the owner's wallet. Where none serves the network, sending an agent to it sends it nowhere. */
-  test("with no wallet on the network, it says the agent pays from a balance of its own, and does not name the skill", async () => {
+  test("with no wallet on the network, it sends the reader to Start for how, and does not name the skill", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} allowance={false} />);
-    const how = (await screen.findByText(/paying from a balance of its own/)).closest("p")!;
+    show(<Exercise id="liar" demoHref={null} />, MAINNET);
+    const how = (await screen.findByText(/how it gets to, on this network, is on/i)).closest("p")!;
     expect(within(how).getByRole("link", { name: "Start" })).toHaveAttribute("href", "/fund");
     expect(how).not.toHaveTextContent(/skill/i);
   });
@@ -408,7 +422,7 @@ describe("an exercise", () => {
   test("its leaderboard keeps the gym's order, cheapest first, and marks the recorded solves", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar,
       "/leaderboard/liar": [score("a1", "0.280000", true), score("a2", "0.400000")] }));
-    show(<Exercise id="liar" demoHref={null} allowance />);
+    show(<Exercise id="liar" demoHref={null} />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows[0]).toHaveTextContent("agent-a1");
     expect(rows[0]).toHaveTextContent("recorded");
@@ -418,15 +432,14 @@ describe("an exercise", () => {
 
   test("an empty leaderboard says what would fill it", async () => {
     vi.stubGlobal("fetch", serving({ "/problems/liar": liar, "/leaderboard/liar": [] }));
-    show(<Exercise id="liar" demoHref={null} allowance />);
+    show(<Exercise id="liar" demoHref={null} />);
     expect(await screen.findByText(/first paid solve takes first place/i)).toBeInTheDocument();
   });
 });
 
 describe("looking up rep", () => {
   const rating: ChainRatingWire = { agent: "894767", rating: 3, ranked: ["toll", "codebreaker"], scribe: SCRIBE, source: "erc-8004" };
-  const lookup = (looking: string, registry: string | null = "0x8004B663056A597Dffe9eCcC1965A193B7388713") =>
-    <RepLookup looking={looking} registry={registry} explorer="https://testnet.arcscan.app" />;
+  const lookup = (looking: string) => <RepLookup looking={looking} />;
 
   test("an identity shows the rep the gate reads, out of what the gym's exercises allow", async () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": rating }));
@@ -447,7 +460,7 @@ describe("looking up rep", () => {
 
   test("a server with no registry says there is no rep to read", async () => {
     vi.stubGlobal("fetch", serving({ "/problems": SEVEN, "/rating/894767": 404 }));
-    show(lookup("894767", null));
+    show(lookup("894767"), on(TESTNET, { registry: null }));
     expect(await screen.findByText(/no reputation registry/i)).toBeInTheDocument();
   });
 
@@ -492,19 +505,19 @@ describe("a won gig", () => {
   });
 
   test("says who won it and links the payout", () => {
-    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[gig({})]} mine={undefined} />);
     expect(screen.getByText(/0x3535…61ce/i).closest("p")).toHaveTextContent(/Won by 0x3535…61ce · paid on chain/i);
     expect(screen.getByRole("link", { name: "paid on chain" })).toHaveAttribute("href", "https://testnet.arcscan.app/tx/0xb0c6aae8");
   });
 
   /** Every other screen names the agent; a win named only an address. */
   test("a winner with an identity is named by its agent", () => {
-    show(<Gigs bounties={[gig({ solverIdentity: "894767" })]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[gig({ solverIdentity: "894767" })]} mine={undefined} />);
     expect(screen.getByText(/agent #894767/i).closest("p")).toHaveTextContent(/Won by agent #894767/i);
   });
 
   test("with every gig closed, the page says what to do rather than showing only faded cards", () => {
-    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[gig({})]} mine={undefined} />);
     expect(screen.getByText(/no gig is open right now/i)).toBeInTheDocument();
   });
 
@@ -512,7 +525,7 @@ describe("a won gig", () => {
     const open = gig({ id: "b9", open: true, solvedBy: null, solvedAt: null, awardTx: null });
     const mine = { wallet: "0xw", more: 0, partial: false, agents: [{ address: AGENT, current: true, identity: "894767", rep: 14, repUnread: false,
       ranked: [], live: null, runs: [], spend: "0", qualifies: ["b9"], won: [], allowance: null }] };
-    show(<Gigs bounties={[open]} explorer="https://testnet.arcscan.app" mine={mine} />);
+    show(<Gigs bounties={[open]} mine={mine} />);
     expect(screen.getByText(/your agent #894767 can enter/i)).toBeInTheDocument();
     expect(screen.queryByText(/no gig is open right now/i)).not.toBeInTheDocument();
   });
@@ -523,7 +536,7 @@ describe("a won gig", () => {
     const paid = gig({ id: "b1" });
     const paying = gig({ id: "b2", title: "Still paying", awardTx: null, awaitingPayout: true });
     const lapsed = gig({ id: "b3", title: "Ran out", solvedBy: null, solvedAt: null, awardTx: null });
-    show(<Gigs bounties={[lapsed, paying, paid, open]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[lapsed, paying, paid, open]} mine={undefined} />);
     expect(screen.getByText("On offer now").nextSibling).toHaveTextContent("$0.50");
     // Paid out is what has landed: the win still on its way, and the gig nobody won, are not in it.
     expect(screen.getByText("Paid out so far").nextSibling).toHaveTextContent("$0.10");
@@ -535,13 +548,13 @@ describe("a won gig", () => {
   });
 
   test("with nothing open, Open now says so in its place, above what has finished", () => {
-    show(<Gigs bounties={[gig({})]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[gig({})]} mine={undefined} />);
     expect(within(screen.getByRole("region", { name: "Open now" })).getByText(/no gig is open right now/i)).toBeInTheDocument();
     expect(screen.getByText("On offer now").nextSibling).toHaveTextContent("$0.00");
   });
 
   test("a win whose payout has not landed says so", () => {
-    show(<Gigs bounties={[gig({ awardTx: null, awaitingPayout: true })]} explorer="https://testnet.arcscan.app" mine={undefined} />);
+    show(<Gigs bounties={[gig({ awardTx: null, awaitingPayout: true })]} mine={undefined} />);
     expect(screen.getByText(/paying out/i)).toBeInTheDocument();
   });
 });

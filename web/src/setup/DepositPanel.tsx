@@ -3,7 +3,7 @@ import { useState } from "react";
 import { isAddress, type Address } from "viem";
 import { useFunds } from "./useFunds.ts";
 import { useFundAgent } from "./useFundAgent.ts";
-import { chainFor, type ArcChainId } from "../shared/chain/arc.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { Balance } from "./Balance.tsx";
 import { AmountChoice } from "./AmountChoice.tsx";
 import { FundingProgress } from "./FundingProgress.tsx";
@@ -16,24 +16,22 @@ const AMOUNTS = ["1", "5", "25"] as const;
 const ZERO = "0x0000000000000000000000000000000000000000" as const;
 
 export interface DepositPanelProps {
-  readonly chainId: ArcChainId;
-  readonly usdc: Address;
-  readonly gateway: Address;
   readonly initialAgent: string | null;
 }
 
 /**
- * Paying from the agent's own key: look it up, and add to its balance from the wallet in this browser.
+ * An agent's balance: look its address up, and add to it from the wallet in this browser.
  *
- * For an agent that brings a key of its own rather than the connector. There is no allowance on
- * this path: what is added is the agent's, and the most it can spend.
+ * For an agent that brings a key of its own rather than the connector, as one step of
+ * `OwnKeySteps`. There is no allowance on this path: what is added is the agent's, and the most it
+ * can spend.
  */
-export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPanelProps) {
+export function DepositPanel({ initialAgent }: DepositPanelProps) {
+  const { chain, usdc, gateway } = useNetwork();
   const [typed, setTyped] = useState(initialAgent ?? "");
   const [agent, setAgent] = useState<string | null>(initialAgent);
   const funds = useFunds(agent);
   const standing = standingOf(funds.data);
-  const chain = chainFor(chainId);
 
   /**
    * Funding follows the **checked** address, never what is currently in the box. Reading the box
@@ -41,12 +39,10 @@ export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPa
    * screen described another.
    */
   const confirmed: Address | null = agent !== null && isAddress(agent) ? agent : null;
-  const funding = useFundAgent({ contracts: { usdc, gateway }, chainId, agent: confirmed ?? ZERO });
+  const funding = useFundAgent({ contracts: { usdc, gateway }, chainId: chain.id, agent: confirmed ?? ZERO });
 
   return (
     <>
-      <p className="warn"><FormattedMessage id="deposit.warn" /></p>
-
       <form className="lookup" onSubmit={(e) => { e.preventDefault(); setAgent(typed.trim()); }}>
         <label htmlFor="agent"><FormattedMessage id="deposit.field" /></label>
         <div className="field-row">
@@ -81,10 +77,12 @@ export function DepositPanel({ chainId, usdc, gateway, initialAgent }: DepositPa
 
       {funds.data && confirmed && (
         <div className="give">
+          {/* Said where the money is, and not before: above the first question it was a warning about nothing yet. */}
+          <p className="warn"><FormattedMessage id="deposit.warn" /></p>
           <p className="give-label"><FormattedMessage id="deposit.add" /></p>
           <AmountChoice amounts={AMOUNTS} disabled={funding.busy} onChoose={(usd) => void funding.fund(usd)} />
           <p className="fine"><FormattedMessage id="deposit.confirmations" /></p>
-          <FundingProgress state={funding.state} explorer={chain.blockExplorers.default.url} />
+          <FundingProgress state={funding.state} />
         </div>
       )}
     </>

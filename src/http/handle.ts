@@ -11,7 +11,7 @@ import "../problems/liar.ts";
 import type { Deps, RouteContext } from "./deps.ts";
 import { json, fail, limited } from "./respond.ts";
 import { proofOf } from "./payment.ts";
-import { wantsHtml, servedFile } from "./page.ts";
+import { isPagePath, wantsHtml, servedFile } from "./page.ts";
 import { gymRoutes } from "./routes/gym.ts";
 import { accountRoutes } from "./routes/account.ts";
 import { recordRoutes } from "./routes/records.ts";
@@ -97,7 +97,7 @@ async function route(req: Request, deps: Deps, client: string): Promise<Response
    * instead of serving nothing.
    */
   if (req.method === "GET") {
-    const served = await servedFile(path, wantsHtml(req));
+    const served = await servedFile(path, wantsHtml(req) || isPagePath(path));
     if (served) return served;
   }
 

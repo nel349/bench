@@ -10,6 +10,7 @@ import { CopyLine } from "../shared/components/CopyLine.tsx";
 import { viewHref } from "../shell/useView.ts";
 import { Amount } from "../shared/components/Amount.tsx";
 import { short, since } from "../shared/lib/elapsed.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 import { outcomeOf } from "../shared/lib/outcome.ts";
 import { bestByExercise } from "./best.ts";
 import { nextFor } from "./next.ts";
@@ -40,12 +41,8 @@ export interface OwnerAgentProps {
   readonly place: Place;
   /** The open gigs this agent qualifies for, in full. */
   readonly gigs: readonly BountyWire[];
-  /** Where a payout transaction can be looked up. */
-  readonly explorer: string;
   /** This gym's address, for the sentence that sends it to train. */
   readonly gym: string;
-  /** The owner's wallet app, where the allowance is changed or revoked. `null` where none serves this network. */
-  readonly walletUrl: string | null;
   /** When the owner last looked, so runs since then are marked new. `null` on a first look. */
   readonly seenAt: number | null;
 }
@@ -58,9 +55,11 @@ export interface OwnerAgentProps {
  * It was a card of figures with the runs under it: all true, and none of it said whether the agent
  * was any good. Its best on each exercise and its place among the others are that answer.
  *
- * Presentational; everything comes in as props.
+ * Everything about the agent comes in as props; where to look a payout up, and where the allowance
+ * is changed, come from the network.
  */
-export function OwnerAgent({ agent, problems, ceiling, place, gigs, explorer, gym, walletUrl, seenAt }: OwnerAgentProps) {
+export function OwnerAgent({ agent, problems, ceiling, place, gigs, gym, seenAt }: OwnerAgentProps) {
+  const { explorer, walletUrl } = useNetwork();
   const a = agent.allowance;
   const live = agent.live;
   const [allRuns, setAllRuns] = useState(false);

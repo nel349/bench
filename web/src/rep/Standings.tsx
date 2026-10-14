@@ -22,8 +22,6 @@ export interface StandingsProps {
   readonly runs: readonly FeedRowWire[];
   /** Who the address bar says to look up, if anyone. */
   readonly looking: string;
-  readonly registry: string | null;
-  readonly explorer: string;
 }
 
 /**
@@ -37,7 +35,7 @@ export interface StandingsProps {
  * latest runs, the ones that ran out included. They are the evidence for the table, so they sit
  * with it.
  */
-export function Standings({ table, failed, problems, mine, runs, looking, registry, explorer }: StandingsProps) {
+export function Standings({ table, failed, problems, mine, runs, looking }: StandingsProps) {
   const intl = useIntl();
   const say = useSay();
   const ceiling = problems.reduce((t, p) => t + LEVEL_WEIGHT[p.level], 0);
@@ -57,7 +55,7 @@ export function Standings({ table, failed, problems, mine, runs, looking, regist
    * a link to one agent's rep opened on a page that showed everyone but them. With nobody looked up
    * it is a form, and sits under the table it is about.
    */
-  const lookup = <RepLookup looking={looking} registry={registry} explorer={explorer} />;
+  const lookup = <RepLookup looking={looking} />;
   const best = problems.flatMap((p) => table?.best.filter((b) => b.problem === p.id) ?? []);
   return (
     <section className="board standings">
