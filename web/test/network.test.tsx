@@ -45,7 +45,7 @@ describe("the network a gym describes", () => {
     expect(TESTNET.testnet).toBe(true);
     expect(TESTNET.explorer).toBe("https://testnet.arcscan.app");
     expect(MAINNET.testnet).toBe(false);
-    expect(MAINNET.explorer).toBe("https://arcscan.app");
+    expect(MAINNET.explorer).toBe("https://explorer.arc.io");
     expect(MAINNET.gateway).not.toBe(TESTNET.gateway);
   });
 

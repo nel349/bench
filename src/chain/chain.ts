@@ -28,7 +28,8 @@ export const arcMainnet = defineChain({
   name: "Arc",
   nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
   rpcUrls: { default: { http: ["https://arc.rpc.thirdweb.com"] } },
-  blockExplorers: { default: { name: "ArcScan", url: "https://arcscan.app" } },
+  // arcscan.app, named here before, does not resolve; Arc mainnet's explorer is explorer.arc.io.
+  blockExplorers: { default: { name: "Arc Explorer", url: "https://explorer.arc.io" } },
 });
 
 export { arcTestnet };
