@@ -1,7 +1,8 @@
 import { FormattedMessage, useIntl } from "react-intl";
 import { useState } from "react";
 import { CopyLine } from "../shared/components/CopyLine.tsx";
-import { AGENTS, CODEX_CONFIG, CONNECTOR_INSTALL, CURSOR_CONFIG, type Agent } from "./steps.ts";
+import { AGENTS, connectorSetup, type Agent } from "./steps.ts";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 
 /** What each agent is called on the page. Product names, so not translated. */
 const NAMES: Readonly<Record<Agent, string>> = { claude: "Claude Code", cursor: "Cursor", codex: "Codex" };
@@ -15,6 +16,7 @@ const NAMES: Readonly<Record<Agent, string>> = { claude: "Claude Code", cursor: 
  */
 export function ConnectorFor() {
   const [agent, setAgent] = useState<Agent>("claude");
+  const setup = connectorSetup(useNetwork().testnet);
   const intl = useIntl();
   return (
     <div className="connector-for">
@@ -24,14 +26,14 @@ export function ConnectorFor() {
                   onClick={() => setAgent(a)}>{NAMES[a]}</button>
         ))}
       </div>
-      {agent === "claude" && <CopyLine text={CONNECTOR_INSTALL} label="copy.connector" />}
+      {agent === "claude" && <CopyLine text={setup.claude} label="copy.connector" />}
       {agent === "cursor" && <>
         <p className="fine"><FormattedMessage id="step2.cursorWhere" /></p>
-        <CopyLine text={CURSOR_CONFIG} label="copy.connectorConfig" />
+        <CopyLine text={setup.cursor} label="copy.connectorConfig" />
       </>}
       {agent === "codex" && <>
         <p className="fine"><FormattedMessage id="step2.codexWhere" /></p>
-        <CopyLine text={CODEX_CONFIG} label="copy.connectorConfig" />
+        <CopyLine text={setup.codex} label="copy.connectorConfig" />
       </>}
     </div>
   );

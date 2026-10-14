@@ -151,7 +151,8 @@ export const CONTRACTS: Readonly<Record<Network, ArcContracts>> = {
  * wallet that would open on the wrong network.
  */
 export const OWNER_WALLET: Readonly<Record<Network, string | null>> = {
-  mainnet: null,
+  // The same wallet: on Arc mainnet it opens with Circle's LIVE key, shared since 14 October.
+  mainnet: "https://kuiralabs.github.io/mandate/",
   testnet: "https://kuiralabs.github.io/mandate/",
 };
 

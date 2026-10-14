@@ -361,3 +361,28 @@ describe("with a wallet connected, the steps say where its owner is", () => {
     expect(screen.queryByText(/these steps tick themselves off/i)).not.toBeInTheDocument();
   });
 });
+
+/** Once the wallet serves mainnet, Start there is the guided setup, in real money's words. */
+describe("Start on mainnet, once the wallet serves it", () => {
+  const LIVE = on(MAINNET, { walletUrl: "https://kuiralabs.github.io/mandate/" });
+
+  test("step 1 asks for USDC, not test USDC, and says it is real", () => {
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null), LIVE);
+    expect(screen.getByRole("heading", { level: 3, name: /open the wallet, and add usdc/i })).toBeInTheDocument();
+    expect(screen.queryByText(/test USDC/)).not.toBeInTheDocument();
+    expect(screen.getByText(/this is real USDC/i)).toBeInTheDocument();
+  });
+
+  test("every agent's connector line says mainnet, which is not the connector's default", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", serving({}));
+    show(page(null), LIVE);
+    expect(screen.getByText(/claude mcp add arc-mandate -s user -e ARC_MANDATE_NETWORK=arc --/)).toBeInTheDocument();
+    const pick = screen.getByRole("group", { name: "Your agent" });
+    await user.click(within(pick).getByRole("button", { name: "Cursor" }));
+    expect(screen.getByText(/"ARC_MANDATE_NETWORK": "arc"/)).toBeInTheDocument();
+    await user.click(within(pick).getByRole("button", { name: "Codex" }));
+    expect(screen.getByText(/env = \{ ARC_MANDATE_NETWORK = "arc" \}/)).toBeInTheDocument();
+  });
+});

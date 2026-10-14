@@ -6,6 +6,7 @@ import { CONNECTOR_NOTES, SKILL_INSTALL, STEPS } from "./steps.ts";
 import { ConnectorFor } from "./ConnectorFor.tsx";
 import { CopyLine } from "../shared/components/CopyLine.tsx";
 import { QrCode } from "../shared/components/QrCode.tsx";
+import { useNetwork } from "../shared/network/NetworkProvider.tsx";
 
 export interface JourneyProps {
   /** Which steps a connected wallet has done; `null` when no wallet is connected. */
@@ -29,6 +30,7 @@ export interface JourneyProps {
  * list cannot: the wallet's link on step 1, the lines to copy on step 2, the sentence on step 4.
  */
 export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }: JourneyProps) {
+  const { testnet } = useNetwork();
   const intl = useIntl();
   /**
    * On a phone the laptop's steps cannot be done, so their commands give way to this page's address,
@@ -62,7 +64,7 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
       <a className="btn primary open-wallet phone-only" href={wallet} target="_blank" rel="noreferrer">
         <FormattedMessage id="step1.open" />
       </a>
-      <p className="fine"><FormattedMessage id="step1.then" /></p>
+      <p className="fine"><FormattedMessage id="step1.then" values={{ testnet: String(testnet) }} /></p>
       {/* Offered here, once there is a wallet to connect: above step 1 it asked for one before the step that makes it. */}
       {progress === null && connectHref !== null && (
         <p className="fine">
@@ -99,7 +101,7 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
           </span>
           <div className="step-body">
             <h3>
-              <FormattedMessage id={`step${step.n}.title`} />{" "}
+              <FormattedMessage id={`step${step.n}.title`} values={{ testnet: String(testnet) }} />{" "}
               <span className="where"><FormattedMessage id={`step.where.${step.where}`} /></span>
             </h3>
             <p><FormattedMessage id={`step${step.n}.detail`} /></p>

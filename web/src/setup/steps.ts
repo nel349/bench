@@ -69,3 +69,31 @@ export const CURSOR_CONFIG = `{
 export const CODEX_CONFIG = `[mcp_servers.arc-mandate]
 command = "npx"
 args = ["-y", "@kuiralabs/arc-mandate"]`;
+
+/**
+ * The connector's setting and its name for Arc mainnet. Its default is Arc testnet, so on mainnet each
+ * line says which network, as POD's says Monad.
+ */
+const NETWORK_SETTING = "ARC_MANDATE_NETWORK";
+const ARC_MAINNET = "arc";
+
+/** The connector's setup for each agent, on the network this gym serves. */
+export function connectorSetup(testnet: boolean): { readonly claude: string; readonly cursor: string; readonly codex: string } {
+  if (testnet) return { claude: CONNECTOR_INSTALL, cursor: CURSOR_CONFIG, codex: CODEX_CONFIG };
+  return {
+    claude: `claude mcp add arc-mandate -s user -e ${NETWORK_SETTING}=${ARC_MAINNET} -- npx -y @kuiralabs/arc-mandate`,
+    cursor: `{
+  "mcpServers": {
+    "arc-mandate": {
+      "command": "npx",
+      "args": ["-y", "@kuiralabs/arc-mandate"],
+      "env": { "${NETWORK_SETTING}": "${ARC_MAINNET}" }
+    }
+  }
+}`,
+    codex: `[mcp_servers.arc-mandate]
+command = "npx"
+args = ["-y", "@kuiralabs/arc-mandate"]
+env = { ${NETWORK_SETTING} = "${ARC_MAINNET}" }`,
+  };
+}

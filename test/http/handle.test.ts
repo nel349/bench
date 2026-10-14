@@ -108,16 +108,16 @@ describe("the free surface is free", () => {
   });
 
   /**
-   * The Load page leads an owner to their wallet, and on mainnet there is none yet. A link carried
-   * over from testnet would open a wallet on the wrong network, so mainnet names none.
+   * Start leads an owner to their wallet. Since 14 October the wallet serves Arc mainnet too, opening
+   * there with Circle's LIVE key, so both networks name it: the one wallet, which asks which network.
    */
-  test("the settings name the owner's wallet where there is one, and none on mainnet", async () => {
+  test("the settings name the owner's wallet on each network", async () => {
     const testnet = (await (await call("GET", "/settings")).json()) as SettingsWire;
     expect(testnet.wallet).toBe(OWNER_WALLET.testnet);
     expect(testnet.wallet).toStartWith("https://");
 
     const mainnet = await handle(new Request("http://bench.test/settings"), { ...deps, net: "mainnet" });
-    expect(((await mainnet.json()) as SettingsWire).wallet).toBeNull();
+    expect(((await mainnet.json()) as SettingsWire).wallet).toBe(OWNER_WALLET.mainnet);
   });
 
   /** Each network has a gym of its own, and the page's switch needs to know where the other one is. */
