@@ -71,29 +71,32 @@ command = "npx"
 args = ["-y", "@kuiralabs/arc-mandate"]`;
 
 /**
- * The connector's setting and its name for Arc mainnet. Its default is Arc testnet, so on mainnet each
- * line says which network, as POD's says Monad.
+ * The word the connector is started with for Arc mainnet (connector 0.1.7). Its default is Arc testnet,
+ * so on mainnet each line says which network, in one word rather than an environment setting.
  */
-const NETWORK_SETTING = "ARC_MANDATE_NETWORK";
-const ARC_MAINNET = "arc";
+const MAINNET_WORD = "mainnet";
+/**
+ * The mainnet connector's name in the agent's settings. Not `arc-mandate`: an owner who set up the
+ * testnet gym first already has that one, the line would fail as "already exists", and a connector
+ * starts on one network only, so real money is a second connector beside the first.
+ */
+export const MAINNET_CONNECTOR = "arc-mandate-mainnet";
 
 /** The connector's setup for each agent, on the network this gym serves. */
 export function connectorSetup(testnet: boolean): { readonly claude: string; readonly cursor: string; readonly codex: string } {
   if (testnet) return { claude: CONNECTOR_INSTALL, cursor: CURSOR_CONFIG, codex: CODEX_CONFIG };
   return {
-    claude: `claude mcp add arc-mandate -s user -e ${NETWORK_SETTING}=${ARC_MAINNET} -- npx -y @kuiralabs/arc-mandate`,
+    claude: `claude mcp add ${MAINNET_CONNECTOR} -s user -- npx -y @kuiralabs/arc-mandate ${MAINNET_WORD}`,
     cursor: `{
   "mcpServers": {
-    "arc-mandate": {
+    "${MAINNET_CONNECTOR}": {
       "command": "npx",
-      "args": ["-y", "@kuiralabs/arc-mandate"],
-      "env": { "${NETWORK_SETTING}": "${ARC_MAINNET}" }
+      "args": ["-y", "@kuiralabs/arc-mandate", "${MAINNET_WORD}"]
     }
   }
 }`,
-    codex: `[mcp_servers.arc-mandate]
+    codex: `[mcp_servers.${MAINNET_CONNECTOR}]
 command = "npx"
-args = ["-y", "@kuiralabs/arc-mandate"]
-env = { ${NETWORK_SETTING} = "${ARC_MAINNET}" }`,
+args = ["-y", "@kuiralabs/arc-mandate", "${MAINNET_WORD}"]`,
   };
 }

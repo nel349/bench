@@ -135,11 +135,11 @@ describe("the connector, for the agent the owner runs", () => {
     render(<ConnectorFor />, { network: MAINNET });
     const pick = screen.getByRole("group", { name: "Your agent" });
     const line = () => document.querySelector(".copy-line code")?.textContent ?? "";
-    expect(line()).toMatch(/-e ARC_MANDATE_NETWORK=arc/);
+    expect(line()).toMatch(/@kuiralabs\/arc-mandate mainnet$/);
     await user.click(within(pick).getByRole("button", { name: "Cursor" }));
-    expect(JSON.parse(line())).toMatchObject({ mcpServers: { "arc-mandate": { env: { ARC_MANDATE_NETWORK: "arc" } } } });
+    expect(JSON.parse(line())).toMatchObject({ mcpServers: { "arc-mandate-mainnet": { args: ["-y", "@kuiralabs/arc-mandate", "mainnet"] } } });
     await user.click(within(pick).getByRole("button", { name: "Codex" }));
-    expect(line()).toMatch(/env = \{ ARC_MANDATE_NETWORK = "arc" \}/);
+    expect(line()).toMatch(/args = \["-y", "@kuiralabs\/arc-mandate", "mainnet"\]/);
   });
 
   test("the copy button copies the line shown, whole", async () => {

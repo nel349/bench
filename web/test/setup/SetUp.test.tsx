@@ -378,11 +378,14 @@ describe("Start on mainnet, once the wallet serves it", () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", serving({}));
     show(page(null), LIVE);
-    expect(screen.getByText(/claude mcp add arc-mandate -s user -e ARC_MANDATE_NETWORK=arc --/)).toBeInTheDocument();
+    expect(screen.getByText("claude mcp add arc-mandate-mainnet -s user -- npx -y @kuiralabs/arc-mandate mainnet")).toBeInTheDocument();
+    // A second connector, beside the testnet one rather than in its place.
+    expect(screen.getByText(/beside the testnet connector/)).toBeInTheDocument();
     const pick = screen.getByRole("group", { name: "Your agent" });
     await user.click(within(pick).getByRole("button", { name: "Cursor" }));
-    expect(screen.getByText(/"ARC_MANDATE_NETWORK": "arc"/)).toBeInTheDocument();
+    expect(screen.getByText(/"mainnet"\]/)).toBeInTheDocument();
     await user.click(within(pick).getByRole("button", { name: "Codex" }));
-    expect(screen.getByText(/env = \{ ARC_MANDATE_NETWORK = "arc" \}/)).toBeInTheDocument();
+    expect(screen.getByText(/"mainnet"\]/)).toBeInTheDocument();
+    expect(screen.getByText(/\[mcp_servers\.arc-mandate-mainnet\]/)).toBeInTheDocument();
   });
 });

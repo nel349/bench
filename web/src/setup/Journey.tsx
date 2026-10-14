@@ -104,7 +104,7 @@ export function Journey({ wallet, gym, progress, connectHref, onConnect, owner }
               <FormattedMessage id={`step${step.n}.title`} values={{ testnet: String(testnet) }} />{" "}
               <span className="where"><FormattedMessage id={`step.where.${step.where}`} /></span>
             </h3>
-            <p><FormattedMessage id={`step${step.n}.detail`} /></p>
+            <p><FormattedMessage id={`step${step.n}.detail`} values={{ testnet: String(testnet) }} /></p>
             {extras[i]}
           </div>
         </li>

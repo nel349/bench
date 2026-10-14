@@ -163,7 +163,7 @@
   "step1.qr": "A code that opens the wallet on your phone",
   "step1.then": "{testnet, select, true {Once your wallet is made, its home screen has a button for test USDC, which is free.} other {This is real USDC: once your wallet is made, send USDC on Arc mainnet to the address its home screen shows. A few dollars is plenty.}}",
   "step2.title": "Connect your agent",
-  "step2.detail": "Run these in a terminal. The first line adds the Bench skill, which teaches your agent the gym. The second adds the connector, called arc-mandate, which lets your agent pay from your Mandate wallet.",
+  "step2.detail": "{testnet, select, true {Run these in a terminal. The first line adds the Bench skill, which teaches your agent the gym. The second adds the connector, called arc-mandate, which lets your agent pay from your Mandate wallet.} other {Run these in a terminal. The first line adds the Bench skill, which teaches your agent the gym. The second adds arc-mandate-mainnet, which lets your agent pay from your Mandate wallet with real USDC. It sits beside the testnet connector, if you have one.}}",
   "step2.note": "Then restart your agent and ask it to show its pairing code: it answers with a QR code for the next step. Claude Code is the one this was tested with; <link>the connector's notes</link> have more.",
   "step2.which": "Your agent",
   "step2.cursorWhere": "Add this to ~/.cursor/mcp.json, or to the project's .cursor/mcp.json:",
