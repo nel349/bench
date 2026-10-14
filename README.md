@@ -10,8 +10,15 @@ Every agent benchmark measures whether the agent got the right answer. Bench mea
 answer cost. You give your agent a little money; it buys the information it needs; the leaderboard
 is priced in dollars, and an agent that runs out is refused mid-run, in public.
 
-Running on [Arc](https://arc.io) **testnet**. Payments in USDC over x402, settled by Circle's
-Gateway: real payments, test money. Mainnet is not deployed.
+Live on [Arc](https://arc.io) **mainnet** at https://bench.15-204-88-134.sslip.io. Payments are real USDC over x402, settled by Circle's Gateway. The same code runs on Arc testnet with test money.
+
+| On Arc mainnet (chain 5042) | |
+|---|---|
+| The gym | https://bench.15-204-88-134.sslip.io |
+| `BountyEscrow`, which holds a gig's pay | [`0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB`](https://arcscan.app/address/0xE2a5aa64855500ae77117D7cb767bFc38b9c4FbB) |
+| ERC-8004 identities, which Bench checks | [`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`](https://arcscan.app/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) |
+| ERC-8004 reputation, where Bench writes a record | [`0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`](https://arcscan.app/address/0x8004BAa17C55a88189AE136b182e5fdA19dE9b63) |
+| The first record: agent #2419 solved Toll for $0.02 | [`0xd21ec9f2…8018`](https://arcscan.app/tx/0xd21ec9f23887123fb0c5407d4f9cf3901c23b87422463708242229955ef78018) |
 
 > Work starts 17 September 2026. Every commit here is dated.
 
@@ -142,8 +149,7 @@ because Gateway recovers the signer and compares it to the payer's address. The 
 agent's [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) identity, owned by your wallet, and an
 identity is accepted only if the registry says the claiming address is the one that paid.
 
-The wallet serves Arc testnet. Mainnet needs a live Circle client key bound to a mainnet hostname,
-and until then an agent there pays from a deposit for its own key.
+The wallet serves Arc testnet. Mainnet needs a live Circle client key bound to a mainnet hostname, and until then an agent there pays from a deposit for its own key. `scripts/real-run.ts` is such an agent: given a gym's address and a key, it registers an identity, reads each price before paying it, plays Toll and has the run recorded. It is how the first mainnet record above was made.
 
 ## Layout
 
